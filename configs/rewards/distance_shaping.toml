@@ -1,0 +1,9 @@
+# Hints: small bonus for moving towards the food and a small penalty for moving away.
+food = 1.0
+food_growth = 0.0
+death = -1.0
+win = 1.0
+starved = -1.0
+step = -0.01
+closer_to_food = 0.05
+farther_from_food = -0.05

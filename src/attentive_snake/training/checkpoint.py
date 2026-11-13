@@ -1,0 +1,63 @@
+"""Saving and restoring training state (model, optimizer, environment-step counter)."""
+
+import re
+from pathlib import Path
+
+import torch
+from torch import nn
+
+
+_CHECKPOINT_NAME = re.compile(r"checkpoint_(\d+)\.pt")
+
+
+def checkpoint_path(directory: Path, env_steps: int) -> Path:
+    return Path(directory) / f"checkpoint_{env_steps:010d}.pt"
+
+
+def checkpoint_steps(path: Path) -> int:
+    """Env steps encoded in a checkpoint file name (``ValueError`` if it is not one)."""
+    match = _CHECKPOINT_NAME.fullmatch(Path(path).name)
+    if match is None:
+        raise ValueError(f"{path} is not a checkpoint file name (checkpoint_<env_steps>.pt)")
+    return int(match.group(1))
+
+
+def list_checkpoints(directory: Path) -> list[Path]:
+    """Checkpoint files in ``directory`` sorted by env steps, ascending (empty if none or no directory)."""
+    directory = Path(directory)
+    if not directory.is_dir():
+        return []
+    return sorted(
+        (path for path in directory.iterdir() if _CHECKPOINT_NAME.fullmatch(path.name)), key=checkpoint_steps
+    )
+
+
+def latest_checkpoint(directory: Path) -> Path | None:
+    """The checkpoint with the most env steps in ``directory`` (by file name), or ``None`` if there is none."""
+    checkpoints = list_checkpoints(directory)
+    return checkpoints[-1] if checkpoints else None
+
+
+def save_checkpoint(path: Path, policy: nn.Module, optimizer: torch.optim.Optimizer, env_steps: int) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    state = {
+        "policy": policy.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "env_steps": env_steps,
+    }
+    torch.save(state, path)
+
+
+def load_checkpoint(
+    path: Path,
+    policy: nn.Module,
+    optimizer: torch.optim.Optimizer | None = None,
+    map_location: str | torch.device = "cpu",
+) -> int:
+    """Load state into ``policy`` (and ``optimizer`` if given); returns the saved env-step count."""
+    state = torch.load(Path(path), map_location=map_location, weights_only=True)
+    policy.load_state_dict(state["policy"])
+    if optimizer is not None:
+        optimizer.load_state_dict(state["optimizer"])
+    return int(state["env_steps"])

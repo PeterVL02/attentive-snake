@@ -1,0 +1,9 @@
+# Reward grows with score: each food pays 1 + 0.2 * (foods eaten so far), a big win bonus, no distance hints.
+food = 1.0
+food_growth = 0.2
+death = -1.0
+win = 20.0
+starved = -1.0
+step = -0.01
+closer_to_food = 0.0
+farther_from_food = 0.0

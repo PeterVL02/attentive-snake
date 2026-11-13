@@ -1,0 +1,64 @@
+# Default experiment for scripts/train.py.
+#
+# Every field is listed. A missing key (or a whole missing section) takes the
+# dataclass default; an unknown key is an error. TOML has no null, so fields
+# that may be None are commented out to mean None.
+# scripts/train.py writes the full resolved config to <run-dir>/config.toml.
+
+[game]  # attentive_snake.game.config.GameConfig
+width = 8
+height = 8
+initial_length = 3
+max_steps_without_food = 128  # starvation limit; comment out for no limit (None)
+
+[reward]  # attentive_snake.env.reward.RewardConfig; all terms are added together
+food = 1.0
+food_growth = 0.0             # extra food reward per point of score before eating
+death = -1.0                  # hit a wall or itself
+win = 1.0                     # filled the grid
+starved = -1.0                # hit max_steps_without_food
+step = -0.01                  # living cost on every non-final step
+closer_to_food = 0.0          # shaping: plain move that reduces the distance to food
+farther_from_food = 0.0       # shaping: plain move that increases it
+
+[model]  # attentive_snake.models.config.ModelConfig (input shape / actions / history come from the env)
+# kind: "transformer" (cells as tokens), "cnn" (conv baseline), "hybrid" (conv stem + transformer),
+#       "temporal_transformer" (attention over cells of all frames + action tokens),
+#       "frame_attention" (CNN per frame, attention across frames).
+# Only temporal_transformer and frame_attention treat env.history_length as time; the others
+# see stacked frames as extra channels. They use board channels plus, if present, action planes.
+kind = "transformer"
+d_model = 64
+num_heads = 4
+num_layers = 3
+mlp_ratio = 4
+dropout = 0.0
+conv_channels = 64            # cnn, hybrid, frame_attention: width of the conv layers
+conv_layers = 3               # cnn, hybrid, frame_attention: number of conv layers
+kernel_size = 3               # odd; same-padded
+
+[train]  # attentive_snake.training.config.TrainConfig
+total_env_steps = 5000000     # summed over all envs; train.py --steps overrides it
+rollout_length = 128          # steps per env per update (update = rollout_length * num_envs steps)
+num_epochs = 4
+num_minibatches = 4
+gamma = 0.99
+gae_lambda = 0.95
+clip_coef = 0.2
+value_coef = 0.5
+entropy_coef = 0.01
+learning_rate = 0.00025
+anneal_lr = true              # linear decay to 0 over total_env_steps
+max_grad_norm = 0.5
+normalize_advantages = true
+# target_kl = 0.02            # early-stop an update's epochs above this KL (None = off)
+device = "auto"               # "auto" = cuda if available, else cpu
+seed = 0
+log_interval = 10             # updates
+# checkpoint_dir = "runs/x"   # set to the run directory by train.py
+checkpoint_interval = 100     # updates
+
+[env]  # attentive_snake.config.EnvConfig
+num_envs = 64
+history_length = 1            # frames stacked in the observation (newest last); 1 = no history
+history_actions = false       # add one-hot planes of the action that produced each frame
