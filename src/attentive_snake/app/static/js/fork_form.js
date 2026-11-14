@@ -140,7 +140,7 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
       h("h2", { id: "fork-title", text: `New run from ${parent.name}` }),
       h("p", {
         class: "lead",
-        text: `A new run starts from the weights and optimizer state of ${parent.name} at ${formatNumber(checkpoint.steps)} env steps (${checkpoint.name}), trained with ${algorithmInfo?.label ?? algorithm} like its parent. It counts its own steps from 0 with its own total_env_steps, so its schedules start again (the learning rate from learning_rate; with DQN, exploration from epsilon_start and an empty replay buffer). ${parent.name} itself is not changed.`,
+        text: `A new run starts from the weights and optimizer state of ${parent.name} at ${formatNumber(checkpoint.steps)} env steps (${checkpoint.name}), trained with ${algorithmInfo?.label ?? algorithm} like its parent. It counts its own steps from 0 with its own total_env_steps, so its schedules start again (the learning rate from learning_rate; with DQN, exploration from epsilon_start and an empty replay buffer with fresh priorities). ${parent.name} itself is not changed.`,
       }),
       panel("New run", h("div", { class: "fields" }, nameWidget.el), description.el),
       panel(

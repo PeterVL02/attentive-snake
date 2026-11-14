@@ -32,7 +32,7 @@ let timer = null;
 let detail = null;
 let chart = null;
 let series = [];
-let seriesAlgorithm; // the algorithm whose metrics `series` holds
+let seriesMetrics; // the algorithm and own-metric keys `series` holds, as one string
 let algorithmInfos = {}; // schema.algorithms of the selected game
 let els = {};
 
@@ -41,10 +41,14 @@ function algorithmInfo(name) {
   return algorithmInfos[name] ?? null;
 }
 
+/** The algorithm's metrics this run logs: those tied to a setting (prioritized replay's) only if the run has it on. */
+function ownMetrics(info, config) {
+  return (info?.metrics ?? []).filter((m) => !m.setting || config?.[info.section]?.[m.setting] === true);
+}
+
 /** Chart series: the shared metrics, then the algorithm's own (hidden until switched on in the legend). */
-function chartSeries(info) {
-  const own = (info?.metrics ?? []).map((m) => ({ key: m.key, label: m.label, hidden: true }));
-  return [...METRICS, ...own].map((m, i) => ({ ...m, color: seriesColor(i), index: i, points: [] }));
+function chartSeries(own) {
+  return [...METRICS, ...own.map((m) => ({ key: m.key, label: m.label, hidden: true }))].map((m, i) => ({ ...m, color: seriesColor(i), index: i, points: [] }));
 }
 
 function runMeta(run) {
@@ -140,21 +144,21 @@ function buildDetail(name) {
     h("details", { class: "panel" }, h("summary", { text: "Config (read-only)" }), els.config),
   );
   chart = new LineChart(els.chartWrap, { xFormat: formatSteps, empty: "No metrics logged yet." });
-  seriesAlgorithm = undefined;
+  seriesMetrics = undefined;
 }
 
-/** Rebuild the series and legend when the shown run's algorithm (and so its metrics) differs. */
-function useAlgorithmSeries(algorithm) {
-  if (algorithm === seriesAlgorithm) return;
-  seriesAlgorithm = algorithm;
-  series = chartSeries(algorithmInfo(algorithm));
+/** Rebuild the series and legend when the shown run's own metrics differ from the ones on the chart. */
+function useAlgorithmSeries(algorithm, own) {
+  const wanted = `${algorithm}:${own.map((m) => m.key).join(",")}`;
+  if (wanted === seriesMetrics) return;
+  seriesMetrics = wanted;
+  series = chartSeries(own);
   renderLegend(els.legend, series, () => chart.draw());
 }
 
 /** [key, label] of the latest-metrics tiles: shared statistics, the algorithm's own, then the loop's. */
-function statKeys(info) {
-  const own = (info?.metrics ?? []).map((m) => [m.key, m.label]);
-  return [...SHARED_STATS.map((k) => [k, k]), ...own, ...LOOP_STATS.map((k) => [k, k])];
+function statKeys(own) {
+  return [...SHARED_STATS.map((k) => [k, k]), ...own.map((m) => [m.key, m.label]), ...LOOP_STATS.map((k) => [k, k])];
 }
 
 function renderLineage(parent) {
@@ -224,8 +228,8 @@ function renderDetail(d) {
   els.progress.style.width = `${pct}%`;
   els.progressText.textContent = `${formatNumber(d.env_steps)} / ${formatNumber(total)} env steps (${pct.toFixed(1)}%) · last checkpoint at ${formatNumber(d.checkpoint_steps)}`;
 
-  const info = algorithmInfo(d.algorithm);
-  useAlgorithmSeries(d.algorithm);
+  const own = ownMetrics(algorithmInfo(d.algorithm), d.config);
+  useAlgorithmSeries(d.algorithm, own);
   const records = monotonic(d.metrics);
   for (const s of series) s.points = points(records, s.key);
   chart.setSeries(series);
@@ -234,7 +238,7 @@ function renderDetail(d) {
   replace(
     els.stats,
     latest
-      ? statKeys(info).filter(([k]) => k in latest).map(([k, label]) => h("div", { class: "stat", title: k }, h("div", { class: "k", text: label }), h("div", { class: "v", text: formatNumber(latest[k]) })))
+      ? statKeys(own).filter(([k]) => k in latest).map(([k, label]) => h("div", { class: "stat", title: k }, h("div", { class: "k", text: label }), h("div", { class: "v", text: formatNumber(latest[k]) })))
       : h("div", { class: "muted", text: "No metrics yet." }),
   );
   setCheckpointOptions(els.checkpoint, d.checkpoints);

@@ -859,6 +859,26 @@ def test_algorithm_defaults_and_schema(client: TestClient):
     assert client.get("/api/defaults", params={"algorithm": "a2c"}).status_code == 404
 
 
+def test_prioritized_replay_settings_are_in_the_schema_and_a_prioritized_run_logs_its_metrics(client: TestClient):
+    schema = client.get("/api/schema").json()
+    fields = {row["name"]: row for row in schema["sections"]["dqn"]}
+    for name in ("prioritized", "priority_alpha", "priority_beta_start", "priority_epsilon"):
+        assert fields[name]["description"], name  # the new-run form and the fork dialog are built from these
+    assert [m["key"] for m in schema["algorithms"]["dqn"]["metrics"] if m["setting"] == "prioritized"] == ["priority_beta", "priority_mean", "priority_max"]
+    assert client.get("/api/defaults", params={"algorithm": "dqn"}).json()["dqn"]["prioritized"] is False
+    tables = tiny_tables("cnn", algorithm="dqn")
+    tables["dqn"] |= {"prioritized": True, "priority_beta_start": 0.5}
+    assert client.post("/api/runs", json={"name": "per", "config": tables}).status_code == 201
+    detail = wait_until_done(client, "per")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert detail["config"]["dqn"]["prioritized"] is True
+    assert {"priority_beta", "priority_mean", "priority_max"} <= set(detail["metrics"][-1]) and detail["metrics"][-1]["priority_beta"] == 1.0
+    tables["dqn"]["priority_alpha"] = 0.3  # changeable on fork
+    forked = client.post("/api/runs/per/fork", json={"name": "per-v2", "config": tables})
+    assert forked.status_code == 201, forked.text
+    assert wait_until_done(client, "per-v2")["config"]["dqn"]["priority_alpha"] == 0.3
+
+
 def test_a_dqn_run_through_the_api_trains_watches_evaluates_forks_and_compares(client: TestClient, paths: AppPaths):
     started = client.post("/api/runs", json={"name": "dqn", "config": tiny_tables("cnn", algorithm="dqn")})
     assert started.status_code == 201, started.text

@@ -9,6 +9,9 @@ METRICS = (
     TrainingMetric("q_mean", "mean Q-value", "Mean Q-value of the sampled actions: what the network expects to collect from there (discounted, in reward units)."),
     TrainingMetric("td_error", "mean |TD error|", "Mean absolute difference between Q(s, a) and its target in the sampled batches."),
     TrainingMetric("epsilon", "epsilon", "Probability of a random action while collecting experience (falls over epsilon_fraction of training)."),
+    TrainingMetric("priority_beta", "priority beta", "The importance-sampling exponent (how much of the sampling bias the loss weights correct); rises from priority_beta_start to 1 over training.", "prioritized"),
+    TrainingMetric("priority_mean", "mean priority", "Mean sampling priority over the stored transitions, (|TD error| + epsilon) ** alpha; falls as the network predicts better.", "prioritized"),
+    TrainingMetric("priority_max", "max priority", "The largest priority set so far, given to every new transition so it is replayed at least once.", "prioritized"),
     TrainingMetric("replay_size", "replay buffer size", "Transitions in the replay buffer (up to buffer_size)."),
     TrainingMetric("gradient_steps", "gradient steps", "Gradient steps taken by this training process so far (restarts at 0 on resume)."),
 )

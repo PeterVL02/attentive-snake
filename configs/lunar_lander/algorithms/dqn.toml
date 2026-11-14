@@ -26,3 +26,7 @@ epsilon_end = 0.05
 epsilon_fraction = 0.1        # of total_env_steps
 max_grad_norm = 10.0
 double = true
+prioritized = false           # prioritized experience replay (the three priority_* settings apply only when true)
+priority_alpha = 0.6
+priority_beta_start = 0.4     # rises to 1 at the end of total_env_steps
+priority_epsilon = 1e-6

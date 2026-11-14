@@ -143,8 +143,11 @@ TINY_LEARNERS = {
 }
 
 
-@pytest.mark.parametrize("algorithm", algorithm_names())
-def test_each_algorithm_row_is_truthful(algorithm: str) -> None:
+@pytest.mark.parametrize(
+    ("algorithm", "switches"),
+    [(name, {}) for name in algorithm_names()] + [("dqn", {"prioritized": True})],
+)
+def test_each_algorithm_row_is_truthful(algorithm: str, switches: dict) -> None:
     """The schema's head is the one the policy gets, its fields are the section's, and its metrics are exactly what it logs."""
     from attentive_snake.config.experiment_io import experiment_from_tables
     from attentive_snake.factory import make_policy, make_trainer, make_vec_env
@@ -158,7 +161,7 @@ def test_each_algorithm_row_is_truthful(algorithm: str) -> None:
         "game": {"width": 4, "height": 4},
         "model": {"kind": "mlp", "d_model": 8, "num_layers": 1},
         "train": {"algorithm": algorithm, "total_env_steps": 64, "device": "cpu", "log_interval": 1},
-        algorithm: TINY_LEARNERS[algorithm],
+        algorithm: TINY_LEARNERS[algorithm] | switches,
         "env": {"num_envs": 2},
     })
     env = make_vec_env(config)
@@ -167,4 +170,4 @@ def test_each_algorithm_row_is_truthful(algorithm: str) -> None:
     records = make_trainer(config, policy, env, NullLogger()).train()
     shared = {"iteration", "env_steps", "episodes", "mean_score", "mean_length", "mean_return", "learning_rate", "steps_per_second"}
     logged = set().union(*records) - shared
-    assert logged == {metric["key"] for metric in row["metrics"]}
+    assert logged == {metric["key"] for metric in row["metrics"] if metric["setting"] is None or switches.get(metric["setting"])}

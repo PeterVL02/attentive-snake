@@ -3,7 +3,9 @@
 A collector ``add``s one ``Transitions`` per vector step (one transition per env). ``sample``
 returns a ``ReplaySample`` with the buffer ``indices`` it drew and importance ``weights``
 (all ones for uniform sampling); the learner scales each sample's loss by its weight and
-reports the TD errors back with ``update_priorities`` (a no-op for uniform sampling).
+reports the TD errors back with ``update_priorities`` (a no-op for uniform sampling). A prioritized
+buffer takes what it needs of the training progress (the importance-sampling exponent beta) as a
+callable at construction (``prioritized_replay.py``), so this contract stays free of schedules.
 """
 
 from dataclasses import dataclass
@@ -54,4 +56,8 @@ class ReplayBuffer(Protocol):
 
     def update_priorities(self, indices: np.ndarray, td_errors: np.ndarray) -> None:
         """Tell the buffer the absolute TD errors of the sampled slots (prioritized replay uses them)."""
+        ...
+
+    def statistics(self) -> dict[str, float]:
+        """Numbers about the buffer's sampling for the learner's report (keys among the algorithm's metrics; none for uniform)."""
         ...

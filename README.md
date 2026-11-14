@@ -110,7 +110,12 @@ probabilities and state value of a PPO run, or the Q-values of a DQN run.
 DQN settings that matter most: `learning_rate` (in `[train]`), `train_frequency`
 (env steps per gradient step, whatever `num_envs` is: the replay ratio),
 `target_update_interval`, `epsilon_fraction` / `epsilon_end` (exploration) and
-`buffer_size`. One DQN iteration is one step of every parallel game, so
+`buffer_size`. Optional **prioritized replay** (`dqn.prioritized`, off by
+default) draws transitions the network predicts worst more often, as in
+Schaul et al. (2016), and weights their loss to undo the bias (the weight
+exponent beta rises to 1 over training). It costs some speed per step, its
+priorities start fresh on resume or fork (like the buffer), and one seed on
+Lunar Lander is no evidence that it helps. One DQN iteration is one step of every parallel game, so
 `num_envs` only changes how experience is gathered, not how much is learned
 per step.
 

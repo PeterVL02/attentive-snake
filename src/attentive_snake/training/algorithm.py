@@ -20,11 +20,16 @@ from attentive_snake.training.config import TrainConfig
 
 @dataclass(frozen=True)
 class TrainingMetric:
-    """One number a learner reports in ``metrics.jsonl`` (``key``), with how to show it."""
+    """One number a learner reports in ``metrics.jsonl`` (``key``), with how to show it.
+
+    ``setting`` names a boolean field of the algorithm's settings: the metric is only logged
+    (and only charted) by runs where it is on; ``None`` = always logged.
+    """
 
     key: str
     label: str
     description: str
+    setting: str | None = None
 
 
 @dataclass(frozen=True)
