@@ -7,6 +7,11 @@ has its own default config (`configs/<game>/default.toml`), its own reward schem
 its own runs directory (`runs/<game>/`). `--game NAME` picks the game for a new run. Resuming, forking and watching read the game from the run's
 `config.toml`.
 
+Every run is trained with one algorithm, `train.algorithm`: `ppo` (the default; its settings are the `[ppo]`
+section) or `dqn` (the `[dqn]` section). `configs/<game>/default.toml` holds the PPO defaults;
+`configs/<game>/algorithms/dqn.toml` holds the game's DQN defaults, used when a new run asks for DQN without a
+`--config` file.
+
 ## Play Snake yourself
 
 ```bash
@@ -47,6 +52,13 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/t
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/no-bootstrap --set train.bootstrap_truncated=false
 ```
 
+```bash
+# DQN instead of PPO: the game's DQN defaults (configs/<game>/algorithms/dqn.toml), then any [dqn] setting
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/dqn --set train.algorithm=dqn
+uv run python scripts/train.py --run-dir runs/snake/dqn-cnn --set train.algorithm=dqn --set model.kind=cnn \
+    --set dqn.batch_size=128 --set dqn.buffer_size=200000
+```
+
 - `--game NAME` (new runs only) picks `configs/<NAME>/default.toml` and the default run directory `runs/<NAME>/default`.
   Without it the game is the `--config` file's `[game] name`, else `snake`; a `--game` that differs from the config's
   game is refused.
@@ -56,6 +68,10 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/n
 - `--steps` sets `train.total_env_steps` (the training budget over all parallel environments).
 - `--set section.key=value` changes one setting (repeatable; the value is read as TOML, e.g. `1e-4`, `true`, `"cpu"`).
   It cannot set a value to None; use a config file for that.
+- `--set train.algorithm=dqn` switches the algorithm: without `--config` the run starts from the game's DQN
+  defaults; with `--config FILE` the file's `[ppo]` section is dropped and `[dqn]` takes its code defaults. Then
+  `--set dqn.<key>=...` changes DQN settings. A config holding the section of another algorithm than its
+  `train.algorithm` is refused.
 - `--description TEXT` is saved in the run's `run.json` (see below) and shown in the app.
 - `train.bootstrap_truncated` decides what a game cut short by a limit (Lunar Lander's time limit, Snake's
   starvation limit) is worth after the cut: `true` counts the value the network expects from the cut-off state,
@@ -86,6 +102,10 @@ uv run python scripts/train.py --resume runs/snake/8x8 --description "more steps
 uv run python scripts/train.py --resume runs/snake/8x8 --steps 10000000 --eval-interval 250000 --eval-games 100
 ```
 
+Resuming a DQN run restores its online and target networks and its optimizer, but not its replay buffer
+(checkpoints do not hold it): the buffer refills from scratch, and gradient steps wait until it holds
+`dqn.learning_starts` transitions again. Epsilon continues where the step count is.
+
 `--resume` uses the run's own `config.toml` (including its game); `--game`, `--config`, `--set`, `--width`,
 `--height`, `--num-envs`, `--seed` and `--fork` are rejected with it. `--steps`, `--[no-]keep-checkpoints`,
 `--description` and `--eval-interval/--eval-games/--eval-seed` are accepted. A resumed run appends to its
@@ -106,12 +126,16 @@ cp runs/snake/8x8/config.toml configs/8x8-variant.toml   # edit it, then:
 uv run python scripts/train.py --run-dir runs/snake/8x8-variant --fork runs/snake/8x8 --config configs/8x8-variant.toml
 ```
 
-- The new run loads the parent's weights and optimizer state, then counts its own env steps from 0 up to its own
-  `total_env_steps` (by default the parent's), with its own learning-rate schedule starting from `learning_rate`.
-  Adam's moment estimates are carried over even when the learning rate changes (they do not depend on it).
+- The new run loads the parent's weights and optimizer state (for DQN also the target network), then counts its own
+  env steps from 0 up to its own `total_env_steps` (by default the parent's), with its own learning-rate schedule
+  starting from `learning_rate`. Adam's moment estimates are carried over even when the learning rate changes (they
+  do not depend on it). A DQN fork starts with an empty replay buffer and its exploration starts again from
+  `dqn.epsilon_start` (lower it with `--set dqn.epsilon_start=0.1` to explore less).
 - Its settings are the parent's `config.toml` (or `--config`) plus `--set`, `--steps`, `--num-envs`, `--seed`,
-  `--keep-checkpoints`. Everything under `[reward]` and `[train]`, `env.num_envs` and the game rules the game does
-  not lock (Snake: `game.max_steps_without_food`) may change. The game (`game.name`), all of `[model]`,
+  `--keep-checkpoints`. Everything under `[reward]`, `[train]` (but `train.algorithm`) and the algorithm's section
+  (`[ppo]` / `[dqn]`), `env.num_envs` and the game rules the game does not lock (Snake:
+  `game.max_steps_without_food`) may change. The game (`game.name`), the algorithm (`train.algorithm`: the weights
+  end in its head), all of `[model]`,
   `env.history_length`, `env.history_actions` and the rules the game locks (Snake: `game.width`, `game.height`,
   `game.initial_length`) must equal the parent's (the weights would not fit, or the input would change meaning);
   a change is rejected naming the field, before anything is written.
@@ -126,7 +150,7 @@ uv run python scripts/train.py --run-dir runs/snake/8x8-variant --fork runs/snak
 # Latest checkpoint of the run, greedy actions
 uv run python scripts/watch.py runs/snake/8x8
 
-# With the attention heatmap, a specific layer, sampled actions, faster
+# With the attention heatmap, a specific layer, sampled actions (PPO runs; DQN runs always play greedily), faster
 uv run python scripts/watch.py runs/snake/8x8 --attention --layer 0 --sample --fps 20
 
 # A specific checkpoint
@@ -152,7 +176,8 @@ The window shows the run's game (it reads the game from the run's `config.toml`)
 
 ## Evaluate a trained agent
 
-An evaluation plays complete games with the most likely action at every step (no exploration, no sampling) and
+An evaluation plays complete games with the best action at every step (PPO: the most likely; DQN: the highest
+Q-value; no exploration, no sampling) and
 prints the game's statistics: for Snake win rate, steps to win, steps between apples; for Lunar Lander landing,
 crash, fly-off and timeout rates and steps to land; for every game scores, episode lengths, returns and how the games
 ended. Values that cannot be computed (steps to win without a win) are `N/A`.
@@ -194,12 +219,15 @@ an evaluation's checkpoint is deleted by the next save, so it can no longer be r
 
 | What | Where |
 | --- | --- |
-| Default experiment of a game (every setting except the rewards, commented) | `configs/<game>/default.toml` |
+| Default experiment of a game (every setting except the rewards, commented; PPO) | `configs/<game>/default.toml` |
+| The game's defaults for DQN, laid over default.toml (its `[dqn]` section and the shared values that differ) | `configs/<game>/algorithms/dqn.toml` |
 | Your own experiments | copy it to e.g. `configs/mine.toml`, pass with `--config` |
 | Named reward schemes of a game; `default` holds its default reward values | `configs/<game>/rewards/<name>.toml` (flat file of the `[reward]` keys, no header) |
 | The exact config of one run | `runs/<game>/<name>/config.toml` |
 
-An experiment file has the sections `[game] [reward] [model] [train] [env] [evaluation]`. `[game] name` says which game it is
+An experiment file has the sections `[game] [reward] [model] [train] [<algorithm>] [env] [evaluation]`, where
+`[<algorithm>]` is `[ppo]` or `[dqn]`, the one `train.algorithm` names (`[train]` holds what both algorithms
+share: budget, gamma, learning rate, seed, device, intervals). `[game] name` says which game it is
 (a file without it is a Snake config, so configs written before there were several games still load); the other
 `[game]` keys are that game's rules and `[reward]` its reward coefficients. A missing key takes its default; an
 unknown key is an error. A config without a `[reward]` section gets the game's default reward values (those of
@@ -213,14 +241,20 @@ To use another reward scheme in an experiment, copy its lines under a `[reward]`
 runs/<game>/<name>/
     config.toml                 the full resolved config (written at start)
     model.html                  interactive architecture diagram
-    metrics.jsonl               one JSON line per logged update (env_steps, scores, losses, ...)
+    metrics.jsonl               one JSON line per logged record (env_steps, scores, the algorithm's losses, ...)
     evaluations.jsonl           one JSON line per evaluation (while training, or evaluate.py --save / the app)
     run.json                    history: one entry per start / resume / fork (see below)
-    checkpoint_<steps>.pt       policy + optimizer + env-step counter
+    checkpoint_<steps>.pt       policy + optimizer + env-step counter (+ DQN's target network; never the replay buffer)
 ```
 
-Metrics are logged every `train.log_interval` updates and at the last update; checkpoints every `train.checkpoint_interval` updates and at the end.
-Lower both for short experiments.
+Metrics are logged each time the env-step count passes a multiple of `train.log_interval` and at the end;
+checkpoints likewise for `train.checkpoint_interval` (both count env steps, like `evaluation.interval`). Lower
+both for short experiments. Every record has `env_steps`, `iteration`, the episode means (`mean_score`,
+`mean_length`, `mean_return`, `episodes`), `learning_rate` and `steps_per_second`, plus the algorithm's own:
+PPO `policy_loss`, `value_loss`, `entropy`, `approx_kl`, `clip_fraction`, `explained_variance`,
+`epochs_completed` (of the latest update); DQN `loss` (Huber), `q_mean`, `td_error` (means over the gradient
+steps since the previous record), `epsilon`, `replay_size`, `gradient_steps`. An iteration is one PPO update
+(`rollout_length * num_envs` env steps) or one DQN step of every game (`num_envs` env steps).
 
 `run.json` is not configuration; it is a log of what was done to the run:
 
@@ -266,7 +300,19 @@ Set `kind` in `[model]` and `history_length` / `history_actions` in `[env]`.
 | `mlp` | flattened board, weak baseline | plain MLP; recommended | `history_length = 1` |
 
 The non-temporal kinds see stacked frames only as extra input channels (extra values per number). Which `[model]` fields each kind uses
-(for example `cnn` ignores `num_heads`) is listed by the app's config page.
+(for example `cnn` ignores `num_heads`) is listed by the app's config page. Every kind works with both
+algorithms: the trunk is the same, only the head differs (PPO: a policy head and a value head; DQN: one Q-value
+per action), and attention is shown the same way.
+
+## Choosing an algorithm
+
+| `train.algorithm` | what it is | its settings that matter most |
+| --- | --- | --- |
+| `ppo` | on-policy actor-critic: learns from rollouts it has just played, a few epochs each | `rollout_length`, `num_minibatches`, `entropy_coef`, `gae_lambda` |
+| `dqn` | off-policy, value-based (Double DQN): plays epsilon-greedily into a replay buffer, learns from random batches against a target network | `learning_rate`, `train_frequency`, `target_update_interval`, `epsilon_fraction`, `buffer_size` |
+
+DQN's replay buffer lives in memory: about `2 x buffer_size x (numbers in one observation) x 4` bytes (Snake 8x8,
+100k transitions: ~150 MB; Lunar Lander: ~6 MB; history frames multiply it). It is not saved.
 
 ## Draw a model diagram from Python
 
@@ -306,6 +352,6 @@ uv run pytest -q
 uv run python -m attentive_snake.app [--port 8000] [--runs-dir runs] [--configs-dir configs]
 ```
 
-Serves http://127.0.0.1:8000: configure, start and resume training, continue a run under a new name with changed
+Serves http://127.0.0.1:8000: configure (including the algorithm), start and resume training, continue a run under a new name with changed
 settings, evaluate checkpoints and chart evaluations, watch an agent with its attention, view the architecture and
 edit reward schemes.
