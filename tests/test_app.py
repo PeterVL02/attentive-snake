@@ -27,13 +27,14 @@ from attentive_snake.config.layout import default_config_path, rewards_dir
 from attentive_snake.config.reward_schemes import save_scheme
 from attentive_snake.evaluation.generic_statistics import GENERIC_METRICS
 from attentive_snake.factory import make_env, make_policy
+from attentive_snake.models.registry import KIND_INFO
 from attentive_snake.games.registry import get_game, reload_games
 from attentive_snake.run_dir import config_path, list_checkpoints
 from attentive_snake.run_metadata import RunEvent, append_event
 from attentive_snake.training import save_checkpoint
 from attentive_snake.training.checkpoint import checkpoint_path
 
-KINDS = ["transformer", "cnn", "hybrid", "temporal_transformer", "frame_attention"]
+KINDS = ["transformer", "cnn", "resnet", "hybrid", "temporal_transformer", "frame_attention", "lstm"]
 JOB_TIMEOUT = 180.0
 DUMMY_GAMES = Path(__file__).resolve().parent / "dummy_games"
 BEACON = {"name": "beacon", "length": 4, "max_steps": 8}  # dummy game: image view, no reward table
@@ -47,7 +48,7 @@ TINY_ALGORITHMS = {
 
 def tiny_tables(kind: str = "transformer", total_env_steps: int = 64, algorithm: str = "ppo", **train) -> dict:
     """A config that trains in a few seconds on the CPU."""
-    history = 2 if kind in ("temporal_transformer", "frame_attention") else 1
+    history = 2 if kind in ("temporal_transformer", "frame_attention", "lstm") else 1
     return {
         "game": {"width": 4, "height": 4, "initial_length": 2, "max_steps_without_food": 32},
         "reward": {},
@@ -700,6 +701,27 @@ def test_watch_lunar_lander_with_attention_over_its_numbers(client: TestClient, 
     assert (body["frame"]["width"], body["frame"]["height"]) == (600, 400) and body["frame"]["heatmap"] is None
     steps = client.post(f"/api/watch/{body['id']}/step", json={"count": 3, "frames": "last"}).json()["frames"]
     assert "png" in steps[-1] and len(steps[-1]["element_weights"]) == 8
+
+
+def test_lunar_lander_hidden_velocities_in_the_schema_and_a_watched_lstm(client: TestClient, paths: AppPaths):
+    """The rule is a form row, every kind reads the vector observation, and a kind without attention shows no weights."""
+    schema = client.get("/api/schema", params={"game": "lunar_lander"}).json()
+    rows = {row["name"]: row for row in schema["sections"]["game"]}
+    assert rows["hide_velocities"]["type"] == "bool" and rows["hide_velocities"]["default"] is False
+    for kind in ("resnet", "lstm"):
+        info = schema["model_kinds"][kind]
+        assert "vector" in info["observation_kinds"] and not info["recommended"] and "kernel_size" not in info["fields"]
+        assert info["description"] == KIND_INFO[kind].inputs["vector"].description
+    assert "num_layers" in schema["model_kinds"]["lstm"]["fields"] and schema["model_kinds"]["lstm"]["uses_history"]
+    assert "game.hide_velocities" in client.get("/api/fork-rules", params={"game": "lunar_lander"}).json()["locked"]
+
+    make_run(paths, "blind", kind="lstm", game={"name": "lunar_lander", "hide_velocities": True})
+    body = client.post("/api/watch", json={"game": "lunar_lander", "run": "blind", "seed": 0}).json()
+    assert body["info"]["attention_view"] is None and body["info"]["element_names"][2] == "vx"
+    frame = client.post(f"/api/watch/{body['id']}/step", json={"count": 2, "frames": "last"}).json()["frames"][-1]
+    assert frame["element_weights"] is None and frame["frame_weights"] is None and frame["heatmap"] is None
+    detail = client.get("/api/runs/blind", params={"game": "lunar_lander"}).json()
+    assert detail["config"]["game"]["hide_velocities"] is True
 
 
 # --------------------------------------------------------------------------- evaluation

@@ -13,6 +13,7 @@ from attentive_snake.models.blocks.vector import (
     LinearReadout,
     MlpEncoder,
 )
+from attentive_snake.models.blocks.residual import ResidualMlpEncoder
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.input_stages.stage import Stage, StageInput
 
@@ -46,4 +47,14 @@ def hybrid_stage(source: StageInput, config: ModelConfig) -> Stage:
             "project": nn.Linear(config.conv_channels, config.d_model),
         },
         num_tokens=source.channels,
+    )
+
+
+def residual_stage(source: StageInput, config: ModelConfig) -> Stage:
+    """An embedding and ``conv_layers`` residual MLP blocks over all numbers, then a linear readout to one ``d_model`` vector."""
+    return Stage(
+        {
+            "encoder": ResidualMlpEncoder(source.values * source.channels, config.conv_channels, config.conv_layers),
+            "readout": LinearReadout(config.conv_channels, config.d_model),
+        }
     )

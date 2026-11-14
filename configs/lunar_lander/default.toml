@@ -12,6 +12,7 @@ enable_wind = false           # random wind and turbulence (much harder)
 wind_power = 15.0             # 0..20, only with enable_wind
 turbulence_power = 1.5        # 0..2, only with enable_wind
 max_episode_steps = 1000      # time limit (Gymnasium's): ends the episode as "timeout" (see train.bootstrap_truncated)
+hide_velocities = false       # the model sees zeros for vx, vy and spin: it must infer them from history (env.history_length > 1, or the lstm kind)
 
 # [reward]: not listed here. The default reward values live in one place, the
 # reward scheme configs/lunar_lander/rewards/default.toml
@@ -24,11 +25,11 @@ max_episode_steps = 1000      # time limit (Gymnasium's): ends the episode as "t
 kind = "mlp"
 d_model = 64                  # mlp: layer width
 num_heads = 4                 # attention kinds only
-num_layers = 2                # mlp: fully connected layers; attention kinds: transformer blocks
+num_layers = 2                # mlp: fully connected layers; lstm: LSTM layers; attention kinds: transformer blocks
 mlp_ratio = 4                 # attention kinds only
 dropout = 0.0
-conv_channels = 64            # cnn, hybrid, frame_attention: width of the layers that replace convolutions
-conv_layers = 2               # cnn, hybrid, frame_attention: number of those layers
+conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm: width of the layers that replace convolutions
+conv_layers = 2               # cnn, resnet (residual blocks), hybrid, frame_attention, lstm: number of those layers
 kernel_size = 3               # unused for vector observations
 
 [train]  # attentive_snake.training.config.TrainConfig: what every algorithm shares

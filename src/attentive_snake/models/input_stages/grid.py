@@ -6,6 +6,7 @@ The module names here are the checkpoint keys of every Snake model trained so fa
 from torch import nn
 
 from attentive_snake.models.blocks.conv import ConvEncoder, FlattenReadout, GridToTokens
+from attentive_snake.models.blocks.residual import ResidualConvEncoder
 from attentive_snake.models.blocks.transformer import CellEmbedding, PositionalEmbedding2D
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.input_stages.stage import Stage, StageInput
@@ -54,3 +55,14 @@ def hybrid_stage(source: StageInput, config: ModelConfig) -> Stage:
         num_tokens=height * width,
     )
 
+
+
+def residual_stage(source: StageInput, config: ModelConfig) -> Stage:
+    """A conv stem and ``conv_layers`` residual conv blocks, then the feature map flattened into one ``d_model`` vector."""
+    height, width = source.spatial
+    return Stage(
+        {
+            "encoder": ResidualConvEncoder(source.values * source.channels, config.conv_channels, config.conv_layers, config.kernel_size),
+            "readout": FlattenReadout(config.conv_channels, height, width, config.d_model),
+        }
+    )
