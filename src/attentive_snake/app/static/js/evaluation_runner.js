@@ -137,7 +137,7 @@ export function evaluationRunner(game, name, { onSaved }) {
     "div",
     { class: "evaluation-runner continue-option" },
     h("h4", { text: "Run evaluation now" }),
-    h("p", { class: "muted small", text: "Plays complete games with the chosen checkpoint, always taking its most likely action (no exploration). The same checkpoint, number of games and seed always give the same numbers." }),
+    h("p", { class: "muted small", text: "Plays complete games with the chosen checkpoint, always taking its best action (the most likely one, or the highest Q-value; no exploration). The same checkpoint, number of games and seed always give the same numbers." }),
     h(
       "div",
       { class: "fields" },

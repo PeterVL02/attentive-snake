@@ -232,12 +232,18 @@ def test_play_games_records_every_game_in_order_and_caps_endless_ones() -> None:
     assert [(r.outcome, r.length, len(r.events)) for r in capped] == [(STEP_LIMIT, 12, 12)] * 2
 
 
-def tiny_snake_config(**evaluation):
+TINY_ALGORITHMS = {
+    "ppo": {"rollout_length": 16, "num_epochs": 1, "num_minibatches": 2},
+    "dqn": {"buffer_size": 200, "batch_size": 8, "learning_starts": 16, "target_update_interval": 32},
+}
+
+
+def tiny_snake_config(algorithm: str = "ppo", **evaluation):
     return experiment_from_tables({
         "game": {"width": 4, "height": 4, "initial_length": 2, "max_steps_without_food": 16},
         "model": {"kind": "cnn", "conv_channels": 8, "conv_layers": 1},
-        "train": {"total_env_steps": 192, "device": "cpu", "log_interval": 100_000, "checkpoint_interval": 100_000},
-        "ppo": {"rollout_length": 16, "num_epochs": 1, "num_minibatches": 2},
+        "train": {"algorithm": algorithm, "total_env_steps": 192, "device": "cpu", "log_interval": 100_000, "checkpoint_interval": 100_000},
+        algorithm: TINY_ALGORITHMS[algorithm],
         "env": {"num_envs": 4},
         "evaluation": evaluation,
     })
@@ -282,3 +288,18 @@ def test_evaluating_during_training_changes_nothing_about_training(tmp_path: Pat
     assert (tmp_path / "checkpoint_0000000128.pt").is_file()  # saved for the evaluation (interval is 100 updates)
     assert evaluations[0].statistics["games"] == 6 and sum(evaluations[0].outcomes.values()) == 6
     assert evaluated.policy.training  # mode restored after evaluating
+
+
+def test_evaluating_during_dqn_training_changes_nothing_about_training(tmp_path: Path) -> None:
+    """Exploration and replay sampling use their own seeded generators; evaluation touches neither."""
+    config = tiny_snake_config("dqn", interval=100, games=6)
+    plain = train_tiny(config, None)
+    hook = PeriodicEvaluation(get_game("snake"), lambda: make_env(config), config.evaluation, tmp_path / "e.jsonl", announce=lambda line: None)
+    evaluated = train_tiny(config, tmp_path, hooks=[hook])
+    assert plain.learner.report()["gradient_steps"] > 0
+    for a, b in zip(plain.policy.state_dict().values(), evaluated.policy.state_dict().values(), strict=True):
+        torch.testing.assert_close(a, b, rtol=0, atol=0)
+    for a, b in zip(plain.learner.extra_state()["target"].values(), evaluated.learner.extra_state()["target"].values(), strict=True):
+        torch.testing.assert_close(a, b, rtol=0, atol=0)
+    # 4 env steps per iteration: crossing 100 at 100, then the end at 192; greedy play on the Q-values.
+    assert [e.env_steps for e in read_evaluations(tmp_path / "e.jsonl")] == [100, 192]

@@ -1,0 +1,28 @@
+# Lunar Lander defaults for train.algorithm = "dqn" (scripts/train.py --set train.algorithm=dqn,
+# or DQN in the app's New-training form). Laid over configs/lunar_lander/default.toml key by key:
+# its [ppo] section is dropped, these values replace the shared ones they name, everything
+# else (game, model, evaluation, ...) comes from default.toml.
+
+[train]
+total_env_steps = 500000      # DQN reuses each step many times: far fewer env steps than PPO
+gamma = 0.99
+learning_rate = 0.0005
+anneal_lr = false
+log_interval = 10000          # env steps
+checkpoint_interval = 100000  # env steps
+
+[env]
+num_envs = 8                  # each step of the 8 games is one iteration (8 env steps)
+
+[dqn]  # attentive_snake.training.dqn.config.DqnConfig
+buffer_size = 100000          # 2 x 100k x 8 numbers x 4 bytes = ~6 MB
+batch_size = 128
+learning_starts = 10000       # transitions in the buffer before the first gradient step
+train_frequency = 4           # env steps per round of gradient steps (2 rounds per step of the 8 games)
+gradient_steps = 1
+target_update_interval = 1000 # env steps between target-network copies
+epsilon_start = 1.0
+epsilon_end = 0.05
+epsilon_fraction = 0.1        # of total_env_steps
+max_grad_norm = 10.0
+double = true

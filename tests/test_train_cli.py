@@ -9,6 +9,8 @@ import pytest
 from attentive_snake.config import load_experiment
 from attentive_snake.run_dir import config_path, list_checkpoints
 from attentive_snake.run_metadata import Lineage, read_events
+from attentive_snake.training.checkpoint import read_checkpoint
+from attentive_snake.training.metrics import read_metrics
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "train.py"
 TINY = """
@@ -128,3 +130,31 @@ def test_game_flag_picks_the_default_config_and_must_match_the_config(tmp_path: 
     assert refused.returncode == 2 and "unknown game 'chess'" in refused.stderr
     resumed = train("--resume", run_dir, "--game", "snake")
     assert resumed.returncode == 2 and "--game" in resumed.stderr
+
+
+def test_dqn_trains_resumes_and_forks_through_the_script(tmp_path: Path):
+    """--set train.algorithm=dqn switches a PPO config to DQN; resume restores the target network; a fork restarts epsilon."""
+    (tmp_path / "tiny.toml").write_text(TINY)
+    run_dir = tmp_path / "dqn"
+    dqn = ["--set", "train.algorithm=dqn", "--set", "dqn.batch_size=8", "--set", "dqn.learning_starts=16", "--set", "dqn.buffer_size=64"]
+    result = train("--run-dir", run_dir, "--config", tmp_path / "tiny.toml", *dqn, "--set", "dqn.target_update_interval=8")
+    assert result.returncode == 0, result.stderr
+    config = load_experiment(config_path(run_dir))
+    assert config.train.algorithm == "dqn" and config.algorithm_settings.batch_size == 8
+    assert "[dqn]" in config_path(run_dir).read_text() and "[ppo]" not in config_path(run_dir).read_text()
+    state = read_checkpoint(list_checkpoints(run_dir)[-1])
+    assert set(state["learner"]) == {"target"} and "net.q_head.linear.weight" in state["policy"]
+    metrics = read_metrics(run_dir / "metrics.jsonl")
+    assert metrics[-1]["gradient_steps"] > 0 and "loss" in metrics[-1] and "policy_loss" not in metrics[-1]
+
+    assert train("--resume", run_dir, "--steps", 96).returncode == 0
+    assert list_checkpoints(run_dir)[-1].name == "checkpoint_0000000096.pt"
+    assert read_metrics(run_dir / "metrics.jsonl")[-1]["env_steps"] == 96
+
+    child = tmp_path / "child"
+    forked = train("--run-dir", child, "--fork", run_dir, "--set", "dqn.epsilon_start=0.3", "--steps", 32)
+    assert forked.returncode == 0, forked.stderr
+    assert load_experiment(config_path(child)).algorithm_settings.epsilon_start == 0.3
+    assert read_metrics(child / "metrics.jsonl")[0]["epsilon"] == 0.3  # its own schedule restarts at epsilon_start
+    switched = train("--run-dir", tmp_path / "ppo-child", "--fork", run_dir, "--set", "train.algorithm=ppo")
+    assert switched.returncode == 2 and "train.algorithm" in switched.stderr

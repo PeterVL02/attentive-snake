@@ -135,3 +135,35 @@ def test_session_does_not_import_pygame() -> None:
 
     code = "import sys, attentive_snake.watch; sys.exit('pygame' in sys.modules)"
     assert subprocess.run([sys.executable, "-c", code]).returncode == 0
+
+
+@pytest.mark.parametrize("kind", ["transformer", "cnn"])
+def test_a_dqn_run_is_watched_and_evaluated_greedily_with_q_values(tmp_path, kind: str) -> None:
+    from attentive_snake.evaluation.checkpoint_evaluation import evaluate_checkpoint
+    from attentive_snake.evaluation.settings import EvalSettings
+    from attentive_snake.training import latest_checkpoint
+    from attentive_snake.training.dqn.config import DqnConfig
+
+    run_dir = tmp_path / kind
+    config = ExperimentConfig(
+        game=SnakeConfig(width=5, height=5, max_steps_without_food=30),
+        model=ModelConfig(kind=kind, d_model=16, num_heads=2, num_layers=1, conv_channels=8, conv_layers=1),
+        train=TrainConfig(algorithm="dqn", total_env_steps=48, checkpoint_dir=run_dir, device="cpu"),
+        algorithm_settings=DqnConfig(buffer_size=64, batch_size=4, learning_starts=8),
+        env=EnvConfig(num_envs=2),
+    )
+    save_experiment(config, config_path(run_dir))
+    env = make_vec_env(config)
+    make_trainer(config, make_policy(config, env), env, NullLogger()).train()
+
+    session = WatchSession(run_dir, seed=0, sample=True)  # sampling plays greedily: Q-values are no distribution
+    assert session.info["algorithm"] == "dqn"
+    frames = [session.current(), *run_frames(session, 20)]
+    readout = frames[0].action_values
+    assert readout["kind"] == "q_values" and readout["state_value"] is None and len(readout["values"]) == 4
+    assert all(f.action_values is None for f in frames if f.done)
+    if kind == "transformer":
+        assert frames[0].heatmap is not None  # attention works the same with the Q-value head
+    settings = EvalSettings(games=3, seed=1, max_episode_steps=50, parallel_games=2, device="cpu")
+    first = evaluate_checkpoint(run_dir, latest_checkpoint(run_dir), settings)
+    assert first.statistics["games"] == 3 and evaluate_checkpoint(run_dir, latest_checkpoint(run_dir), settings) == first

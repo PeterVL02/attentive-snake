@@ -117,7 +117,7 @@ function drawChart() {
   chart.options.yFormat = metric.evaluation && metric.definition ? (v) => formatMetric({ ...metric.definition, unit: "" }, v) : formatNumber;
   chart.options.empty = checked.size ? `No ${metric.evaluation ? "evaluations recorded while training" : "metrics"} for the selected runs yet.` : "Select runs to compare.";
   els.metricNote.textContent = metric.evaluation
-    ? `Evaluation (greedy): complete games with the most likely action at every step, recorded while training. ${metric.definition?.description ?? ""}`
+    ? `Evaluation (greedy): complete games with the best action at every step (most likely, or highest Q-value), recorded while training. ${metric.definition?.description ?? ""}`
     : "Training (with exploration): running averages over the episodes the exploring policy played while it trained.";
   chart.setSeries(shown);
   renderLegend(els.legend, shown, () => chart.draw());

@@ -135,3 +135,36 @@ def test_unlisted_num_heads_does_not_change_outputs(kind) -> None:
     b = _build(dataclasses.replace(base, num_heads=4))
     obs = torch.rand(2, *a.observation_shape)
     assert torch.equal(a(obs).logits, b(obs).logits)
+
+
+TINY_LEARNERS = {
+    "ppo": {"rollout_length": 8, "num_epochs": 1, "num_minibatches": 2},
+    "dqn": {"buffer_size": 64, "batch_size": 4, "learning_starts": 8},
+}
+
+
+@pytest.mark.parametrize("algorithm", algorithm_names())
+def test_each_algorithm_row_is_truthful(algorithm: str) -> None:
+    """The schema's head is the one the policy gets, its fields are the section's, and its metrics are exactly what it logs."""
+    from attentive_snake.config.experiment_io import experiment_from_tables
+    from attentive_snake.factory import make_policy, make_trainer, make_vec_env
+    from attentive_snake.models.heads import HEADS
+    from attentive_snake.training import NullLogger
+
+    row = SCHEMA["algorithms"][algorithm]
+    assert row["section"] == algorithm and row["head"] in HEADS and row["label"] and row["description"]
+    assert all(metric["label"] and metric["description"] for metric in row["metrics"])
+    config = experiment_from_tables({
+        "game": {"width": 4, "height": 4},
+        "model": {"kind": "mlp", "d_model": 8, "num_layers": 1},
+        "train": {"algorithm": algorithm, "total_env_steps": 64, "device": "cpu", "log_interval": 1},
+        algorithm: TINY_LEARNERS[algorithm],
+        "env": {"num_envs": 2},
+    })
+    env = make_vec_env(config)
+    policy = make_policy(config, env)
+    assert list(policy.net)[-len(HEADS[row["head"]].modules(8, 4)):] == list(HEADS[row["head"]].modules(8, 4))
+    records = make_trainer(config, policy, env, NullLogger()).train()
+    shared = {"iteration", "env_steps", "episodes", "mean_score", "mean_length", "mean_return", "learning_rate", "steps_per_second"}
+    logged = set().union(*records) - shared
+    assert logged == {metric["key"] for metric in row["metrics"]}
