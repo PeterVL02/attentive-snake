@@ -1,4 +1,4 @@
-"""Comparing runs of one game: metrics and config of several runs in one call, plus the config fields that differ."""
+"""Comparing runs of one game: metrics, evaluations and config of several runs in one call, plus the config fields that differ."""
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from attentive_snake.app import run_info
 from attentive_snake.app.config_diff import differing_fields
 from attentive_snake.app.config_json import experiment_to_json
+from attentive_snake.app.evaluation_info import recorded_evaluations
 from attentive_snake.app.jobs import TrainingJobs
 from attentive_snake.app.parameter_count import run_parameter_count
 from attentive_snake.app.paths import AppPaths
@@ -33,6 +34,7 @@ def make_router(paths: AppPaths, jobs: TrainingJobs) -> APIRouter:
             "config": experiment_to_json(load_experiment(config_path(run_dir))),
             "parameters": run_parameter_count(config_path(run_dir)),
             "metrics": run_info.metrics(run_dir),
+            "evaluations": recorded_evaluations(run_dir),
             "description": run_info.history(run_dir)["description"],
         }
 

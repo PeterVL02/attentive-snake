@@ -135,7 +135,7 @@ function updateSummary() {
 /** The form as experiment tables: {tables, errors}; field errors are shown inline. Null while loading. */
 function currentTables() {
   if (!game) return null;
-  const tables = { game: { name: game.name }, model: { kind: picker.value() }, train: {}, env: {} };
+  const tables = { game: { name: game.name }, model: { kind: picker.value() }, train: {}, env: {}, evaluation: {} };
   let errors = 0;
   for (const [key, widget] of Object.entries(widgets)) {
     const [section, name] = key.split(".");
@@ -253,6 +253,8 @@ function build() {
     ...sectionWidgets("env", schema.sections.env.map((f) => f.name).filter((n) => !commonKeys.has(`env.${n}`) && !STATE_FIELDS.includes(n))),
   ];
 
+  const evaluationWidgets = sectionWidgets("evaluation", schema.sections.evaluation.map((f) => f.name));
+
   rewardSelect = h("select", { id: "reward-scheme", "aria-label": "reward scheme" });
   rewardSelect.addEventListener("change", loadReward);
   rewardPreview = h("div", {}, h("div", { class: "muted small", text: "Loading…" }));
@@ -282,6 +284,11 @@ function build() {
       "Training",
       h("div", { class: "fields" }, common.map((w) => w.el)),
       h("details", { class: "advanced" }, h("summary", { text: "Advanced" }), h("div", { class: "fields" }, advanced.map((w) => w.el))),
+    ),
+    panel(
+      "Evaluation",
+      h("p", { class: "muted small", text: `Every so often the run plays complete games without exploration (always its most likely action), saves a checkpoint and records ${game.title}'s statistics in runs/${game.name}/<name>/evaluations.jsonl. The Runs tab charts them and can reproduce them later.` }),
+      h("div", { class: "fields" }, evaluationWidgets.map((w) => w.el)),
     ),
   );
   const right = h(

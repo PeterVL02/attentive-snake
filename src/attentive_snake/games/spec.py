@@ -6,17 +6,17 @@ Its configs live in ``configs/<name>/default.toml`` and ``configs/<name>/rewards
 its runs in ``runs/<name>/``. See docs/ADDING_A_GAME.md for the full recipe.
 """
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from attentive_snake.env.types import EpisodeSummary, GameEnv
+from attentive_snake.env.types import GameEnv
+from attentive_snake.episode_metrics import GameMetrics
 from attentive_snake.observation_spec import ObservationKind
 from attentive_snake.views import ViewKind
 
 type MakeEnv = Callable[[Any, Any, int | None], GameEnv]
 type RewardTable = Callable[[Any, int], list[dict[str, Any]]]
-type EpisodeMetrics = Callable[[Sequence[EpisodeSummary]], dict[str, float]]
 
 
 @dataclass(frozen=True)
@@ -48,9 +48,10 @@ class GameSpec:
             order (Lunar Lander: ``"x"``, ``"y"``, ...), one per element of
             ``GameEnv.observation_shape``; shown next to the attention over them. ``None``:
             no names (displays number them). Only for ``observation_kind == "vector"``.
-        episode_metrics: Extension point for per-game evaluation statistics (issue #4,
-            e.g. steps to win, steps between apples): ``(finished episodes) -> {metric:
-            value}``. Nothing calls it yet; leave ``None``.
+        episode_metrics: Optional ``GameMetrics`` (``attentive_snake.episode_metrics``): the
+            game's own evaluation statistics (Snake: win rate, steps to win, steps between
+            apples), computed from ``EpisodeRecord``s on top of the generic ones every game
+            gets (scores, lengths, outcome counts). ``None``: only the generic statistics.
     """
 
     name: str
@@ -64,4 +65,4 @@ class GameSpec:
     locked_rules: Mapping[str, str] = field(default_factory=dict)
     reward_table: RewardTable | None = None
     observation_labels: tuple[str, ...] | None = None
-    episode_metrics: EpisodeMetrics | None = None
+    episode_metrics: GameMetrics | None = None

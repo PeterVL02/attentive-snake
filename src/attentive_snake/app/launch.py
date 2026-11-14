@@ -63,9 +63,10 @@ def resume_run(
     total_steps: int | None,
     keep_checkpoints: bool | None = None,
     description: str | None = None,
+    evaluation: Mapping[str, int] | None = None,
 ) -> dict:
-    """Launch train.py --resume on ``run_dir`` (409 if it is already training)."""
-    command = resume_command(paths.train_script, run_dir, total_steps, keep_checkpoints, description)
+    """Launch train.py --resume on ``run_dir`` (409 if it is already training); ``evaluation`` as in ``resume_command``."""
+    command = resume_command(paths.train_script, run_dir, total_steps, keep_checkpoints, description, evaluation)
     return _launch(jobs, run_dir, command, "resume")
 
 

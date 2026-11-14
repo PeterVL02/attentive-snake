@@ -57,3 +57,9 @@ keep_checkpoints = true       # false: delete older checkpoints after each save 
 num_envs = 32
 history_length = 1            # the observation already holds velocities; 4 for the temporal kinds
 history_actions = false       # add the one-hot action that produced each frame (4 extra numbers per frame)
+
+[evaluation]  # attentive_snake.evaluation.config.EvalConfig: greedy games played while training (scripts/evaluate.py: afterwards)
+interval = 500000             # env steps between evaluations (each saves a checkpoint); 0 = off
+games = 50                    # complete games per evaluation (up to 1000 steps each)
+seed = 1000                   # the same checkpoint, seed and games always give the same numbers
+max_episode_steps = 10000     # never reached: [game] max_episode_steps ends a game first

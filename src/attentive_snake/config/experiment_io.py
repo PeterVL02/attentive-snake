@@ -1,9 +1,10 @@
 """Reading and writing an ``ExperimentConfig`` as a TOML file.
 
-One TOML table per section: ``[game] [reward] [model] [train] [env]``. ``[game] name``
+One TOML table per section: ``[game] [reward] [model] [train] [env] [evaluation]``. ``[game] name``
 selects the game (missing: ``"snake"``, so configs written before there were several
 games still load); the other ``[game]`` keys and all of ``[reward]`` are read with that
-game's dataclasses. Missing sections and keys take the dataclass defaults; unknown
+game's dataclasses. Missing sections and keys take the dataclass defaults (so configs written before
+``[evaluation]`` existed load with evaluation off); unknown
 sections or keys are errors.
 """
 

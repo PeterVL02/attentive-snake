@@ -2,6 +2,7 @@
 
 from attentive_snake.games.snake.config import SnakeConfig
 from attentive_snake.games.snake.env import SnakeEnv
+from attentive_snake.games.snake.metrics import SNAKE_METRICS
 from attentive_snake.games.snake.reward import SnakeRewardConfig
 from attentive_snake.games.snake.reward_table import reward_table
 from attentive_snake.games.spec import GameSpec
@@ -27,4 +28,5 @@ GAME = GameSpec(
         "initial_length": "it changes the situations the parent's weights were trained on",
     },
     reward_table=reward_table,
+    episode_metrics=SNAKE_METRICS,
 )

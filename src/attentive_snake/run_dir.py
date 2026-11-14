@@ -10,6 +10,7 @@ A run directory holds everything about one training run::
         config.toml                    the full ExperimentConfig (written at start)
         model.html                     interactive model diagram
         metrics.jsonl                  one JSON line per logged training update
+        evaluations.jsonl              one JSON line per evaluation (greedy games; see evaluation.record)
         run.json                       history: start / resume / fork events with descriptions
         checkpoint_<env_steps>.pt      policy + optimizer + env-step counter
 
@@ -25,14 +26,17 @@ from attentive_snake.training.checkpoint import checkpoint_steps, list_checkpoin
 CONFIG_FILENAME = "config.toml"
 DIAGRAM_FILENAME = "model.html"
 METRICS_FILENAME = "metrics.jsonl"
+EVALUATIONS_FILENAME = "evaluations.jsonl"
 METADATA_FILENAME = "run.json"
 
 _RUN_NAME = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9._-]*")
 
 __all__ = [
     "checkpoint_steps",
+    "chosen_checkpoint",
     "config_path",
     "diagram_path",
+    "evaluations_path",
     "game_runs_dir",
     "games_with_runs",
     "is_run_dir",
@@ -56,8 +60,28 @@ def metrics_path(run_dir: Path) -> Path:
     return Path(run_dir) / METRICS_FILENAME
 
 
+def evaluations_path(run_dir: Path) -> Path:
+    return Path(run_dir) / EVALUATIONS_FILENAME
+
+
 def metadata_path(run_dir: Path) -> Path:
     return Path(run_dir) / METADATA_FILENAME
+
+
+def chosen_checkpoint(run_dir: Path, requested: Path | None) -> Path:
+    """The run's checkpoint ``requested`` (a file name, or a path inside the run), else its latest.
+
+    ``ValueError`` if the run has no checkpoints or none matches.
+    """
+    checkpoints = list_checkpoints(run_dir)
+    if not checkpoints:
+        raise ValueError(f"{run_dir} has no checkpoints.")
+    if requested is None:
+        return checkpoints[-1]
+    for path in checkpoints:
+        if path.name == requested.name and (requested.parent == Path() or requested.resolve() == path.resolve()):
+            return path
+    raise ValueError(f"{requested} is not a checkpoint of {run_dir}; it has {', '.join(p.name for p in checkpoints)}.")
 
 
 def is_run_dir(path: Path) -> bool:

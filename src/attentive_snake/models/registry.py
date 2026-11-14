@@ -59,8 +59,8 @@ KIND_INFO: dict[str, KindInfo] = {
             "vector": InputReading(
                 "A convolution over an arbitrary order of numbers is meaningless, so for these observations this is an MLP: "
                 "fully connected layers (conv_channels wide, conv_layers deep) and a linear readout to d_model. "
-                "A strong baseline without attention.",
-                True,
+                "Use the mlp kind for a plain baseline; this one is kept so every kind can play every game.",
+                False,
                 NO_KERNEL,
             ),
         },

@@ -1,7 +1,9 @@
-"""Orchestration of a PPO run: collect -> GAE -> update -> log -> checkpoint."""
+"""Orchestration of a PPO run: collect -> GAE -> update -> log -> checkpoint -> hooks."""
 
 import dataclasses
 import time
+from collections.abc import Sequence
+from pathlib import Path
 
 import torch
 from torch import nn
@@ -10,6 +12,7 @@ from attentive_snake.env.types import VecEnv
 from attentive_snake.training.checkpoint import checkpoint_path, prune_checkpoints, save_checkpoint
 from attentive_snake.training.collector import RolloutCollector
 from attentive_snake.training.config import TrainConfig
+from attentive_snake.training.hooks import UpdateEnd, UpdateHook
 from attentive_snake.training.metrics import ConsoleLogger, EpisodeStatsWindow, MetricsLogger
 from attentive_snake.training.ppo import ppo_update
 from attentive_snake.training.rollout import RolloutBuffer, compute_gae, flatten_rollout
@@ -37,6 +40,9 @@ class Trainer:
     environments (they start fresh episodes), RNG streams (re-seeded from
     ``config.seed``) and the episode-statistics window, so a resumed run is
     not bit-identical to an uninterrupted one.
+
+    Hooks (e.g. periodic evaluation, ``attentive_snake.evaluation.hook``) are called after
+    every update, in order, with an ``UpdateEnd``; they decide themselves whether to act.
     """
 
     def __init__(
@@ -45,6 +51,7 @@ class Trainer:
         env: VecEnv,
         config: TrainConfig,
         logger: MetricsLogger | None = None,
+        hooks: Sequence[UpdateHook] = (),
     ) -> None:
         seed_everything(config.seed)
         self.config = config
@@ -54,6 +61,8 @@ class Trainer:
         self.logger = logger if logger is not None else ConsoleLogger()
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=config.learning_rate, eps=1e-5)
         self.env_steps = 0
+        self._hooks = tuple(hooks)
+        self._saved_at: int | None = None  # env steps of the last checkpoint this trainer saved
         self._shuffle_generator = torch.Generator().manual_seed(config.seed)
         self._buffer = RolloutBuffer.allocate(
             config.rollout_length, env.num_envs, tuple(env.observation_shape), self.device
@@ -77,6 +86,7 @@ class Trainer:
         """Run the remaining updates; returns one metrics record per update run (empty if already done)."""
         history = []
         for update in range(self.completed_updates, self.num_updates):
+            previous_env_steps = self.env_steps
             record = self._train_one_update(update)
             history.append(record)
             is_last = update == self.num_updates - 1
@@ -84,14 +94,30 @@ class Trainer:
                 self.logger.log(self.env_steps, record)
             if self.config.checkpoint_dir is not None and ((update + 1) % self.config.checkpoint_interval == 0 or is_last):
                 self.save_checkpoint()
+            self._call_hooks(previous_env_steps, is_last)
         return history
 
-    def save_checkpoint(self) -> None:
+    def save_checkpoint(self) -> Path:
         assert self.config.checkpoint_dir is not None
         path = checkpoint_path(self.config.checkpoint_dir, self.env_steps)
         save_checkpoint(path, self.policy, self.optimizer, self.env_steps)
+        self._saved_at = self.env_steps
         if not self.config.keep_checkpoints:
             prune_checkpoints(self.config.checkpoint_dir, keep=path)
+        return path
+
+    def checkpoint_now(self) -> Path | None:
+        """The checkpoint of the current weights, saved unless it was just saved; ``None`` without a checkpoint directory."""
+        if self.config.checkpoint_dir is None:
+            return None
+        if self._saved_at == self.env_steps:
+            return checkpoint_path(self.config.checkpoint_dir, self.env_steps)
+        return self.save_checkpoint()
+
+    def _call_hooks(self, previous_env_steps: int, is_last: bool) -> None:
+        end = UpdateEnd(previous_env_steps, self.env_steps, is_last, self.policy, self.device, self.checkpoint_now)
+        for hook in self._hooks:
+            hook(end)
 
     def _train_one_update(self, update: int) -> dict[str, float]:
         start = time.perf_counter()

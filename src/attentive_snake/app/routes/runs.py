@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from attentive_snake.app import run_info
 from attentive_snake.app.config_json import experiment_to_json
 from attentive_snake.app.errors import conflict
+from attentive_snake.app.evaluation_info import recorded_evaluations
 from attentive_snake.app.game_lookup import DEFAULT_GAME, GameParam
 from attentive_snake.app.jobs import TrainingJobs
 from attentive_snake.app.launch import fork_run, parse_experiment, require_fork_compatible, resume_run, start_new_run
@@ -41,6 +42,14 @@ class Resume(BaseModel):
     total_env_steps: int | None = Field(default=None, ge=1, description="train until this many env steps")
     keep_checkpoints: bool | None = Field(default=None, description="change train.keep_checkpoints (None: keep it)")
     description: str | None = Field(default=None, max_length=DESCRIPTION_LENGTH, description="saved in run.json")
+    evaluation_interval: int | None = Field(default=None, ge=0, description="change evaluation.interval (0: off; None: keep it)")
+    evaluation_games: int | None = Field(default=None, ge=1, description="change evaluation.games (None: keep it)")
+    evaluation_seed: int | None = Field(default=None, description="change evaluation.seed (None: keep it)")
+
+    def evaluation_changes(self) -> dict[str, int]:
+        """The changed ``[evaluation]`` settings, ``{"interval" | "games" | "seed": value}``."""
+        values = {"interval": self.evaluation_interval, "games": self.evaluation_games, "seed": self.evaluation_seed}
+        return {key: value for key, value in values.items() if value is not None}
 
 
 class Fork(BaseModel):
@@ -89,6 +98,7 @@ def make_router(paths: AppPaths, jobs: TrainingJobs) -> APIRouter:
             "metrics": run_info.metrics(run_dir),
             "log": run_info.log_tail(run_dir, log_lines),
             "history": run_info.history(run_dir)["events"],
+            "evaluations": recorded_evaluations(run_dir),
         }
 
     @router.post("", status_code=201)
@@ -102,7 +112,9 @@ def make_router(paths: AppPaths, jobs: TrainingJobs) -> APIRouter:
     def resume(name: str, request: Resume, game: GameParam = DEFAULT_GAME) -> dict:
         run_dir = existing_run_dir(paths.runs_dir, game, name)
         description = clean_description(request.description)
-        job = resume_run(paths, jobs, run_dir, request.total_env_steps, request.keep_checkpoints, description)
+        job = resume_run(
+            paths, jobs, run_dir, request.total_env_steps, request.keep_checkpoints, description, request.evaluation_changes()
+        )
         return {"name": run_dir.name, "game": game, "status": job}
 
     @router.post("/{name}/fork", status_code=201)

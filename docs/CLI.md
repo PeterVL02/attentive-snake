@@ -55,8 +55,11 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/t
   It cannot set a value to None; use a config file for that.
 - `--description TEXT` is saved in the run's `run.json` (see below) and shown in the app.
 - `--no-keep-checkpoints` deletes the older checkpoints of the run each time a new one is saved, so only the
-  latest remains (saved as `train.keep_checkpoints = false`). Deleted checkpoints can no longer be watched or
-  continued from. `--keep-checkpoints` (the default) keeps them all.
+  latest remains (saved as `train.keep_checkpoints = false`). Deleted checkpoints can no longer be watched,
+  continued from or re-evaluated. `--keep-checkpoints` (the default) keeps them all.
+- `--eval-interval N`, `--eval-games X`, `--eval-seed S` set `evaluation.interval`, `evaluation.games` and
+  `evaluation.seed` (see "Evaluate a trained agent" below). They work with new, resumed and forked runs and are saved
+  in the run's `config.toml`; `--eval-interval 0` turns evaluation off.
 
 ## Resume or extend a run
 
@@ -69,10 +72,15 @@ uv run python scripts/train.py --resume runs/snake/8x8 --steps 10000000
 
 # With a note, and from now on keep only the latest checkpoint (saved to config.toml)
 uv run python scripts/train.py --resume runs/snake/8x8 --description "more steps" --no-keep-checkpoints
+
+# Evaluate from now on every 250k env steps with 100 games (e.g. a run started before evaluation existed)
+uv run python scripts/train.py --resume runs/snake/8x8 --steps 10000000 --eval-interval 250000 --eval-games 100
 ```
 
 `--resume` uses the run's own `config.toml` (including its game); `--game`, `--config`, `--set`, `--width`,
-`--height`, `--num-envs`, `--seed` and `--fork` are rejected with it. To continue with other settings, start a new run from a checkpoint (next section).
+`--height`, `--num-envs`, `--seed` and `--fork` are rejected with it. `--steps`, `--[no-]keep-checkpoints`,
+`--description` and `--eval-interval/--eval-games/--eval-seed` are accepted. A resumed run appends to its
+`evaluations.jsonl`. To continue with other settings, start a new run from a checkpoint (next section). To continue with other settings, start a new run from a checkpoint (next section).
 
 ## Continue a run under a new name with changed settings (fork)
 
@@ -101,6 +109,7 @@ uv run python scripts/train.py --run-dir runs/snake/8x8-variant --fork runs/snak
 - `--run-dir` is required and must be a new run (a directory with checkpoints is refused). `--fork-checkpoint`
   takes a checkpoint file name of the parent (or its path); the default is the parent's latest.
 - The parent is never modified. The new run's `run.json` records the parent run, checkpoint and its env steps.
+  The new run starts its own `evaluations.jsonl`; the parent's evaluations are not copied.
 
 ## Watch a trained agent
 
@@ -132,6 +141,46 @@ The window shows the run's game (it reads the game from the run's `config.toml`)
 | `frame_attention` | one weight per history frame, printed in the window title (`--layer`) | the same |
 | `cnn`, `mlp` | nothing: there is no attention, so `--attention` is refused | the same |
 
+## Evaluate a trained agent
+
+An evaluation plays complete games with the most likely action at every step (no exploration, no sampling) and
+prints the game's statistics: for Snake win rate, steps to win, steps between apples; for Lunar Lander landing,
+crash, fly-off and timeout rates and steps to land; for every game scores, episode lengths, returns and how the games
+ended. Values that cannot be computed (steps to win without a win) are `N/A`.
+
+```bash
+# The latest checkpoint with the run's [evaluation] settings (games, seed, step cap)
+uv run python scripts/evaluate.py runs/snake/8x8
+
+# A specific checkpoint, other games, and append the result to the run's evaluations.jsonl
+uv run python scripts/evaluate.py runs/snake/8x8 --checkpoint checkpoint_0000500000.pt --games 500 --seed 7 --save
+
+# Lunar Lander: the same command, the run says which game it is
+uv run python scripts/evaluate.py runs/lunar_lander/mlp --games 20
+```
+
+- Defaults: the run's latest checkpoint and its `[evaluation]` settings (a run whose `config.toml` has no
+  `[evaluation]` section uses `games = 100`, `seed = 1000`, `max_episode_steps = 10000`). `--max-steps N`
+  changes the per-game step cap. It runs on the run's `train.device`.
+- **Reproducing:** game `k` always gets the same seed, and play is greedy, so the same checkpoint, `--games`,
+  `--seed` and step cap give exactly the same numbers on the same device. The script compares the result with the
+  latest recorded evaluation of that checkpoint with those settings and prints `Identical to ...` or `DIFFERENT
+  from ...` (or that there is none to compare with).
+- `--save` appends the result to `runs/<game>/<name>/evaluations.jsonl` with `"source": "manual"`.
+
+Evaluation while training is set in the `[evaluation]` section of an experiment config:
+
+| Key | Meaning |
+| --- | --- |
+| `interval` | Evaluate every this many env steps and once at the end of training; 0 = off (the default for configs without the section; `configs/<game>/default.toml` turns it on). Each evaluation first saves a checkpoint at that step. |
+| `games` | Games per evaluation. |
+| `seed` | Seed of the evaluation games, independent of `train.seed`. |
+| `max_episode_steps` | A game still going after this many steps is stopped with the outcome `step_limit` (for games without a time limit of their own). |
+
+Evaluating does not influence training (fresh environments, no sampling, the random streams are restored): a run
+with evaluation ends with exactly the same weights as the same run without. With `train.keep_checkpoints = false`
+an evaluation's checkpoint is deleted by the next save, so it can no longer be reproduced; the app marks those.
+
 ## Where configs live
 
 | What | Where |
@@ -141,7 +190,7 @@ The window shows the run's game (it reads the game from the run's `config.toml`)
 | Named reward schemes of a game; `default` holds its default reward values | `configs/<game>/rewards/<name>.toml` (flat file of the `[reward]` keys, no header) |
 | The exact config of one run | `runs/<game>/<name>/config.toml` |
 
-An experiment file has the sections `[game] [reward] [model] [train] [env]`. `[game] name` says which game it is
+An experiment file has the sections `[game] [reward] [model] [train] [env] [evaluation]`. `[game] name` says which game it is
 (a file without it is a Snake config, so configs written before there were several games still load); the other
 `[game]` keys are that game's rules and `[reward]` its reward coefficients. A missing key takes its default; an
 unknown key is an error. A config without a `[reward]` section gets the game's default reward values (those of
@@ -156,6 +205,7 @@ runs/<game>/<name>/
     config.toml                 the full resolved config (written at start)
     model.html                  interactive architecture diagram
     metrics.jsonl               one JSON line per logged update (env_steps, scores, losses, ...)
+    evaluations.jsonl           one JSON line per evaluation (while training, or evaluate.py --save / the app)
     run.json                    history: one entry per start / resume / fork (see below)
     checkpoint_<steps>.pt       policy + optimizer + env-step counter
 ```
@@ -177,6 +227,22 @@ Lower both for short experiments.
 `action` is `start`, `resume` or `fork`; `env_steps_at_action` is the run's own step count at that moment;
 `parent` exists only on a fork event. Runs created before `run.json` existed have no history.
 
+One line of `evaluations.jsonl` (`statistics` holds the game's own keys first, then the generic ones; `null` = N/A):
+
+```json
+{"timestamp": "2026-11-14T10:00:00+00:00", "source": "training", "env_steps": 1000000,
+ "checkpoint": "checkpoint_0001000000.pt",
+ "settings": {"games": 100, "seed": 1000, "max_episode_steps": 10000, "parallel_games": 32, "device": "cuda", "policy": "greedy"},
+ "statistics": {"win_rate": 0.0, "mean_steps_to_win": null, "median_steps_to_win": null,
+                "mean_steps_between_apples": 10.96, "median_steps_between_apples": 7.0,
+                "games": 100.0, "mean_score": 26.07, "median_score": 28.0, "min_score": 2.0, "max_score": 37.0,
+                "mean_length": 290.34, "mean_return": 22.18},
+ "outcomes": {"hit_self": 89, "hit_wall": 11}, "seconds": 1.7}
+```
+
+`source` is `training` or `manual`; `checkpoint` names the evaluated weights (an evaluation always has one
+when the run saves checkpoints).
+
 ## Choosing a model kind and history
 
 Set `kind` in `[model]` and `history_length` / `history_actions` in `[env]`.
@@ -184,7 +250,7 @@ Set `kind` in `[model]` and `history_length` / `history_actions` in `[env]`.
 | `model.kind` | idea on a board (Snake) | on numbers (Lunar Lander) | suggested `[env]` |
 | --- | --- | --- | --- |
 | `transformer` | each board cell is a token | each number is a token | `history_length = 1` |
-| `cnn` | convolutional baseline, no attention | an MLP (nothing to convolve); recommended | `history_length = 1` |
+| `cnn` | convolutional baseline, no attention | an MLP (nothing to convolve); use `mlp` instead | `history_length = 1` |
 | `hybrid` | conv stem, then transformer over cells | per-number MLP stem, then transformer over numbers | `history_length = 1` |
 | `temporal_transformer` | attention over the cells of several frames (plus action tokens) | attention over every number of several frames (plus action tokens) | `history_length = 4`, `history_actions = true` |
 | `frame_attention` | CNN per frame, attention across frames | MLP per frame, attention across frames | `history_length = 4`, `history_actions = true` |
@@ -232,4 +298,5 @@ uv run python -m attentive_snake.app [--port 8000] [--runs-dir runs] [--configs-
 ```
 
 Serves http://127.0.0.1:8000: configure, start and resume training, continue a run under a new name with changed
-settings, watch an agent with its attention, view the architecture and edit reward schemes.
+settings, evaluate checkpoints and chart evaluations, watch an agent with its attention, view the architecture and
+edit reward schemes.

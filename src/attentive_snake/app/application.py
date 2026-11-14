@@ -8,9 +8,10 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from attentive_snake.app.background import BackgroundJobs
 from attentive_snake.app.jobs import TrainingJobs
 from attentive_snake.app.paths import STATIC_DIR, AppPaths, default_paths
-from attentive_snake.app.routes import architecture, compare, meta, rewards, runs, watch
+from attentive_snake.app.routes import architecture, compare, evaluations, meta, rewards, runs, watch
 from attentive_snake.app.watch_sessions import WatchSessions
 
 
@@ -30,6 +31,7 @@ def create_app(paths: AppPaths | None = None, jobs: TrainingJobs | None = None) 
     app.state.jobs = jobs
     app.include_router(meta.make_router(paths))
     app.include_router(runs.make_router(paths, jobs))
+    app.include_router(evaluations.make_router(paths, BackgroundJobs()))
     app.include_router(architecture.make_router(paths))
     app.include_router(compare.make_router(paths, jobs))
     app.include_router(rewards.make_router(paths))

@@ -4,7 +4,10 @@ from typing import Annotated
 
 from fastapi import Query
 
+from dataclasses import asdict
+
 from attentive_snake.app.errors import not_found
+from attentive_snake.evaluation.statistics import metric_definitions
 from attentive_snake.games.registry import DEFAULT_GAME, get_game
 from attentive_snake.games.spec import GameSpec
 
@@ -29,4 +32,5 @@ def game_info(game: GameSpec) -> dict:
         "observation_kind": game.observation_kind,
         "view_kind": game.view_kind,
         "has_reward_table": game.reward_table is not None,
+        "evaluation_metrics": [asdict(definition) for definition in metric_definitions(game)],
     }
