@@ -94,6 +94,7 @@ SIZE_CHANGES = {
     "conv_channels": 24,
     "conv_layers": 2,
     "kernel_size": 5,
+    "residual": True,
 }
 
 

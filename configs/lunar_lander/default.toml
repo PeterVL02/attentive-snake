@@ -32,7 +32,8 @@ dropout = 0.0
 conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm, jepa: width of the layers that replace convolutions
 conv_layers = 2               # cnn, resnet (residual blocks), hybrid, frame_attention, lstm, jepa: number of those layers
 kernel_size = 3               # unused for vector observations
-prediction_coef = 1.0         # jepa only: weight of the prediction loss (0 = off: the ablation)
+residual = false             # hybrid, frame_attention, lstm: build the stem (frame encoder) from residual blocks, as resnet does
+prediction_coef = 0.0         # jepa only: weight of the prediction loss (0 = off, the default; above 0 adds it)
 value_training = "predicted"  # jepa with dqn only: the value decoder learns from the "predicted" or the "actual" next embedding
 prediction_trains_encoder = false  # jepa only: true lets the prediction loss train the encoder too (false: the predictor only)
 target_ema = 0.99             # jepa only: EMA rate of the target encoder (per gradient step)
