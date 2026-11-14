@@ -3,7 +3,9 @@
 Input size, action count and history length come from the environment, not from here.
 ``kind`` selects the architecture (see ``attentive_snake.models.registry``); the
 transformer fields apply to every kind with attention, the ``conv_*`` / ``kernel_size``
-fields to every kind with a convolutional part (cnn, hybrid, frame_attention).
+fields to every kind with a convolutional part (cnn, hybrid, frame_attention; for vector
+observations these parts are fully connected layers of the same width and depth and
+``kernel_size`` is unused); the ``mlp`` kind uses ``d_model`` and ``num_layers`` only.
 """
 
 from dataclasses import dataclass, field
@@ -14,14 +16,14 @@ class ModelConfig:
     """Network size and shape; which fields a kind uses is declared in ``models.registry.KIND_INFO``."""
 
     kind: str = field(default="transformer", metadata={"help": "Which network architecture to train; see the model kinds for what each one is."})
-    d_model: int = field(default=64, metadata={"help": "Width of the network's internal feature vectors (the embedding size). Bigger can represent more but is slower and easier to overfit."})
+    d_model: int = field(default=64, metadata={"help": "Width of the network's internal feature vectors (the embedding size; for the mlp kind the layer width). Bigger can represent more but is slower and easier to overfit."})
     num_heads: int = field(default=4, metadata={"help": "Number of attention heads: parallel 'looks' at the board that each focus on different relations. Must divide d_model."})
-    num_layers: int = field(default=3, metadata={"help": "Number of stacked transformer blocks. Deeper models can combine information over more steps of reasoning."})
+    num_layers: int = field(default=3, metadata={"help": "Number of stacked transformer blocks (for the mlp kind: fully connected layers). Deeper models can combine information over more steps of reasoning."})
     mlp_ratio: int = field(default=4, metadata={"help": "Hidden-layer width of each transformer block's feed-forward part, as a multiple of d_model."})
     dropout: float = field(default=0.0, metadata={"help": "Probability of randomly zeroing activations during training to reduce overfitting. RL usually works best with 0."})
-    conv_channels: int = field(default=64, metadata={"help": "Number of feature maps in each convolutional layer. More channels detect more kinds of local patterns."})
-    conv_layers: int = field(default=3, metadata={"help": "Number of convolutional layers; each one widens the area of the board a cell can 'see'."})
-    kernel_size: int = field(default=3, metadata={"help": "Width of the square window of each convolution. Must be odd; 3 looks at a cell and its neighbours."})
+    conv_channels: int = field(default=64, metadata={"help": "Number of feature maps in each convolutional layer (for vector observations: width of the fully connected layers that replace the convolutions). More channels detect more kinds of local patterns."})
+    conv_layers: int = field(default=3, metadata={"help": "Number of convolutional layers; each one widens the area of the board a cell can 'see' (for vector observations: number of fully connected layers that replace them)."})
+    kernel_size: int = field(default=3, metadata={"help": "Width of the square window of each convolution. Must be odd; 3 looks at a cell and its neighbours. Unused for vector observations."})
 
     def __post_init__(self) -> None:
         # Imported here: the registry imports the policies, which import this module.

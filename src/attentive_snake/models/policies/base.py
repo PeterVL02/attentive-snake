@@ -5,12 +5,18 @@ layout comes from the environment (via the factory) as an ``ObservationSpec``, n
 ``ModelConfig``. A policy class lists the observation kinds it can read in
 ``observation_kinds``; building it for another kind is a ``ValueError``.
 
+The part that reads the observation (the input stage) comes from
+``models.input_stages.catalog`` by observation kind (``_input_stage``), so a policy says
+*what* it needs (tokens, a feature vector, one vector per frame) and never branches on
+the kind itself; its ``observation_kinds`` are the kinds its stage tables cover.
+
 ``BasePolicy`` subclasses build ``self.net`` (a ``ModuleDict`` that must contain
 ``policy_head`` and ``value_head``) and say how an observation becomes pooled
 features. ``AttentivePolicy`` adds the transformer tail (class token, blocks, norm,
 class-token pool, heads) for subclasses that only have to produce input tokens.
 """
 
+from collections.abc import Mapping
 from typing import ClassVar
 
 import torch
@@ -25,6 +31,8 @@ from attentive_snake.models.blocks.transformer import (
     run_blocks,
 )
 from attentive_snake.models.config import ModelConfig
+from attentive_snake.models.input_stages.catalog import StageBuilder
+from attentive_snake.models.input_stages.stage import Stage, StageInput
 from attentive_snake.models.token_layout import TokenLayout
 from attentive_snake.models.types import PolicyOutput
 from attentive_snake.observation_spec import ObservationSpec
@@ -65,7 +73,7 @@ def require_action_layout(spec: ObservationSpec, num_actions: int) -> None:
 
 
 class BasePolicy(nn.Module):
-    observation_kinds: ClassVar[tuple[str, ...]] = ("grid",)
+    observation_kinds: ClassVar[tuple[str, ...]] = ()
 
     def __init__(self, config: ModelConfig, observation_spec: ObservationSpec, num_actions: int) -> None:
         super().__init__()
@@ -85,6 +93,10 @@ class BasePolicy(nn.Module):
 
     def _build_net(self) -> dict[str, nn.Module]:
         raise NotImplementedError
+
+    def _input_stage(self, table: Mapping[str, StageBuilder], source: StageInput) -> Stage:
+        """The stage of ``table`` for this policy's observation kind, reading ``source``."""
+        return table[self.observation_spec.kind](source, self.config)
 
     def _pooled(self, obs: Tensor, need_weights: bool) -> tuple[Tensor, list[Tensor]]:
         """Pooled features (B, D) and attention maps (empty unless ``need_weights``)."""
