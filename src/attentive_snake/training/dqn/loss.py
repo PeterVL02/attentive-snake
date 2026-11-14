@@ -38,6 +38,19 @@ def dqn_loss(
 ) -> DqnLoss:
     """``q_values``, ``next_q_*``: (B, A); the rest (B,). Targets carry no gradient; ``weights`` scale each sample's loss."""
     chosen = q_values.gather(1, actions.long().unsqueeze(1)).squeeze(1)
+    return td_loss(chosen, rewards, dones, next_q_target, next_q_online, gamma, weights)
+
+
+def td_loss(
+    chosen: Tensor,
+    rewards: Tensor,
+    dones: Tensor,
+    next_q_target: Tensor,
+    next_q_online: Tensor | None,
+    gamma: float,
+    weights: Tensor,
+) -> DqnLoss:
+    """The loss of ``dqn_loss`` for the values to train given directly (B,): usually Q(s, a), or what the policy supplies (``models.value_training``)."""
     with torch.no_grad():
         targets = dqn_targets(rewards, dones, next_q_target, next_q_online, gamma)
     per_sample = F.smooth_l1_loss(chosen, targets, reduction="none")

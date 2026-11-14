@@ -16,20 +16,9 @@ from torch import nn
 
 from attentive_snake.env.types import EpisodeSummary, VecEnv
 from attentive_snake.training.config import TrainConfig
+from attentive_snake.training_metric import TrainingMetric
 
-
-@dataclass(frozen=True)
-class TrainingMetric:
-    """One number a learner reports in ``metrics.jsonl`` (``key``), with how to show it.
-
-    ``setting`` names a boolean field of the algorithm's settings: the metric is only logged
-    (and only charted) by runs where it is on; ``None`` = always logged.
-    """
-
-    key: str
-    label: str
-    description: str
-    setting: str | None = None
+__all__ = ["Algorithm", "Learner", "LearnerSetup", "TrainingMetric"]
 
 
 @dataclass(frozen=True)

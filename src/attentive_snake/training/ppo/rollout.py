@@ -11,6 +11,9 @@ Indexing convention (shared by the collector and ``compute_gae``), for step
   truncated). Because environments auto-reset, ``observations[t + 1, i]``
   then belongs to a *new* episode, so the value at ``t + 1`` must not be
   bootstrapped into step ``t``.
+* ``next_observations[t, i]`` - only kept when a policy's auxiliary objective needs it
+  (``None`` otherwise): what followed the action, the final observation of an episode
+  that ended there (never the auto-reset one).
 """
 
 from dataclasses import dataclass
@@ -29,6 +32,7 @@ class RolloutBuffer:
     values: Tensor  # float32 (T, N)
     rewards: Tensor  # float32 (T, N)
     dones: Tensor  # float32 (T, N)
+    next_observations: Tensor | None = None  # float32 (T, N, *obs_shape), when kept
 
     @classmethod
     def allocate(
@@ -37,6 +41,7 @@ class RolloutBuffer:
         num_envs: int,
         observation_shape: tuple[int, ...],
         device: torch.device,
+        keep_next_observations: bool = False,
     ) -> "RolloutBuffer":
         steps = (rollout_length, num_envs)
 
@@ -50,6 +55,7 @@ class RolloutBuffer:
             values=zeros(torch.float32),
             rewards=zeros(torch.float32),
             dones=zeros(torch.float32),
+            next_observations=zeros(torch.float32, tuple(observation_shape)) if keep_next_observations else None,
         )
 
     @property
@@ -103,6 +109,7 @@ class TrainingBatch:
     values: Tensor  # (B,)
     advantages: Tensor  # (B,)
     returns: Tensor  # (B,)
+    next_observations: Tensor | None = None  # (B, *obs_shape), when the rollout kept them
 
     def __len__(self) -> int:
         return self.actions.shape[0]
@@ -115,6 +122,7 @@ class TrainingBatch:
             values=self.values[indices],
             advantages=self.advantages[indices],
             returns=self.returns[indices],
+            next_observations=None if self.next_observations is None else self.next_observations[indices],
         )
 
 
@@ -127,4 +135,5 @@ def flatten_rollout(buffer: RolloutBuffer, advantages: Tensor, returns: Tensor) 
         values=buffer.values.flatten(),
         advantages=advantages.flatten(),
         returns=returns.flatten(),
+        next_observations=None if buffer.next_observations is None else buffer.next_observations.flatten(0, 1),
     )

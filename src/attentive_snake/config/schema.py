@@ -2,7 +2,8 @@
 
 Field descriptions come from the config dataclasses' ``metadata["help"]``; the
 per-kind facts from ``attentive_snake.models.registry.KIND_INFO``, told for the game's
-observation kind (description, fields that matter, whether the kind is recommended). ``[game]`` and
+observation kind (description, fields that matter, whether the kind is recommended, the
+training metrics its auxiliary objective logs). ``[game]`` and
 ``[reward]`` rows are the chosen game's own fields (``[game] name`` is not a row: it is
 the top-level ``"game"`` of the schema). Every algorithm's section is listed (``"ppo"``,
 ``"dqn"``: a UI shows the one ``train.algorithm`` selects), and ``"algorithms"`` tells, per
@@ -17,11 +18,12 @@ from typing import Any
 
 from attentive_snake.config.experiment import SHARED_SECTIONS, section_types
 from attentive_snake.games.registry import DEFAULT_GAME, get_game
+from attentive_snake.models.config import VALUE_TRAINING
 from attentive_snake.models.registry import KIND_INFO, POLICY_KINDS
 from attentive_snake.training.algorithm import Algorithm
 from attentive_snake.training.algorithms import algorithm_names, get_algorithm
 
-_CHOICES = {("ModelConfig", "kind"): POLICY_KINDS, ("TrainConfig", "algorithm"): algorithm_names()}
+_CHOICES = {("ModelConfig", "kind"): POLICY_KINDS, ("ModelConfig", "value_training"): VALUE_TRAINING, ("TrainConfig", "algorithm"): algorithm_names()}
 
 
 def experiment_schema(game: str = DEFAULT_GAME) -> dict[str, Any]:
@@ -82,6 +84,7 @@ def _kind_row(kind: str, observation_kind: str) -> dict[str, Any]:
         "uses_history": info.uses_history,
         "recommended_env": {"history_length": 4 if info.uses_history else 1, "history_actions": info.uses_history},
         "attention_view": info.attention_view,
+        "metrics": [dataclasses.asdict(metric) for metric in info.metrics],
     }
 
 

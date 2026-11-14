@@ -34,6 +34,7 @@ let chart = null;
 let series = [];
 let seriesMetrics; // the algorithm and own-metric keys `series` holds, as one string
 let algorithmInfos = {}; // schema.algorithms of the selected game
+let kindInfos = {}; // schema.model_kinds of the selected game
 let els = {};
 
 /** The run's algorithm facts from the schema (label, metrics), or null for an unreadable config. */
@@ -41,9 +42,16 @@ function algorithmInfo(name) {
   return algorithmInfos[name] ?? null;
 }
 
-/** The algorithm's metrics this run logs: those tied to a setting (prioritized replay's) only if the run has it on. */
-function ownMetrics(info, config) {
-  return (info?.metrics ?? []).filter((m) => !m.setting || config?.[info.section]?.[m.setting] === true);
+/** Whether the run's config switches a metric on: its setting ("section.field") is true or a number above 0. */
+function settingOn(config, setting) {
+  const [section, field] = setting.split(".");
+  const value = config?.[section]?.[field];
+  return value === true || (typeof value === "number" && value > 0);
+}
+
+/** The metrics this run logs besides the shared ones: its algorithm's, then its model kind's (jepa's prediction loss); those tied to a setting only if the run has it on. */
+function ownMetrics(info, kindInfo, config) {
+  return [...(info?.metrics ?? []), ...(kindInfo?.metrics ?? [])].filter((m) => !m.setting || settingOn(config, m.setting));
 }
 
 /** Chart series: the shared metrics, then the algorithm's own (hidden until switched on in the legend). */
@@ -228,7 +236,7 @@ function renderDetail(d) {
   els.progress.style.width = `${pct}%`;
   els.progressText.textContent = `${formatNumber(d.env_steps)} / ${formatNumber(total)} env steps (${pct.toFixed(1)}%) · last checkpoint at ${formatNumber(d.checkpoint_steps)}`;
 
-  const own = ownMetrics(algorithmInfo(d.algorithm), d.config);
+  const own = ownMetrics(algorithmInfo(d.algorithm), kindInfos[d.kind], d.config);
   useAlgorithmSeries(d.algorithm, own);
   const records = monotonic(d.metrics);
   for (const s of series) s.points = points(records, s.key);
@@ -258,6 +266,7 @@ async function refresh() {
     const [runs, { schema }] = await Promise.all([get(gameUrl("/api/runs", game)), loadSchema(game)]);
     if (stale()) return;
     algorithmInfos = schema.algorithms;
+    kindInfos = schema.model_kinds;
     renderList(runs);
     if (run) {
       const loaded = await get(gameUrl(`/api/runs/${encodeURIComponent(run)}`, game));

@@ -10,7 +10,8 @@ from attentive_snake.models.types import QValues
 from attentive_snake.training.algorithm import LearnerSetup
 from attentive_snake.training.config import TrainConfig
 from attentive_snake.training.dqn.beta import linear_beta
-from attentive_snake.training.dqn.collector import EpsilonGreedyCollector, next_observations, transition_dones
+from attentive_snake.training.dqn.collector import EpsilonGreedyCollector, transition_dones
+from attentive_snake.training.next_observations import next_observations
 from attentive_snake.training.dqn.config import DqnConfig
 from attentive_snake.training.dqn.epsilon import linear_epsilon
 from attentive_snake.training.dqn.learner import DqnLearner

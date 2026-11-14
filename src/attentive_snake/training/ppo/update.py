@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 
+from attentive_snake.models.auxiliary import TransitionBatch
+from attentive_snake.training.auxiliary import AuxiliaryTraining
 from attentive_snake.training.ppo.config import PpoConfig
 from attentive_snake.training.ppo.loss import LossTerms, explained_variance, normalize, ppo_loss
 from attentive_snake.training.ppo.rollout import TrainingBatch
@@ -29,17 +31,20 @@ def ppo_update(
     batch: TrainingBatch,
     config: PpoConfig,
     generator: torch.Generator | None = None,
+    auxiliary: AuxiliaryTraining | None = None,
 ) -> UpdateStats:
     """Run ``config.num_epochs`` epochs of shuffled minibatch updates on ``batch``.
 
     The policy is put in ``train()`` mode for the update and its previous mode
     is restored afterwards. ``generator`` (a CPU generator) controls the
-    minibatch shuffling; ``None`` uses torch's global RNG.
+    minibatch shuffling; ``None`` uses torch's global RNG. With ``auxiliary`` (the
+    policy's auxiliary objective; ``batch`` must then hold next observations) its weighted
+    loss on each minibatch is added and it is told after every optimizer step.
     """
     was_training = policy.training
     policy.train()
     try:
-        return _run_epochs(policy, optimizer, batch, config, generator)
+        return _run_epochs(policy, optimizer, batch, config, generator, auxiliary)
     finally:
         policy.train(was_training)
 
@@ -50,6 +55,7 @@ def _run_epochs(
     batch: TrainingBatch,
     config: PpoConfig,
     generator: torch.Generator | None,
+    auxiliary: AuxiliaryTraining | None,
 ) -> UpdateStats:
     totals = torch.zeros(5, device=batch.actions.device)
     num_minibatches_run = 0
@@ -59,7 +65,7 @@ def _run_epochs(
         epoch_kl = torch.zeros((), device=batch.actions.device)
         chunks = torch.tensor_split(permutation, config.num_minibatches)
         for indices in chunks:
-            terms = _minibatch_step(policy, optimizer, batch.select(indices), config)
+            terms = _minibatch_step(policy, optimizer, batch.select(indices), config, auxiliary)
             totals += torch.stack(
                 [terms.policy_loss, terms.value_loss, terms.entropy, terms.approx_kl, terms.clip_fraction]
             )
@@ -86,6 +92,7 @@ def _minibatch_step(
     optimizer: torch.optim.Optimizer,
     minibatch: TrainingBatch,
     config: PpoConfig,
+    auxiliary: AuxiliaryTraining | None,
 ) -> LossTerms:
     output = policy(minibatch.observations)
     advantages = normalize(minibatch.advantages) if config.normalize_advantages else minibatch.advantages
@@ -100,8 +107,18 @@ def _minibatch_step(
         value_coef=config.value_coef,
         entropy_coef=config.entropy_coef,
     )
+    total = terms.total if auxiliary is None else terms.total + auxiliary.loss(_transitions(minibatch))
     optimizer.zero_grad(set_to_none=True)
-    terms.total.backward()
+    total.backward()
     nn.utils.clip_grad_norm_(policy.parameters(), config.max_grad_norm)
     optimizer.step()
+    if auxiliary is not None:
+        auxiliary.after_step()
     return terms
+
+
+def _transitions(minibatch: TrainingBatch) -> TransitionBatch:
+    """Every rollout step has its next observation (the final one where the episode ended)."""
+    if minibatch.next_observations is None:
+        raise ValueError("an auxiliary objective needs a rollout that kept its next observations.")
+    return TransitionBatch(minibatch.observations, minibatch.actions, minibatch.next_observations, torch.ones_like(minibatch.returns))

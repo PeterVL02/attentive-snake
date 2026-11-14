@@ -1,7 +1,9 @@
 """Which settings a run continued from another run's checkpoint (a fork) must share with its parent.
 
 The parent's weights must fit the new network and keep their meaning, so the game itself,
-the training algorithm (its head and optimizer state), the whole ``[model]``, the observation layout (``env.history_length``,
+the training algorithm (its head and optimizer state), the whole ``[model]`` except the fields that
+only shape the training objective (``models.config.OBJECTIVE_FIELDS``: jepa's ``prediction_coef``,
+``value_training`` and ``target_ema``), the observation layout (``env.history_length``,
 ``env.history_actions``) and the game rules its ``GameSpec.locked_rules`` names (for
 Snake: the board size and the start length) are locked. Everything else (rewards,
 training settings including the algorithm's own section, the number of parallel games,
@@ -12,7 +14,7 @@ import dataclasses
 
 from attentive_snake.config.experiment import GAME_NAME_KEY, ExperimentConfig
 from attentive_snake.games.registry import DEFAULT_GAME, get_game
-from attentive_snake.models.config import ModelConfig
+from attentive_snake.models.config import OBJECTIVE_FIELDS, ModelConfig
 
 GAME_KEY = f"game.{GAME_NAME_KEY}"
 ALGORITHM_FIELD = "train.algorithm"
@@ -25,7 +27,7 @@ _LOCKED_ENV = {"history_length": _INPUT_REASON, "history_actions": _INPUT_REASON
 
 def locked_fields(game: str = DEFAULT_GAME) -> dict[str, str]:
     """``{"section.field": reason}`` for every setting a fork of a ``game`` run must take unchanged from its parent."""
-    model = {f"model.{field.name}": _MODEL_REASON for field in dataclasses.fields(ModelConfig)}
+    model = {f"model.{field.name}": _MODEL_REASON for field in dataclasses.fields(ModelConfig) if field.name not in OBJECTIVE_FIELDS}
     rules = {f"game.{name}": reason for name, reason in get_game(game).locked_rules.items()}
     env = {f"env.{name}": reason for name, reason in _LOCKED_ENV.items()}
     return {GAME_KEY: _GAME_REASON, ALGORITHM_FIELD: _ALGORITHM_REASON} | model | rules | env

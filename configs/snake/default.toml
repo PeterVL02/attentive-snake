@@ -23,18 +23,22 @@ max_steps_without_food = 128  # starvation limit; comment out for no limit (None
 # kind: "transformer" (cells as tokens), "cnn" (conv baseline), "hybrid" (conv stem + transformer),
 #       "temporal_transformer" (attention over cells of all frames + action tokens),
 #       "frame_attention" (CNN per frame, attention across frames), "resnet" (residual conv blocks),
-#       "lstm" (CNN per frame, LSTM across the frames), "mlp" (flattened board; weak baseline).
+#       "lstm" (CNN per frame, LSTM across the frames), "jepa" (CNN encoder + action-conditioned predictor of the
+#       next embedding + value decoder: acts on the value of predicted next states), "mlp" (flattened board; weak baseline).
 # Only temporal_transformer, frame_attention and lstm treat env.history_length as time; the others
 # see stacked frames as extra channels. They use board channels plus, if present, action planes.
 kind = "transformer"
 d_model = 64
 num_heads = 4
-num_layers = 3                # attention kinds: transformer blocks; mlp: layers; lstm: LSTM layers
+num_layers = 3                # attention kinds: transformer blocks; mlp: layers; lstm: LSTM layers; jepa: predictor layers
 mlp_ratio = 4
 dropout = 0.0
-conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm: width of the conv layers
-conv_layers = 3               # cnn, hybrid, frame_attention, lstm: number of conv layers; resnet: residual blocks
+conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm, jepa: width of the conv layers
+conv_layers = 3               # cnn, hybrid, frame_attention, lstm, jepa: number of conv layers; resnet: residual blocks
 kernel_size = 3               # odd; same-padded
+prediction_coef = 1.0         # jepa only: weight of the prediction loss (0 = off: the ablation)
+value_training = "predicted"  # jepa with dqn only: the value decoder learns from the "predicted" or the "actual" next embedding
+target_ema = 0.99             # jepa only: EMA rate of the target encoder (per gradient step)
 
 [train]  # attentive_snake.training.config.TrainConfig: what every algorithm shares
 algorithm = "ppo"             # "ppo" (the [ppo] section below) or "dqn" (its defaults: configs/snake/algorithms/dqn.toml)

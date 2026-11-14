@@ -9,24 +9,13 @@ from torch import nn
 from attentive_snake.env.types import EpisodeSummary, VecEnv, VecEnvStep
 from attentive_snake.models.acting import greedy_actions
 from attentive_snake.training.dqn.replay import Transitions
+from attentive_snake.training.next_observations import next_observations
 
 
 @dataclass(frozen=True)
 class CollectedStep:
     transitions: Transitions
     finished_episodes: tuple[EpisodeSummary, ...]
-
-
-def next_observations(step: VecEnvStep) -> np.ndarray:
-    """What followed each env's action: ``step.observations`` with every finished env's final observation put back.
-
-    Auto-reset already replaced a finished env's observation by the first one of its next
-    episode; that observation must never become the next state of the last transition.
-    """
-    following = np.array(step.observations, dtype=np.float32, copy=True)
-    for index, final in step.final_observations.items():
-        following[index] = final
-    return following
 
 
 def transition_dones(step: VecEnvStep, bootstrap_truncated: bool) -> np.ndarray:

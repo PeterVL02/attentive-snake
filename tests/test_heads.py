@@ -34,12 +34,14 @@ def test_every_kind_builds_with_either_head_on_the_same_trunk(kind: str, observa
     q_out = q(obs)
     assert isinstance(q_out, QValues) and q_out.q_values.shape == (3, A)
 
+    forms = type(q).heads  # the kind's head forms (models.heads.HEADS, or its own with the same names)
+    ac_names, q_names = list(forms["actor_critic"].modules(16, A)), list(forms["q_values"].modules(16, A))
     ac_keys, q_keys = set(actor_critic.state_dict()), set(q.state_dict())
-    head_keys = {key for key in ac_keys if key.startswith(("net.policy_head.", "net.value_head."))}
-    assert ac_keys - head_keys == {key for key in q_keys if not key.startswith("net.q_head.")}  # the same trunk
-    assert {key for key in q_keys if key.startswith("net.q_head.")} == {"net.q_head.linear.weight", "net.q_head.linear.bias"}
-    assert list(q.net)[-1] == "q_head" and list(actor_critic.net)[-2:] == ["policy_head", "value_head"]
-    assert "QHead" in diagram(q) and "PolicyHead" not in diagram(q)
+    assert {key for key in ac_keys if key.split(".")[1] not in ac_names} == {key for key in q_keys if key.split(".")[1] not in q_names}  # the same trunk
+    assert list(q.net)[-len(q_names):] == q_names and list(actor_critic.net)[-len(ac_names):] == ac_names
+    if forms is HEADS:
+        assert {key for key in q_keys if key.startswith("net.q_head.")} == {"net.q_head.linear.weight", "net.q_head.linear.bias"}
+        assert "QHead" in diagram(q) and "PolicyHead" not in diagram(q)
     if hasattr(q, "attention_maps"):  # attention needs nothing from the head
         assert len(q.attention_maps(obs[:1])) == SMALL["num_layers"]
 

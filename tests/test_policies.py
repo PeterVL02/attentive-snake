@@ -16,7 +16,7 @@ H, W, A = 5, 6, 4
 BASE = {"grid": 3, "vector": 5}  # game channels per frame: board planes / numbers
 ATTENTIVE = ["transformer", "hybrid", "temporal_transformer", "frame_attention"]
 TEMPORAL = ["temporal_transformer", "frame_attention", "lstm"]
-NO_ATTENTION = ["cnn", "resnet", "lstm", "mlp"]
+NO_ATTENTION = ["cnn", "resnet", "lstm", "jepa", "mlp"]
 OBSERVATIONS = ["grid", "vector"]
 SMALL = dict(d_model=16, num_heads=2, num_layers=2, conv_channels=8, conv_layers=2)
 
@@ -76,7 +76,7 @@ def test_shapes_gradients_and_init(kind, obs_kind, k, actions):
 @pytest.mark.parametrize("kind", POLICY_KINDS)
 def test_net_and_wrong_shape(kind, obs_kind):
     m = make(kind, obs_kind, 2, True)
-    assert "policy_head" in m.net and "value_head" in m.net
+    assert list(m.net)[-2:] == list(type(m).heads["actor_critic"].modules(SMALL["d_model"], A))
     good = spec(obs_kind, 2, True).shape
     with pytest.raises(ValueError, match="expected observations"):
         m(torch.rand(2, good[0] + 1, *good[1:]))
@@ -258,7 +258,7 @@ def test_registry_rejects_unknown_kind():
 
     with pytest.raises(ValueError, match="unknown model kind"):
         build_policy(SimpleNamespace(kind="gru"), spec(), A)
-    assert set(POLICY_KINDS) == {"transformer", "cnn", "resnet", "hybrid", "temporal_transformer", "frame_attention", "lstm", "mlp"}
+    assert set(POLICY_KINDS) == {"transformer", "cnn", "resnet", "hybrid", "temporal_transformer", "frame_attention", "lstm", "jepa", "mlp"}
 
 
 def test_cnn_config_validation():

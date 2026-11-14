@@ -8,6 +8,7 @@ import torch
 
 from attentive_snake.env.types import EpisodeSummary
 from attentive_snake.training.algorithm import LearnerSetup
+from attentive_snake.training.auxiliary import AuxiliaryTraining
 from attentive_snake.training.dqn.beta import linear_beta
 from attentive_snake.training.dqn.build_replay import build_replay
 from attentive_snake.training.dqn.collector import EpsilonGreedyCollector
@@ -35,7 +36,8 @@ class DqnLearner:
         self.policy = setup.policy
         self._train, self._settings, self._device = train, settings, setup.device
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=train.learning_rate)
-        self._target = TargetNetwork(self.policy)
+        self._target = TargetNetwork(self.policy)  # a copy of the policy only: an auxiliary objective's state is not in it
+        self._auxiliary = AuxiliaryTraining.of(self.policy)
         self._env_steps = 0  # env steps taken so far, for the beta schedule
         self._replay = replay if replay is not None else build_replay(
             settings,
@@ -80,18 +82,29 @@ class DqnLearner:
             loss, q_mean, td_error = np.mean(np.array(self._window), axis=0).tolist()
             record |= {"loss": loss, "q_mean": q_mean, "td_error": td_error}
         self._window = []
-        return record | self._replay.statistics()
+        auxiliary = self._auxiliary.report() if self._auxiliary is not None else {}
+        return record | self._replay.statistics() | auxiliary
 
     def extra_state(self) -> dict[str, Any]:
-        return {"target": self._target.state_dict()}
+        state = {"target": self._target.state_dict()}
+        return state if self._auxiliary is None else self._auxiliary.save_into(state)
 
     def load_extra_state(self, state: Mapping[str, Any]) -> None:
         self._target.load_state_dict(state["target"])
+        if self._auxiliary is not None:
+            self._auxiliary.load_from(state)
 
     def _gradient_step(self) -> None:
         sample = self._replay.sample(self._settings.batch_size, self._device)
         stats = dqn_gradient_step(
-            self.policy, self._target, self.optimizer, sample, self._train.gamma, self._settings.double, self._settings.max_grad_norm
+            self.policy,
+            self._target,
+            self.optimizer,
+            sample,
+            self._train.gamma,
+            self._settings.double,
+            self._settings.max_grad_norm,
+            self._auxiliary,
         )
         self._replay.update_priorities(sample.indices, stats.td_errors.abs().cpu().numpy())
         self._gradient_steps += 1
