@@ -1,9 +1,11 @@
 # The default reward: +1 per food, -1 for dying or starving, a small living cost.
+# The single source of the default reward values (tests check it equals RewardConfig()).
+# A flat RewardConfig table (no section header); all terms are added together.
 food = 1.0
-food_growth = 0.0
-death = -1.0
-win = 1.0
-starved = -1.0
-step = -0.01
-closer_to_food = 0.0
-farther_from_food = 0.0
+food_growth = 0.0             # extra food reward per point of score before eating
+death = -1.0                  # hit a wall or itself
+win = 1.0                     # filled the grid
+starved = -1.0                # hit max_steps_without_food
+step = -0.01                  # living cost on every non-final step
+closer_to_food = 0.0          # shaping: plain move that reduces the distance to food
+farther_from_food = 0.0       # shaping: plain move that increases it

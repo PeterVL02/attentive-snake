@@ -53,11 +53,12 @@ The two temporal kinds need history: set `history_length` (for example 4) and
 
 ## Configs and runs
 
-- `configs/default.toml` lists every setting with a comment. Copy it to make
-  your own experiment config.
-- `configs/rewards/*.toml` are named reward schemes. Choosing one for a run
-  copies its values into the run; editing the scheme later does not change
-  existing runs.
+- `configs/default.toml` lists every setting with a comment, except the reward
+  values. Copy it to make your own experiment config.
+- `configs/rewards/*.toml` are named reward schemes. `configs/rewards/default.toml`
+  is the one place the default reward values are written down: a config without
+  a `[reward]` section gets exactly those. Choosing a scheme for a run copies its
+  values into the run; editing the scheme later does not change existing runs.
 - Each run lives in `runs/<name>/` with its resolved `config.toml`, checkpoints,
   `metrics.jsonl`, `train.log` (when started from the app) and `model.html`.
   `runs/` is not tracked by git.

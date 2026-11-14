@@ -67,13 +67,15 @@ Other flags: `--cell-size N`, `--frame N`. `Esc` or closing the window quits.
 
 | What | Where |
 | --- | --- |
-| Default experiment (every setting, commented) | `configs/default.toml` |
+| Default experiment (every setting except the rewards, commented) | `configs/default.toml` |
 | Your own experiments | copy it to e.g. `configs/mine.toml`, pass with `--config` |
-| Named reward schemes | `configs/rewards/<name>.toml` (flat file of the `[reward]` keys, no header) |
+| Named reward schemes; `default` holds the default reward values | `configs/rewards/<name>.toml` (flat file of the `[reward]` keys, no header) |
 | The exact config of one run | `runs/<name>/config.toml` |
 
 An experiment file has the sections `[game] [reward] [model] [train] [env]`. A missing key takes its default; an unknown key is an error.
-To use a reward scheme in an experiment, copy its lines under `[reward]` in the experiment file.
+A config without a `[reward]` section gets the default reward values (those of `configs/rewards/default.toml`).
+To use another reward scheme in an experiment, copy its lines under a `[reward]` header in the experiment file
+(only the keys that differ are needed), or pass single values with `--set reward.food=2`.
 
 ## What a run directory contains
 

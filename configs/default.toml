@@ -1,7 +1,8 @@
 # Default experiment for scripts/train.py.
 #
-# Every field is listed. A missing key (or a whole missing section) takes the
-# dataclass default; an unknown key is an error. TOML has no null, so fields
+# Every field is listed except the [reward] values (see below). A missing key
+# (or a whole missing section) takes the dataclass default; an unknown key is
+# an error. TOML has no null, so fields
 # that may be None are commented out to mean None.
 # scripts/train.py writes the full resolved config to <run-dir>/config.toml.
 
@@ -11,15 +12,11 @@ height = 8
 initial_length = 3
 max_steps_without_food = 128  # starvation limit; comment out for no limit (None)
 
-[reward]  # attentive_snake.env.reward.RewardConfig; all terms are added together
-food = 1.0
-food_growth = 0.0             # extra food reward per point of score before eating
-death = -1.0                  # hit a wall or itself
-win = 1.0                     # filled the grid
-starved = -1.0                # hit max_steps_without_food
-step = -0.01                  # living cost on every non-final step
-closer_to_food = 0.0          # shaping: plain move that reduces the distance to food
-farther_from_food = 0.0       # shaping: plain move that increases it
+# [reward]: not listed here. The default reward values live in one place, the
+# reward scheme configs/rewards/default.toml (= attentive_snake.env.reward.RewardConfig()),
+# and a config without a [reward] section gets exactly those values. To use other
+# rewards in your own experiment config, add a [reward] section with the keys to change,
+# e.g. copied from another scheme in configs/rewards/.
 
 [model]  # attentive_snake.models.config.ModelConfig (input shape / actions / history come from the env)
 # kind: "transformer" (cells as tokens), "cnn" (conv baseline), "hybrid" (conv stem + transformer),

@@ -18,7 +18,8 @@ const COMMON_TRAIN = [
 ];
 const HIDDEN = new Set(["train.checkpoint_dir", "model.kind"]); // set by the app / by the kind dropdown
 const STATE_FIELDS = ["history_length", "history_actions"];
-const DEFAULT_TOML = ""; // reward-scheme option value meaning "the [reward] of configs/default.toml"
+const DEFAULT_SCHEME = "default"; // configs/rewards/default.toml: the single source of the default reward values
+const BUILT_IN = ""; // option value used only when no scheme can be listed: the code defaults (same values)
 
 let schema;
 let defaults;
@@ -141,7 +142,7 @@ function currentTables() {
 async function loadReward() {
   const name = rewardSelect.value;
   try {
-    rewardValues = name === DEFAULT_TOML ? { ...defaults.reward } : await get(`/api/rewards/${encodeURIComponent(name)}`);
+    rewardValues = name === BUILT_IN ? { ...defaults.reward } : await get(`/api/rewards/${encodeURIComponent(name)}`);
     const rows = await post("/api/rewards/preview", { reward: rewardValues });
     replace(rewardPreview, rewardTable(rows));
   } catch (error) {
@@ -159,10 +160,11 @@ async function fillRewardSchemes() {
   }
   replace(
     rewardSelect,
-    h("option", { value: DEFAULT_TOML, text: "configs/default.toml values" }),
+    schemes.length === 0 ? h("option", { value: BUILT_IN, text: "built-in default values" }) : null,
     schemes.map((s) => h("option", { value: s, text: s })),
   );
-  if ([DEFAULT_TOML, ...schemes].includes(previous)) rewardSelect.value = previous;
+  if (schemes.includes(previous)) rewardSelect.value = previous;
+  else if (schemes.includes(DEFAULT_SCHEME)) rewardSelect.value = DEFAULT_SCHEME;
   await loadReward();
 }
 
