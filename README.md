@@ -75,6 +75,7 @@ Chosen with `kind` in the `[model]` section of a config (or the dropdown in the 
 | `temporal_transformer` | Attention over the cells of the last K frames plus one token per past action. | Board heatmap per frame |
 | `frame_attention` | A CNN turns each of the last K frames into one vector; attention runs across frames. | Weight per frame |
 | `lstm` | A CNN (or MLP) turns each of the last K frames into one vector and an LSTM reads them oldest to newest. | None |
+| `jepa` | A world model: an encoder, a predictor of each action's next-state embedding, a value decoder; plays the action whose predicted next state is worth most. Experimental. | None |
 | `mlp` | A plain multilayer perceptron on the flattened observation. Baseline for vector games. | None |
 
 Every kind reads both grids and vectors; only the input stage changes. On a
@@ -92,6 +93,35 @@ step to the next and never stored in the DQN replay buffer. Its memory is exactl
 `history_length`, like the temporal kinds. `resnet` differs from `cnn` (whose layers after the first
 are already single-convolution residual layers) in using the standard two-convolution residual block
 (`conv_layers` of them; on vectors, layer-normalised residual MLP blocks as in SimBa).
+
+`jepa` is a JEPA-like world model, trained from scratch on the game like every other kind
+(no pretrained weights, nothing downloaded). An encoder turns the observation into an
+embedding (the `cnn` encoder: convolutions on a board, an MLP on numbers); a predictor takes
+the embedding and an action and predicts the embedding of the next state, for every action
+at once; a value decoder turns an embedding into a value. With DQN the Q-value of an action
+is the decoded value of the embedding it is predicted to lead to, so the agent plays the
+action whose predicted next state is worth most. With PPO the policy scores the predicted
+embeddings with its own decoder and the value decoder values the current embedding. A
+prediction loss (`prediction_coef`, 0 = off) makes the embedding predicted for the action
+taken match the embedding of the state that really followed, given by a slowly updated
+(EMA, `target_ema`) copy of the encoder that gets no gradients, as in BYOL / I-JEPA; that
+copy is what stops the trivial answer of one embedding for every state, and the Runs chart
+shows `embedding spread` to check. `value_training` (DQN) chooses what the TD loss trains:
+the decoded *predicted* embedding of the action taken (`predicted`, the default), or the
+decoded embedding of the *actual* next state, i.e. the value of arriving there with the
+reward for getting there (`actual`; the predictor then learns only from the prediction loss).
+
+What is JEPA about it: prediction happens in embedding space, never in pixels or numbers;
+the target embedding comes from an EMA target encoder; nothing is reconstructed. What is not:
+there is no masking and no large-scale self-supervised pre-training: the encoder is trained
+at the same time as, and also by, the reinforcement-learning loss; the predictor looks one
+step ahead only (multi-step lookahead over predicted embeddings, DFS/BFS, is not built yet,
+though the predictor can be applied to its own predictions). Caveats: the predictor is
+deterministic, so where the next state is random (where Snake's next apple appears) it can
+only predict something like an average embedding; with `actual`, a reward that depends on
+where the snake came from (Snake's closer/farther shaping) is not a function of the next
+state alone, so the decoder cannot learn it exactly; and the extra encoder and target-encoder
+passes make a gradient step slower than `cnn`/`mlp`.
 
 Lunar Lander can hide part of what the model sees: `game.hide_velocities = true` replaces
 the three velocity numbers by zeros (the physics, score and reward still use the true
@@ -210,7 +240,8 @@ A statistic that cannot be computed (steps to win when no game was won) is N/A.
 - **A model is tied to its board size.** A checkpoint cannot be used on a
   different grid.
 - **A continued run (fork) cannot change the game, algorithm, network, board or observation.**
-  The game, `train.algorithm`, all of `[model]`, the board size, `initial_length`, `history_length` and
+  The game, `train.algorithm`, all of `[model]` (except jepa's `prediction_coef`, `value_training` and
+  `target_ema`, which change how it is trained, not the network), the board size, `initial_length`, `history_length` and
   `history_actions` must match the parent, because its weights would not fit or
   would see a different input. It keeps the parent's Adam moments and starts its
   own learning-rate schedule from `learning_rate`, counting its steps from 0.
