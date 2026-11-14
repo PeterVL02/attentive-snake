@@ -234,6 +234,15 @@ A statistic that cannot be computed (steps to win when no game was won) is N/A.
 - **Pure transformers are slow to start learning.** In short tests the kinds
   with a convolutional stage (`hybrid`, `cnn`, `frame_attention`) began scoring
   much sooner. These were single short runs, not a benchmark.
+- **`jepa` did not beat the baselines in a first check, and its prediction loss did not help.**
+  One seed each, DQN with the shipped defaults (not a benchmark, nothing tuned). Lunar Lander,
+  300k env steps, greedy evaluation of 50 games at the end: `mlp` mean score 167 (74% landed);
+  `jepa` with `prediction_coef = 0` 223 (86% landed, already 231 at 200k); `jepa` (`predicted`,
+  `prediction_coef = 1`) -187 (unstable: 38% landed at 250k, then mostly flying off);
+  `jepa` (`actual`) -163 (never landed). Snake 6x6, 200k env steps: `cnn` 15.1 apples,
+  `jepa` without the loss 15.5, `jepa` (`predicted`) 14.9 (slower start; its embedding spread
+  dropped from 0.05 to about 0.01, a sign of partial collapse), `jepa` (`actual`) 0.7 (the
+  agent barely plays). With the loss on, a step takes about 1.3-1.6x as long.
 - **History adds no information in principle.** Snake is fully observable from
   one frame, so the temporal models are for studying attention over time, not
   for better scores, and they train slower.
