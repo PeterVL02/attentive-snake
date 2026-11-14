@@ -22,17 +22,18 @@ max_steps_without_food = 128  # starvation limit; comment out for no limit (None
 [model]  # attentive_snake.models.config.ModelConfig (input shape / actions / history come from the env)
 # kind: "transformer" (cells as tokens), "cnn" (conv baseline), "hybrid" (conv stem + transformer),
 #       "temporal_transformer" (attention over cells of all frames + action tokens),
-#       "frame_attention" (CNN per frame, attention across frames).
-# Only temporal_transformer and frame_attention treat env.history_length as time; the others
+#       "frame_attention" (CNN per frame, attention across frames), "resnet" (residual conv blocks),
+#       "lstm" (CNN per frame, LSTM across the frames), "mlp" (flattened board; weak baseline).
+# Only temporal_transformer, frame_attention and lstm treat env.history_length as time; the others
 # see stacked frames as extra channels. They use board channels plus, if present, action planes.
 kind = "transformer"
 d_model = 64
 num_heads = 4
-num_layers = 3
+num_layers = 3                # attention kinds: transformer blocks; mlp: layers; lstm: LSTM layers
 mlp_ratio = 4
 dropout = 0.0
-conv_channels = 64            # cnn, hybrid, frame_attention: width of the conv layers
-conv_layers = 3               # cnn, hybrid, frame_attention: number of conv layers
+conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm: width of the conv layers
+conv_layers = 3               # cnn, hybrid, frame_attention, lstm: number of conv layers; resnet: residual blocks
 kernel_size = 3               # odd; same-padded
 
 [train]  # attentive_snake.training.config.TrainConfig: what every algorithm shares

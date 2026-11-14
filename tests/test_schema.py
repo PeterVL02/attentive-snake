@@ -70,9 +70,9 @@ def test_model_kinds_follow_registry_order_with_documented_keys() -> None:
         temporal = info["uses_history"]
         assert info["recommended_env"] == {"history_length": 4 if temporal else 1, "history_actions": temporal}
         assert info["attention_view"] in ("grid", "frames", "weights", None)
-    assert {k for k, i in SCHEMA["model_kinds"].items() if i["uses_history"]} == {"temporal_transformer", "frame_attention"}
+    assert {k for k, i in SCHEMA["model_kinds"].items() if i["uses_history"]} == {"temporal_transformer", "frame_attention", "lstm"}
     assert SCHEMA["model_kinds"]["cnn"]["attention_view"] is None
-    assert {k for k, i in SCHEMA["model_kinds"].items() if not i["recommended"]} == {"mlp"}  # Snake is a grid game
+    assert {k for k, i in SCHEMA["model_kinds"].items() if not i["recommended"]} == {"mlp", "lstm"}  # Snake is a grid game
 
 
 def test_every_vector_reading_names_only_listed_fields() -> None:

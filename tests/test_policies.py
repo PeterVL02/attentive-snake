@@ -15,8 +15,8 @@ from attentive_snake.viz import diagram
 H, W, A = 5, 6, 4
 BASE = {"grid": 3, "vector": 5}  # game channels per frame: board planes / numbers
 ATTENTIVE = ["transformer", "hybrid", "temporal_transformer", "frame_attention"]
-TEMPORAL = ["temporal_transformer", "frame_attention"]
-NO_ATTENTION = ["cnn", "mlp"]
+TEMPORAL = ["temporal_transformer", "frame_attention", "lstm"]
+NO_ATTENTION = ["cnn", "resnet", "lstm", "mlp"]
 OBSERVATIONS = ["grid", "vector"]
 SMALL = dict(d_model=16, num_heads=2, num_layers=2, conv_channels=8, conv_layers=2)
 
@@ -67,6 +67,8 @@ def test_shapes_gradients_and_init(kind, obs_kind, k, actions):
     (out.logits.logsumexp(-1).sum() + out.value.sum()).backward()
     for name, p in m.named_parameters():
         assert p.grad is not None and torch.isfinite(p.grad).all(), name
+        if kind == "lstm" and k == 1 and "weight_hh" in name:
+            continue  # a one-frame window never feeds the recurrent weights: the hidden state before it is zero
         assert p.grad.abs().sum() > 0, name  # no dead parameters
 
 
@@ -251,12 +253,12 @@ def test_temporal_order_matters(kind, obs_kind):
 
 def test_registry_rejects_unknown_kind():
     with pytest.raises(ValueError, match="unknown model kind"):
-        ModelConfig(kind="lstm")
+        ModelConfig(kind="gru")
     from types import SimpleNamespace
 
     with pytest.raises(ValueError, match="unknown model kind"):
-        build_policy(SimpleNamespace(kind="lstm"), spec(), A)
-    assert set(POLICY_KINDS) == {"transformer", "cnn", "hybrid", "temporal_transformer", "frame_attention", "mlp"}
+        build_policy(SimpleNamespace(kind="gru"), spec(), A)
+    assert set(POLICY_KINDS) == {"transformer", "cnn", "resnet", "hybrid", "temporal_transformer", "frame_attention", "lstm", "mlp"}
 
 
 def test_cnn_config_validation():
@@ -278,3 +280,89 @@ def test_grid_state_dict_keys_and_shapes_never_change(entry):
     kind, variant = entry.split("/")
     m = build_policy(ModelConfig(kind=kind, **RECORDED_CONFIG), RECORDED_SPECS[variant], 4)
     assert [[key, list(t.shape)] for key, t in m.state_dict().items()] == [[key, shape] for key, shape in GRID_KEYS[entry].items()]
+
+
+# --------------------------------------------------------------------------- resnet and lstm
+
+
+def _zero_residual_branches(m):
+    """Make every residual block's body output zero, leaving only its skip connection."""
+    for name, p in m.named_parameters():
+        if "blocks" in name and ("conv2" in name or "linear2" in name):
+            torch.nn.init.zeros_(p)
+
+
+@pytest.mark.parametrize("obs_kind, block", [("grid", "ResidualConvBlock"), ("vector", "ResidualMlpBlock")])
+def test_resnet_diagram_shows_the_residual_blocks(obs_kind, block):
+    text = diagram(make("resnet", obs_kind, 1, False, conv_layers=3), "text")
+    assert block in text and ".." in text  # three identical blocks are collapsed into one row
+
+
+@pytest.mark.parametrize("obs_kind", OBSERVATIONS)
+def test_resnet_blocks_are_the_configured_number_of_residual_layers(obs_kind):
+    m = make("resnet", obs_kind, 1, False, conv_layers=3)
+    assert len(m.net["encoder"].blocks) == 3
+    assert len(make("resnet", obs_kind, 1, False, conv_layers=1).net["encoder"].blocks) == 1
+
+
+@pytest.mark.parametrize("obs_kind", OBSERVATIONS)
+def test_resnet_gradient_reaches_the_input_through_the_skip_alone(obs_kind):
+    """With every block body zeroed the stem still learns: the skip connections carry the gradient."""
+    torch.manual_seed(0)
+    m = make("resnet", obs_kind, 1, False, conv_layers=3)
+    _zero_residual_branches(m)
+    m(random_obs(obs_kind, 1, False, batch=4)).value.sum().backward()
+    stem = m.net["encoder"].stem
+    assert all(p.grad is not None and p.grad.abs().sum() > 0 for p in stem.parameters())
+
+
+def test_vector_residual_block_is_the_identity_when_its_body_is_zero():
+    from attentive_snake.models.blocks.residual import ResidualMlpBlock
+
+    block = ResidualMlpBlock(8)
+    torch.nn.init.zeros_(block.linear2.weight)
+    torch.nn.init.zeros_(block.linear2.bias)
+    x = torch.randn(3, 8)
+    assert torch.equal(block(x), x)
+
+
+def test_grid_residual_block_adds_its_input_before_the_activation():
+    from attentive_snake.models.blocks.residual import ResidualConvBlock
+
+    block = ResidualConvBlock(4, 3)
+    torch.nn.init.zeros_(block.conv2.weight)
+    torch.nn.init.zeros_(block.conv2.bias)
+    x = torch.randn(2, 4, H, W)
+    assert torch.allclose(block(x), torch.nn.functional.gelu(x))
+
+
+@pytest.mark.parametrize("obs_kind", OBSERVATIONS)
+def test_lstm_gradient_reaches_the_oldest_frame(obs_kind):
+    torch.manual_seed(0)
+    m = make("lstm", obs_kind, 4, False)
+    obs = random_obs(obs_kind, 4, False, batch=2).requires_grad_(True)
+    m(obs).value.sum().backward()
+    assert obs.grad[:, : BASE[obs_kind]].abs().sum() > 0  # frame 0 of the window
+
+
+@pytest.mark.parametrize("obs_kind", OBSERVATIONS)
+def test_lstm_depends_on_older_frames_and_not_on_earlier_calls(obs_kind):
+    torch.manual_seed(0)
+    m = make("lstm", obs_kind, 4, False).eval()
+    obs = random_obs(obs_kind, 4, False, batch=1)
+    changed = obs.clone()
+    changed[:, : BASE[obs_kind]] += 1.0  # only the oldest of four frames
+    with torch.no_grad():
+        first = m(obs).value
+        assert not torch.allclose(first, m(changed).value)
+        assert torch.equal(first, m(obs).value)  # nothing is carried over between calls
+
+
+def test_lstm_uses_num_layers_lstm_layers_of_d_model_size():
+    lstm = make("lstm", "vector", 3, False, num_layers=2).net["recurrent"].lstm
+    assert (lstm.num_layers, lstm.hidden_size, lstm.batch_first) == (2, SMALL["d_model"], True)
+
+
+@pytest.mark.parametrize("obs_kind", OBSERVATIONS)
+def test_lstm_diagram_shows_the_recurrent_block(obs_kind):
+    assert "LSTM" in diagram(make("lstm", obs_kind, 4, True), "text")
