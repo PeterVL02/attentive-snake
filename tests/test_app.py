@@ -786,3 +786,29 @@ def test_background_jobs_report_failures_and_refuse_a_second_job():
 def test_resume_command_passes_evaluation_changes():
     command = resume_command(Path("train.py"), Path("runs/snake/x"), evaluation={"interval": 0, "games": 5})
     assert command[-4:] == ["--eval-interval", "0", "--eval-games", "5"]
+
+
+def test_the_forms_config_with_evaluation_trains_and_a_config_without_it_still_resumes(client: TestClient, paths: AppPaths):
+    """The New-training form sends /api/defaults (which has [evaluation]); the train.py subprocess must load it.
+    Runs from before [evaluation] existed have no such section and must still load (evaluation off)."""
+    form = client.get("/api/defaults").json()
+    assert "evaluation" in form
+    small = tiny_tables(total_env_steps=32)
+    for section in ("game", "model", "train", "env"):
+        form[section].update(small[section])
+    form["train"]["checkpoint_dir"] = None
+    form["evaluation"].update({"interval": 16, "games": 2})
+    assert client.post("/api/runs", json={"name": "form", "config": form}).status_code == 201
+    detail = wait_until_done(client, "form")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert "[evaluation]" in config_path(paths.runs_dir / "snake" / "form").read_text()
+    assert [e["env_steps"] for e in detail["evaluations"]] == [16, 32]
+
+    config_file = config_path(paths.runs_dir / "snake" / "form")
+    text = config_file.read_text()
+    config_file.write_text(text[: text.index("[evaluation]")])  # as written before the section existed
+    assert client.get("/api/runs/form").json()["config"]["evaluation"]["interval"] == 0
+    assert client.post("/api/runs/form/resume", json={"total_env_steps": 48}).status_code == 200
+    detail = wait_until_done(client, "form")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert len(detail["evaluations"]) == 2  # evaluation off for the resumed part
