@@ -373,6 +373,11 @@ input[type="range"] { accent-color: var(--accent); }
 .compare-item input { width: 16px; height: 16px; }
 .compare-item label { display: flex; flex-direction: column; min-width: 0; cursor: pointer; }
 .compare-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 13px; }
+.compare-runs { list-style: none; margin: 0; padding: 0; }
+.compare-group > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 4px; font-weight: 600; background: var(--surface-2); border-radius: 6px; }
+.compare-group > summary input { width: 16px; height: 16px; }
+.compare-group + .compare-group { margin-top: 8px; }
+tr.group-row th { background: var(--surface-2); color: var(--text); }
 
 /* ---------- descriptions, history and lineage ---------- */
 

@@ -507,6 +507,7 @@ def test_compare_runs(client: TestClient, paths: AppPaths):
     assert [run["name"] for run in body["runs"]] == ["a", "b"]
     assert all(run["parameters"] > 0 and run["metrics"] == [] for run in body["runs"])
     assert body["game"] == "snake"
+    assert [run["kind"] for run in body["runs"]] == ["transformer", "cnn"]  # the Compare tab groups by it
     differing = {(d["section"], d["field"]): d["values"] for d in body["differences"]}
     assert differing[("model", "kind")] == {"a": "transformer", "b": "cnn"}
     assert differing[("train", "learning_rate")] == {"a": 2.5e-4, "b": 1e-3}
