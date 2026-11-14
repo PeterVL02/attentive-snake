@@ -226,3 +226,27 @@ def test_jepa_trains_resumes_and_forks_through_the_script(tmp_path):
     assert forked.returncode == 0, forked.stderr
     refused = train("--run-dir", tmp_path / "other", "--fork", run_dir, "--set", "model.num_layers=2")
     assert refused.returncode != 0 and "model.num_layers" in refused.stderr
+
+
+@pytest.mark.parametrize("coefficient", [1.0, 0.0])
+def test_ppo_trains_the_prediction_loss_from_the_rollout_only_when_it_is_on(coefficient):
+    config = experiment_from_tables({
+        "game": {"width": 4, "height": 4, "max_steps_without_food": 8},
+        "model": {"kind": "jepa", "d_model": 8, "num_layers": 1, "conv_channels": 4, "conv_layers": 1, "prediction_coef": coefficient},
+        "train": {"total_env_steps": 64, "device": "cpu", "log_interval": 32},
+        "ppo": {"rollout_length": 8, "num_epochs": 1, "num_minibatches": 2},
+        "env": {"num_envs": 4},
+    })
+    env = make_vec_env(config)
+    trainer = make_trainer(config, make_policy(config, env), env, NullLogger())
+    records = trainer.train()
+    buffer = trainer.learner._buffer
+    if coefficient:
+        assert {"prediction_loss", "embedding_std"} <= set(records[-1]) and set(trainer.learner.extra_state()) == {STATE_KEY}
+        assert buffer.next_observations is not None
+        # where an episode ended the next observation is its final one, elsewhere the following observation
+        not_done = buffer.dones[:-1] == 0
+        assert torch.equal(buffer.next_observations[:-1][not_done], buffer.observations[1:][not_done])
+    else:
+        assert not {"prediction_loss", "embedding_std"} & set().union(*records) and trainer.learner.extra_state() == {}
+        assert buffer.next_observations is None
