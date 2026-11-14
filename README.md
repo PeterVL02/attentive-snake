@@ -47,12 +47,12 @@ as solved; the default does not get there (see Caveats).
 | Tab | What it is for |
 |---|---|
 | **New training** | Pick a model, fill in its settings (each with a description), choose the board, reward scheme and training settings, add an optional description, and start a run. The state representation (history length, past actions) is pre-set from the chosen model. |
-| **Runs** | Live status, score chart, log, config and history (descriptions, where a run was continued from) of a run. Stop it, resume it with an optional new step total and description, or **continue with changes**: a new run under a new name that starts from a chosen checkpoint with edited rewards and training settings. Open any checkpoint in the watch tab. |
+| **Runs** | Live status, score chart, log, config and history (descriptions, where a run was continued from) of a run. Its **evaluations** (see below): the latest one's statistics, a chart of any evaluation metric, and "Run evaluation now" for any checkpoint. Stop it, resume it with an optional new step total and description, or **continue with changes**: a new run under a new name that starts from a chosen checkpoint with edited rewards and training settings. Open any checkpoint in the watch tab. |
 | **Architecture** | Diagram, text tree and parameter count for the config in the form or for an existing run. |
 | **Watch & attention** | Watch a checkpoint play. Board games show the attention heatmap over the board; picture games such as Lunar Lander show the frame with attention bars per input number. |
 | **Rewards** | Create and edit named reward schemes, with a live table of what a scheme pays in each situation. |
 | **CLI cheat sheet** | The contents of [docs/CLI.md](docs/CLI.md). |
-| **Compare** | Plot the score curves of several runs on one chart, with their descriptions, and list the config fields that differ. |
+| **Compare** | Plot the score curves or an evaluation metric of several runs on one chart, with their descriptions and latest/best evaluation numbers, and list the config fields that differ. |
 
 Everything the app does is also available from the terminal: see the
 [CLI cheat sheet](docs/CLI.md) for playing the game yourself, training,
@@ -95,7 +95,7 @@ it is (a config without it is a Snake config).
   exactly those. Choosing a scheme for a run copies its values into the run;
   editing the scheme later does not change existing runs.
 - Each run lives in `runs/<game>/<name>/` with its resolved `config.toml`, checkpoints,
-  `metrics.jsonl`, `run.json` (history of starts, resumes and forks, with
+  `metrics.jsonl`, `evaluations.jsonl` (if it was evaluated), `run.json` (history of starts, resumes and forks, with
   descriptions), `train.log` (when started from the app) and `model.html`.
   `runs/` is not tracked by git. Runs from before there were several games sit
   in `runs/<name>/`; `uv run python scripts/migrate_runs.py` moves them to
@@ -103,6 +103,30 @@ it is (a config without it is a Snake config).
 - `train.keep_checkpoints = false` (`--no-keep-checkpoints`, or the checkbox in
   the app) keeps only a run's latest checkpoint to save disk space; older
   checkpoints are deleted and can no longer be watched or continued from.
+
+## Evaluation
+
+The training curve comes from the exploring policy (it samples its actions). An
+**evaluation** shows what the model can do: it plays complete games always taking
+its most likely action, on games of its own (a fixed seed, separate from
+training), and reports statistics per game:
+
+| Game | Its own statistics (plus scores, episode lengths, returns and how games ended) |
+|---|---|
+| Snake | win rate; mean and median steps to win (won games only); mean and median steps between apples (from the start or the previous apple to each apple; the steps after a game's last apple do not count) |
+| Lunar Lander | landing, crash, fly-off and timeout rates; mean steps to land (landed games only) |
+
+A statistic that cannot be computed (steps to win when no game was won) is N/A.
+
+- **While training:** `[evaluation] interval` (env steps, 0 = off; on by default in
+  `configs/<game>/default.toml`, off for runs whose config predates it), `games` and
+  `seed`. Each evaluation saves a checkpoint at that step and appends one line to
+  `runs/<game>/<name>/evaluations.jsonl`. Evaluating does not change training: a run
+  with evaluation ends with exactly the same weights as one without.
+- **Afterwards:** `uv run python scripts/evaluate.py runs/snake/8x8 [--checkpoint FILE]
+  [--games X] [--seed S] [--save]`, or "Run evaluation now" in the Runs tab. The same
+  checkpoint, number of games and seed give exactly the same numbers, so a recorded
+  evaluation can be reproduced; both say whether the result matches one.
 
 ## Caveats
 
@@ -145,6 +169,18 @@ it is (a config without it is a Snake config).
 - **The time axis in Compare is an estimate** built from recorded steps per
   second; pauses between resumes are not counted.
 - **Runs created before `metrics.jsonl` existed have no score chart.**
+- **Evaluations reproduce exactly only on the same device.** GPU and CPU (and
+  different GPUs) can differ in the last bits of a result, which now and then
+  changes a greedy action. Evaluations record their device; a check on another
+  device says so when the numbers differ.
+- **`keep_checkpoints = false` makes older evaluations irreproducible.** Each
+  evaluation saves a checkpoint, but the next save deletes it. The Runs tab marks
+  such evaluations "(deleted)"; keep checkpoints if you want to re-check them.
+- **An evaluation is a sample.** 100 games give a win rate to within a few
+  percentage points; compare checkpoints with the same seed and number of games.
+- **Evaluation games have a step cap** (`evaluation.max_episode_steps`, default
+  10,000): a game still going then (a Snake without a starvation limit circling
+  forever) ends with the outcome `step_limit`.
 
 ## Development
 

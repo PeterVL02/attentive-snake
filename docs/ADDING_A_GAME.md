@@ -46,7 +46,7 @@ GAME = GameSpec(
     locked_rules={},                  # {rules field: reason} a fork must keep
     reward_table=None,                # optional (reward, example_score) -> rows
     observation_labels=("x", "y", ...),  # optional, vector games: a name per number of a frame
-    episode_metrics=None,             # extension point for issue #4; leave None
+    episode_metrics=LANDER_METRICS,   # optional: the game's own evaluation statistics (section 6)
 )
 ```
 
@@ -59,7 +59,7 @@ GAME = GameSpec(
 | `locked_rules` | Rules that change the observation's shape or meaning (Snake: `width`, `height`, `initial_length`). A continued run (fork) must keep them; `game.name`, all of `[model]`, `env.history_length` and `env.history_actions` are always locked. |
 | `observation_labels` | Vector games only, optional: one short name per number of one frame, in order (Lunar Lander: `x`, `y`, `vx`, ...). Shown next to the attention over the numbers (`WatchSession.info["element_names"]`); without it they are called `number 0`, `number 1`, .... The registry builds one default env to check the count. |
 | `reward_table` | What a scheme pays in typical situations, for the app's Rewards tab: rows `{"situation": str, "reward": float, "breakdown": {term: float}}`. `None`: no preview (`/api/rewards/preview` answers 404). |
-| `episode_metrics` | Reserved for per-game evaluation statistics (steps to win, steps between apples, ...): `(finished EpisodeSummary list) -> {metric: float}`. Nothing calls it yet. |
+| `episode_metrics` | Optional `GameMetrics`: the game's own evaluation statistics on top of the generic ones (section 6). `None`: only the generic ones. |
 
 The registry checks the spec when it scans (`games/validation.py`) and raises
 `GameRegistryError` naming the package if anything is missing or wrong, including an
@@ -123,7 +123,7 @@ class LanderRules:
 ```
 
 `configs/<name>/default.toml` must name the game and list every field of `[game]`,
-`[model]`, `[train]` and `[env]` (fields that default to `None` are commented out,
+`[model]`, `[train]`, `[env]` and `[evaluation]` (fields that default to `None` are commented out,
 TOML has no null), but no `[reward]` section:
 
 ```toml
@@ -173,10 +173,58 @@ observation's `(H, W)` attention for grid observations, else `null`),
 order of `observation_labels`, else `null`), `caption`, `episode`. A kind's
 `attention_view` of `"grid"` or `"frames"` means element weights on a vector game.
 
-## 6. Check it
+## 6. Evaluation statistics (`episode_metrics.py`)
+
+An evaluation (while training every `[evaluation] interval` env steps, or afterwards with
+`scripts/evaluate.py` or the app) plays complete games with the model's most likely action
+and turns each game into an `EpisodeRecord`:
+
+```python
+@dataclass(frozen=True)
+class EpisodeRecord:
+    score: float               # the game's score at the end
+    length: int                # steps played
+    total_reward: float
+    outcome: str               # the last step's event, or "step_limit" if the evaluator's cap stopped it
+    events: tuple[str, ...]    # the event of every step, in order (len == length)
+```
+
+Every game gets the generic statistics (`evaluation/generic_statistics.py`): `games`,
+`mean_score`, `median_score`, `min_score`, `max_score`, `mean_length`, `mean_return`, and a
+count per outcome. A game adds its own with a `GameMetrics`:
+
+```python
+from attentive_snake.episode_metrics import GameMetrics, MetricDefinition, mean, rate
+
+DEFINITIONS = (
+    MetricDefinition("landing_rate", "landing rate", "Share of games that ended landed.", True, "rate"),
+    MetricDefinition("mean_steps_to_land", "mean steps to land", "Average length of landed games (N/A when none landed).", False, unit="steps"),
+)
+
+def lander_statistics(records):        # pure; called with at least one record
+    landed = [r.length for r in records if r.outcome == "landed"]
+    return {"landing_rate": rate(len(landed), len(records)), "mean_steps_to_land": mean(landed)}
+
+LANDER_METRICS = GameMetrics(definitions=DEFINITIONS, compute=lander_statistics)
+```
+
+`MetricDefinition(key, label, description, higher_is_better=True, format="number", unit="")`:
+`key` uses `a-z0-9_` and must not be a generic key; `higher_is_better` is `True`, `False` or
+`None` (neither); `format` is `"rate"` (a fraction shown as a percentage), `"integer"` or
+`"number"`. The function returns exactly one value per definition; a value that cannot be
+computed (a mean over no games) is `None`, shown as N/A, never 0. `mean`, `median` and `rate`
+in `episode_metrics.py` already return `None` for nothing. The app and the CLI label, format
+and chart the statistics from the definitions alone. See `games/snake/metrics.py` (win rate,
+steps to win, steps between apples) and `games/lunar_lander/metrics.py`.
+
+A game without a time limit of its own is still safe to evaluate: the evaluator stops a game
+after `[evaluation] max_episode_steps` steps with the outcome `step_limit`.
+
+## 7. Check it
 
 ```bash
 uv run pytest -q
 uv run python scripts/train.py --game <name> --run-dir runs/<name>/try --steps 20000
 uv run python scripts/watch.py runs/<name>/try
+uv run python scripts/evaluate.py runs/<name>/try --games 20
 ```
