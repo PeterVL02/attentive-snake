@@ -47,7 +47,7 @@ def test_unknown_key_in_a_scheme_file_is_an_error(tmp_path) -> None:
 
 
 def test_shipped_starter_schemes() -> None:
-    assert list_schemes(SHIPPED) == ["big_win", "default", "distance_shaping"]
+    assert {"big_win", "default", "distance_shaping"} <= set(list_schemes(SHIPPED))  # user-added schemes are fine
     assert load_scheme(SHIPPED, "default") == RewardConfig()
     big = load_scheme(SHIPPED, "big_win")
     assert big.win > RewardConfig().win and big.food_growth > 0
