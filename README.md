@@ -117,8 +117,13 @@ per step.
 In one test (one seed each, CPU, 500k env steps on Lunar Lander with the default
 `mlp`): DQN with its defaults reached a greedy evaluation mean score of 203 (41
 of 50 games landed) in under 3 minutes; PPO with its defaults and the same
-budget ended at -29 (it needs its full 2M steps). See the Caveats for what this
-does and does not say.
+budget ended at -29 (it needs its full 2M steps). On a 6x6 Snake board with
+the `cnn` kind and 1M env steps, DQN with its defaults reached a greedy mean
+score of 29.3 with 62 % of 50 games won; PPO with its defaults and the same
+budget reached 13.1 with none won. DQN was much slower per env step there,
+though (about 600 steps/s against about 5,000 on the same CPU: 27 minutes
+against 3), because every step of the 16 games is followed by four gradient
+steps. See the Caveats for what this does and does not say.
 
 ## Configs and runs
 
