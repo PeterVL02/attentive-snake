@@ -48,6 +48,9 @@ class GameSpec:
             order (Lunar Lander: ``"x"``, ``"y"``, ...), one per element of
             ``GameEnv.observation_shape``; shown next to the attention over them. ``None``:
             no names (displays number them). Only for ``observation_kind == "vector"``.
+        action_labels: Optional names of the actions, in action-index order (Snake: ``"up"``,
+            ...), one per action of ``GameEnv.num_actions``; shown next to the action
+            probabilities or Q-values when watching. ``None``: ``"action 0"``, ...
         episode_metrics: Optional ``GameMetrics`` (``attentive_snake.episode_metrics``): the
             game's own evaluation statistics (Snake: win rate, steps to win, steps between
             apples), computed from ``EpisodeRecord``s on top of the generic ones every game
@@ -66,3 +69,4 @@ class GameSpec:
     reward_table: RewardTable | None = None
     observation_labels: tuple[str, ...] | None = None
     episode_metrics: GameMetrics | None = None
+    action_labels: tuple[str, ...] | None = None

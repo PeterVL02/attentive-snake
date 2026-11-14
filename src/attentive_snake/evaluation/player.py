@@ -1,4 +1,4 @@
-"""Playing N complete games with a policy's most likely action at every step, batched over parallel environments.
+"""Playing N complete games with a policy's greedy action at every step (most likely action, or highest Q-value), batched over parallel environments.
 
 Game ``k`` (0-based) starts with ``reset(seed=env_seed(settings.seed, k))`` on whichever of
 the ``parallel_games`` environments is free; environments are taken in a fixed order and
@@ -17,6 +17,7 @@ from attentive_snake.env.types import SingleEnv
 from attentive_snake.env.vec_env import env_seed
 from attentive_snake.episode_metrics import STEP_LIMIT, EpisodeRecord
 from attentive_snake.evaluation.settings import EvalSettings
+from attentive_snake.models.acting import greedy_actions
 
 type EnvFactory = Callable[[], SingleEnv]
 type Progress = Callable[[int, int], None]  # (games finished, games in total)
@@ -67,7 +68,7 @@ def _play(policy: nn.Module, envs: list[SingleEnv], settings: EvalSettings, prog
     while any(slot is not None for slot in slots):
         active = [i for i, slot in enumerate(slots) if slot is not None]
         observations = torch.as_tensor(np.stack([slots[i].observation for i in active]), dtype=torch.float32, device=device)
-        actions = policy(observations).logits.argmax(dim=-1).tolist()
+        actions = greedy_actions(policy(observations)).tolist()
         for i, action in zip(active, actions):
             game, step = slots[i], envs[i].step(int(action))
             game.observation, game.score = step.observation, float(step.score)

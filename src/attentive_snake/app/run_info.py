@@ -3,7 +3,7 @@
 import dataclasses
 from pathlib import Path
 
-from attentive_snake.app.config_json import dataclass_to_json
+from attentive_snake.app.config_json import dataclass_to_json, experiment_to_json
 from attentive_snake.config import load_experiment
 from attentive_snake.run_dir import config_path, list_checkpoints, metrics_path
 from attentive_snake.run_metadata import event_to_json, latest_description, lineage, read_events
@@ -28,18 +28,28 @@ def metrics(run_dir: Path) -> list[dict]:
     return read_metrics(path) if path.is_file() else []
 
 
-def config_summary(run_dir: Path) -> dict:
-    """Game, model kind, game rules (every ``[game]`` field but ``name``) and training target from config.toml.
+def config_json(run_dir: Path) -> dict | None:
+    """The run's config.toml as JSON tables, or ``None`` if it cannot be read (``config_summary`` says why)."""
+    try:
+        return experiment_to_json(load_experiment(config_path(run_dir)))
+    except (OSError, ValueError, TypeError):
+        return None
 
-    All values are ``None`` if the config cannot be read.
+
+def config_summary(run_dir: Path) -> dict:
+    """Game, model kind, algorithm, game rules (every ``[game]`` field but ``name``) and training target from config.toml.
+
+    All values are ``None`` if the config cannot be read; ``config_error`` then says why (else ``None``).
     """
     try:
         config = load_experiment(config_path(run_dir))
-    except (OSError, ValueError, TypeError):
-        return {"game": None, "kind": None, "rules": None, "total_env_steps": None}
+    except (OSError, ValueError, TypeError) as error:
+        return {"game": None, "kind": None, "algorithm": None, "rules": None, "total_env_steps": None, "config_error": str(error)}
     return {
         "game": config.game_name,
         "kind": config.model.kind,
+        "algorithm": config.train.algorithm,
+        "config_error": None,
         "rules": dataclass_to_json(config.game),
         "total_env_steps": config.train.total_env_steps,
     }

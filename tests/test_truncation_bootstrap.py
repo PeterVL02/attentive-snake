@@ -19,9 +19,9 @@ from attentive_snake.env.types import VecEnvStep
 from attentive_snake.env.vec_env import SyncVecEnv
 from attentive_snake.models.types import PolicyOutput
 from attentive_snake.training import TrainConfig
-from attentive_snake.training.collector import RolloutCollector
-from attentive_snake.training.rollout import RolloutBuffer, compute_gae
-from attentive_snake.training.truncation import TruncationBootstrap, truncated_envs
+from attentive_snake.training.ppo.collector import RolloutCollector
+from attentive_snake.training.ppo.rollout import RolloutBuffer, compute_gae
+from attentive_snake.training.ppo.truncation import TruncationBootstrap, truncated_envs
 from dummy_games.walk import WalkEnv, WalkReward, WalkRules
 from test_flag_off_reference import TABLES, short_training
 

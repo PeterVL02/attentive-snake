@@ -1,7 +1,7 @@
 """One vector per frame, attention across frames (``kind = "frame_attention"``).
 
 Children of ``self.net``, in order:
-frame_encoder -> [action_embed] -> temporal -> cls -> blocks -> norm -> pool -> {policy_head, value_head}
+frame_encoder -> [action_embed] -> temporal -> cls -> blocks -> norm -> pool -> head (policy_head + value_head, or q_head: models.heads)
 
 ``frame_encoder`` (shared by all frames) encodes each frame's game channels into one
 ``d_model`` vector (``FRAME_STAGES``: convolutions + flatten readout for grids, an MLP +

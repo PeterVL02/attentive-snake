@@ -46,6 +46,7 @@ GAME = GameSpec(
     locked_rules={},                  # {rules field: reason} a fork must keep
     reward_table=None,                # optional (reward, example_score) -> rows
     observation_labels=("x", "y", ...),  # optional, vector games: a name per number of a frame
+    action_labels=("nothing", "left engine", ...),  # optional: a name per action
     episode_metrics=LANDER_METRICS,   # optional: the game's own evaluation statistics (section 6)
 )
 ```
@@ -57,6 +58,7 @@ GAME = GameSpec(
 | `rules_type`, `reward_type` | Frozen, flat dataclasses (section 4). |
 | `make_env` | Builds one `GameEnv` (section 3). Called once per parallel env with a derived seed. |
 | `locked_rules` | Rules that change the observation's shape or meaning (Snake: `width`, `height`, `initial_length`). A continued run (fork) must keep them; `game.name`, all of `[model]`, `env.history_length` and `env.history_actions` are always locked. |
+| `action_labels` | Optional: one short name per action, in action-index order (Snake: `up`, `right`, `down`, `left`). Shown next to the action probabilities or Q-values in the Watch tab (`WatchSession.info["action_names"]`); without it `action 0`, .... The registry builds one default env to check the count. |
 | `observation_labels` | Vector games only, optional: one short name per number of one frame, in order (Lunar Lander: `x`, `y`, `vx`, ...). Shown next to the attention over the numbers (`WatchSession.info["element_names"]`); without it they are called `number 0`, `number 1`, .... The registry builds one default env to check the count. |
 | `reward_table` | What a scheme pays in typical situations, for the app's Rewards tab: rows `{"situation": str, "reward": float, "breakdown": {term: float}}`. `None`: no preview (`/api/rewards/preview` answers 404). |
 | `episode_metrics` | Optional `GameMetrics`: the game's own evaluation statistics on top of the generic ones (section 6). `None`: only the generic ones. |
@@ -102,8 +104,9 @@ watches a game resets it first. You get for free:
   images, `num_actions` extra numbers for vectors).
 - `SyncVecEnv` (`env/vec_env.py`): `env.num_envs` copies, auto-reset, per-env seeds
   (`env_seed(seed, i)`), episode return/length/score/outcome tracking.
-- The PPO trainer, checkpoints, resume, fork, metrics, `run.json`, the CLI and the
-  app's backend.
+- Both training algorithms (PPO and DQN; DQN takes its next states from
+  `VecEnvStep.final_observations`, so `terminated` / `truncated` must be right),
+  checkpoints, resume, fork, metrics, `run.json`, the CLI and the app's backend.
 
 A Gymnasium game is a thin adapter: `reset` calls `env.reset(seed=seed)`, `step` maps
 `(obs, reward, terminated, truncated, info)` to `EnvStep`, and `view()` renders. Make the
@@ -126,8 +129,11 @@ class LanderRules:
 ```
 
 `configs/<name>/default.toml` must name the game and list every field of `[game]`,
-`[model]`, `[train]`, `[env]` and `[evaluation]` (fields that default to `None` are commented out,
-TOML has no null), but no `[reward]` section:
+`[model]`, `[train]`, `[ppo]` (its `train.algorithm`), `[env]` and `[evaluation]` (fields that
+default to `None` are commented out, TOML has no null), but no `[reward]` section.
+`configs/<name>/algorithms/dqn.toml` must list every `[dqn]` field and may set the shared
+`[train]` / `[env]` values that suit DQN on this game (learning rate, budget, `num_envs`); it is
+laid over default.toml when a run asks for DQN (tests check both files for every game):
 
 ```toml
 [game]
@@ -179,7 +185,8 @@ order of `observation_labels`, else `null`), `caption`, `episode`. A kind's
 ## 6. Evaluation statistics (`episode_metrics.py`)
 
 An evaluation (while training every `[evaluation] interval` env steps, or afterwards with
-`scripts/evaluate.py` or the app) plays complete games with the model's most likely action
+`scripts/evaluate.py` or the app) plays complete games with the model's best action (the most
+likely one, or the highest Q-value)
 and turns each game into an `EpisodeRecord`:
 
 ```python

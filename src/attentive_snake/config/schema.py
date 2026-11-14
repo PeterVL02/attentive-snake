@@ -4,7 +4,9 @@ Field descriptions come from the config dataclasses' ``metadata["help"]``; the
 per-kind facts from ``attentive_snake.models.registry.KIND_INFO``, told for the game's
 observation kind (description, fields that matter, whether the kind is recommended). ``[game]`` and
 ``[reward]`` rows are the chosen game's own fields (``[game] name`` is not a row: it is
-the top-level ``"game"`` of the schema).
+the top-level ``"game"`` of the schema). Every algorithm's section is listed (``"ppo"``,
+``"dqn"``: a UI shows the one ``train.algorithm`` selects), and ``"algorithms"`` tells, per
+algorithm, its label, description, section, policy head and the training metrics it logs.
 """
 
 import dataclasses
@@ -13,19 +15,41 @@ import typing
 from pathlib import Path
 from typing import Any
 
-from attentive_snake.config.experiment import SECTIONS, section_types
+from attentive_snake.config.experiment import SHARED_SECTIONS, section_types
 from attentive_snake.games.registry import DEFAULT_GAME, get_game
 from attentive_snake.models.registry import KIND_INFO, POLICY_KINDS
+from attentive_snake.training.algorithm import Algorithm
+from attentive_snake.training.algorithms import algorithm_names, get_algorithm
+
+_CHOICES = {("ModelConfig", "kind"): POLICY_KINDS, ("TrainConfig", "algorithm"): algorithm_names()}
 
 
 def experiment_schema(game: str = DEFAULT_GAME) -> dict[str, Any]:
-    """``{"game": name, "sections": {section: [field rows]}, "model_kinds": {kind: facts}}``; ``ValueError`` for an unknown game."""
+    """``{"game", "sections": {section: [field rows]}, "model_kinds": {kind: facts}, "algorithms": {name: facts}}``.
+
+    ``ValueError`` for an unknown game.
+    """
     section_classes = section_types(game)
     observation_kind = get_game(game).observation_kind
+    algorithms = {name: get_algorithm(name) for name in algorithm_names()}
     return {
         "game": game,
-        "sections": {section: _field_rows(section_classes[section]) for section in SECTIONS},
+        "sections": {
+            **{section: _field_rows(section_classes[section]) for section in SHARED_SECTIONS},
+            **{name: _field_rows(algorithm.settings_type) for name, algorithm in algorithms.items()},
+        },
         "model_kinds": {kind: _kind_row(kind, observation_kind) for kind in POLICY_KINDS},
+        "algorithms": {name: _algorithm_row(algorithm) for name, algorithm in algorithms.items()},
+    }
+
+
+def _algorithm_row(algorithm: Algorithm) -> dict[str, Any]:
+    return {
+        "label": algorithm.label,
+        "description": algorithm.description,
+        "section": algorithm.name,
+        "head": algorithm.head,
+        "metrics": [dataclasses.asdict(metric) for metric in algorithm.metrics],
     }
 
 
@@ -42,7 +66,7 @@ def _field_row(field: dataclasses.Field, annotation: Any, cls: type) -> dict[str
         "default": default.as_posix() if isinstance(default, Path) else default,
         "nullable": _is_nullable(annotation),
         "description": field.metadata["help"],
-        "choices": list(POLICY_KINDS) if (cls.__name__, field.name) == ("ModelConfig", "kind") else None,
+        "choices": list(_CHOICES[cls.__name__, field.name]) if (cls.__name__, field.name) in _CHOICES else None,
     }
 
 

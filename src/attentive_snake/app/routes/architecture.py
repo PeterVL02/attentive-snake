@@ -26,6 +26,7 @@ def make_router(paths: AppPaths) -> APIRouter:
     @router.get("/runs/{name}/architecture")
     def for_run(name: str, game: GameParam = DEFAULT_GAME) -> dict:
         run_dir = existing_run_dir(paths.runs_dir, game, name)
-        return describe_architecture(load_experiment(config_path(run_dir)))
+        with invalid_input_as_422():  # e.g. a config.toml this version cannot read
+            return describe_architecture(load_experiment(config_path(run_dir)))
 
     return router

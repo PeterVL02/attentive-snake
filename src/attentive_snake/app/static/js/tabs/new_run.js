@@ -1,6 +1,7 @@
 // Tab 1: configure and start a new training run of the selected game.
 
 import { ApiError, get, post } from "../api.js";
+import { algorithmPicker } from "../algorithm_picker.js";
 import { navigate, provide } from "../bus.js";
 import { debounce, formatSteps, h, message, replace } from "../dom.js";
 import { attachServerError, descriptionField, fieldControl, readFields } from "../fields.js";
@@ -8,19 +9,19 @@ import { currentGame, gameUrl } from "../game.js";
 import { modelPicker } from "../model_picker.js";
 import { rewardTable } from "../reward_table.js";
 import { boardSize, rulesSummary } from "../rules_summary.js";
-import { loadSchema } from "../schema.js";
+import { loadAlgorithmDefaults, loadSchema } from "../schema.js";
 
 const COMMON_TRAIN = [
   ["train", "total_env_steps"],
   ["env", "num_envs"],
   ["train", "learning_rate"],
   ["train", "anneal_lr"],
-  ["train", "entropy_coef"],
   ["train", "seed"],
   ["train", "device"],
   ["train", "keep_checkpoints"],
 ];
-const HIDDEN = new Set(["train.checkpoint_dir", "model.kind"]); // set by the app / by the kind dropdown
+const HIDDEN = new Set(["train.checkpoint_dir", "model.kind", "train.algorithm"]); // set by the app / by the kind and algorithm dropdowns
+const ALGORITHM_SHARED = ["env.num_envs"]; // shared settings outside [train] that an algorithm's defaults may set
 const STATE_FIELDS = ["history_length", "history_actions"];
 const DEFAULT_SCHEME = "default"; // configs/<game>/rewards/default.toml: the single source of the default reward values
 const BUILT_IN = ""; // option value used only when no scheme can be listed: the code defaults (same values)
@@ -31,6 +32,9 @@ let schema;
 let defaults;
 let widgets = {}; // "section.name" -> widget
 let picker;
+let algorithms; // the algorithm dropdown
+let algorithmPanels = {}; // algorithm -> its settings panel
+let algorithmToken = 0; // a defaults load that finds it changed (newer switch, other game) is dropped
 let modelFields;
 let explain;
 let nameWidget;
@@ -46,7 +50,7 @@ let summary;
 function sectionWidgets(section, names) {
   return names.map((name) => {
     const spec = schema.sections[section].find((f) => f.name === name);
-    const widget = fieldControl(spec, defaults[section][name]);
+    const widget = fieldControl(spec, defaults[section]?.[name] ?? spec.default);
     widgets[`${section}.${name}`] = widget;
     widget.onChange(updateSummary);
     return widget;
@@ -123,22 +127,52 @@ function gameRules() {
 
 function suggestedName() {
   const size = boardSize(gameRules());
-  return size ? `${picker.value()}-${size[0]}x${size[1]}` : picker.value();
+  const algorithm = algorithms.value() === defaults.train.algorithm ? "" : `-${algorithms.value()}`;
+  return size ? `${picker.value()}${algorithm}-${size[0]}x${size[1]}` : `${picker.value()}${algorithm}`;
 }
 
 function updateSummary() {
   if (!nameEdited) nameWidget.set(suggestedName());
   const steps = widgets["train.total_env_steps"].get().value;
-  summary.textContent = `${picker.value()} on ${game.title} (${rulesSummary(gameRules())}) for ${formatSteps(steps)} env steps.`;
+  const label = schema.algorithms[algorithms.value()].label;
+  summary.textContent = `${picker.value()} trained with ${label} on ${game.title} (${rulesSummary(gameRules())}) for ${formatSteps(steps)} env steps.`;
+}
+
+function showAlgorithmPanel() {
+  for (const [name, panelEl] of Object.entries(algorithmPanels)) panelEl.hidden = name !== algorithms.value();
+}
+
+/** Show the chosen algorithm's settings and fill them, [train] and num_envs with the game's defaults for it. */
+async function onAlgorithmChange() {
+  const token = ++algorithmToken;
+  const algorithm = algorithms.value();
+  showAlgorithmPanel();
+  updateSummary();
+  let values;
+  try {
+    values = algorithm === defaults.train.algorithm ? defaults : await loadAlgorithmDefaults(game.name, algorithm);
+  } catch (error) {
+    if (token === algorithmToken) message(formError, "error", `Could not load the ${algorithm} defaults: ${error.message}`);
+    return;
+  }
+  if (token !== algorithmToken) return;
+  for (const [key, widget] of Object.entries(widgets)) {
+    const [section, name] = key.split(".");
+    const applies = section === "train" || section === algorithm || ALGORITHM_SHARED.includes(key);
+    if (applies && values[section] && name in values[section]) widget.set(values[section][name]);
+  }
+  updateSummary();
 }
 
 /** The form as experiment tables: {tables, errors}; field errors are shown inline. Null while loading. */
 function currentTables() {
   if (!game) return null;
-  const tables = { game: { name: game.name }, model: { kind: picker.value() }, train: {}, env: {}, evaluation: {} };
+  const algorithm = algorithms.value();
+  const tables = { game: { name: game.name }, model: { kind: picker.value() }, train: { algorithm }, [algorithm]: {}, env: {}, evaluation: {} };
   let errors = 0;
   for (const [key, widget] of Object.entries(widgets)) {
     const [section, name] = key.split(".");
+    if (!(section in tables)) continue; // another algorithm's settings
     const result = readFields([widget]);
     errors += result.errors;
     if (!result.errors) tables[section][name] = result.values[name];
@@ -246,12 +280,25 @@ function build() {
 
   const gameWidgets = sectionWidgets("game", schema.sections.game.map((f) => f.name));
 
+  algorithms = algorithmPicker(schema.algorithms);
+  algorithms.set(defaults.train.algorithm);
+  algorithms.onChange(onAlgorithmChange);
   const common = COMMON_TRAIN.flatMap(([section, name]) => sectionWidgets(section, [name]));
   const commonKeys = new Set(COMMON_TRAIN.map(([s, n]) => `${s}.${n}`));
   const advanced = [
     ...sectionWidgets("train", schema.sections.train.map((f) => f.name).filter((n) => !commonKeys.has(`train.${n}`) && !HIDDEN.has(`train.${n}`))),
     ...sectionWidgets("env", schema.sections.env.map((f) => f.name).filter((n) => !commonKeys.has(`env.${n}`) && !STATE_FIELDS.includes(n))),
   ];
+  algorithmPanels = Object.fromEntries(
+    Object.entries(schema.algorithms).map(([name, info]) => [
+      name,
+      panel(
+        `${info.label} settings`,
+        h("p", { class: "muted small", text: `The [${info.section}] section: only used when training with ${info.label}.` }),
+        h("div", { class: "fields" }, sectionWidgets(info.section, schema.sections[info.section].map((f) => f.name)).map((w) => w.el)),
+      ),
+    ]),
+  );
 
   const evaluationWidgets = sectionWidgets("evaluation", schema.sections.evaluation.map((f) => f.name));
 
@@ -282,12 +329,15 @@ function build() {
     ),
     panel(
       "Training",
+      algorithms.el,
+      h("p", { class: "muted small", text: "Settings every algorithm shares. Changing the algorithm fills them, num_envs and its own settings with this game's defaults for it." }),
       h("div", { class: "fields" }, common.map((w) => w.el)),
       h("details", { class: "advanced" }, h("summary", { text: "Advanced" }), h("div", { class: "fields" }, advanced.map((w) => w.el))),
     ),
+    ...Object.values(algorithmPanels),
     panel(
       "Evaluation",
-      h("p", { class: "muted small", text: `Every so often the run plays complete games without exploration (always its most likely action), saves a checkpoint and records ${game.title}'s statistics in runs/${game.name}/<name>/evaluations.jsonl. The Runs tab charts them and can reproduce them later.` }),
+      h("p", { class: "muted small", text: `Every so often the run plays complete games without exploration (always its best action: the most likely one, or the highest Q-value), saves a checkpoint and records ${game.title}'s statistics in runs/${game.name}/<name>/evaluations.jsonl. The Runs tab charts them and can reproduce them later.` }),
       h("div", { class: "fields" }, evaluationWidgets.map((w) => w.el)),
     ),
   );
@@ -308,6 +358,7 @@ function build() {
     h("p", { class: "lead", text: `Pick a model, adjust what you need and start. Every field shows its default; the run's full config is saved to runs/${game.name}/<name>/config.toml.` }),
     h("div", { class: "columns" }, left, right),
   );
+  showAlgorithmPanel();
   onKindChange();
   // Keep the loaded defaults for history even if they differ from the kind's recommendation.
   widgets["env.history_length"].set(defaults.env.history_length);
@@ -321,6 +372,7 @@ async function load() {
   const target = currentGame();
   game = null;
   modelFields = null;
+  algorithmToken += 1;
   replace(root, h("div", { class: "empty", text: `Loading the ${target.title} config schema…` }));
   let loaded;
   try {

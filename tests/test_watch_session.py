@@ -4,12 +4,13 @@ import sys
 import pytest
 
 from attentive_snake.config import EnvConfig, ExperimentConfig, save_experiment
-from attentive_snake.factory import make_policy, make_vec_env
+from attentive_snake.factory import make_policy, make_vec_env, make_trainer
 from attentive_snake.games.snake.config import SnakeConfig
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.registry import KIND_INFO, POLICY_KINDS
 from attentive_snake.run_dir import config_path
-from attentive_snake.training import NullLogger, TrainConfig, Trainer
+from attentive_snake.training import NullLogger, TrainConfig
+from attentive_snake.training.ppo.config import PpoConfig
 from attentive_snake.watch import WatchFrame, WatchSession
 
 
@@ -18,12 +19,13 @@ def make_run(run_dir, kind: str, history: int = 1, actions: bool = False) -> Exp
     config = ExperimentConfig(
         game=SnakeConfig(width=5, height=5, max_steps_without_food=30),
         model=ModelConfig(kind=kind, d_model=16, num_heads=2, num_layers=2, conv_channels=8, conv_layers=2),
-        train=TrainConfig(total_env_steps=32, rollout_length=8, num_minibatches=2, checkpoint_dir=run_dir, device="cpu"),
+        train=TrainConfig(total_env_steps=32, checkpoint_dir=run_dir, device="cpu"),
+        algorithm_settings=PpoConfig(rollout_length=8, num_minibatches=2),
         env=EnvConfig(num_envs=2, history_length=history, history_actions=actions),
     )
     save_experiment(config, config_path(run_dir))
     env = make_vec_env(config)
-    Trainer(make_policy(config, env), env, config.train, NullLogger()).train()
+    make_trainer(config, make_policy(config, env), env, NullLogger()).train()
     return config
 
 
@@ -85,6 +87,11 @@ def test_episode_flow_reset_done_and_auto_restart(runs) -> None:
     assert frames[i].event in {"hit_wall", "hit_self", "starved", "won"}
     assert frames[i].episode == 1
     assert frames[i + 1].steps == 1 and not frames[i + 1].done and frames[i + 1].episode == 1  # new episode started
+    # What the network says about each action of the observation the next action is chosen from.
+    assert session.info["algorithm"] == "ppo" and session.info["action_names"] == ["up", "right", "down", "left"]
+    values = first.action_values
+    assert values["kind"] == "probabilities" and len(values["values"]) == 4 and isinstance(values["state_value"], float)
+    assert abs(sum(values["values"]) - 1.0) < 1e-5 and frames[i].action_values is None  # nothing is chosen after the end
 
 
 def test_info_for_temporal_and_options_validation(runs) -> None:
@@ -128,3 +135,36 @@ def test_session_does_not_import_pygame() -> None:
 
     code = "import sys, attentive_snake.watch; sys.exit('pygame' in sys.modules)"
     assert subprocess.run([sys.executable, "-c", code]).returncode == 0
+
+
+@pytest.mark.parametrize("kind", ["transformer", "cnn"])
+def test_a_dqn_run_is_watched_and_evaluated_greedily_with_q_values(tmp_path, kind: str) -> None:
+    from attentive_snake.evaluation.checkpoint_evaluation import evaluate_checkpoint
+    from attentive_snake.evaluation.settings import EvalSettings
+    from attentive_snake.training import latest_checkpoint
+    from attentive_snake.training.dqn.config import DqnConfig
+
+    run_dir = tmp_path / kind
+    config = ExperimentConfig(
+        game=SnakeConfig(width=5, height=5, max_steps_without_food=30),
+        model=ModelConfig(kind=kind, d_model=16, num_heads=2, num_layers=1, conv_channels=8, conv_layers=1),
+        train=TrainConfig(algorithm="dqn", total_env_steps=48, checkpoint_dir=run_dir, device="cpu"),
+        algorithm_settings=DqnConfig(buffer_size=64, batch_size=4, learning_starts=8),
+        env=EnvConfig(num_envs=2),
+    )
+    save_experiment(config, config_path(run_dir))
+    env = make_vec_env(config)
+    make_trainer(config, make_policy(config, env), env, NullLogger()).train()
+
+    session = WatchSession(run_dir, seed=0, sample=True)  # sampling plays greedily: Q-values are no distribution
+    assert session.info["algorithm"] == "dqn"
+    frames = [session.current(), *run_frames(session, 20)]
+    readout = frames[0].action_values
+    assert readout["kind"] == "q_values" and readout["state_value"] is None and len(readout["values"]) == 4
+    assert all(f.action_values is None for f in frames if f.done)
+    if kind == "transformer":
+        assert frames[0].heatmap is not None  # attention works the same with the Q-value head
+    settings = EvalSettings(games=3, seed=1, max_episode_steps=50, parallel_games=2, device="cpu")
+    first = evaluate_checkpoint(run_dir, latest_checkpoint(run_dir), settings)
+    assert first.statistics["games"] == 3
+    assert evaluate_checkpoint(run_dir, latest_checkpoint(run_dir), settings).statistics == first.statistics

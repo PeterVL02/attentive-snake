@@ -5,6 +5,7 @@ from collections.abc import Callable
 from torch import nn
 
 from attentive_snake.models.config import ModelConfig
+from attentive_snake.models.heads import DEFAULT_HEAD
 from attentive_snake.models.kind_info import CONV_FIELDS, TRANSFORMER_FIELDS, InputReading, KindInfo
 from attentive_snake.models.policies.cnn import CnnPolicy
 from attentive_snake.models.policies.frame_attention import FrameAttentionPolicy
@@ -138,8 +139,10 @@ KIND_INFO: dict[str, KindInfo] = {
 }
 
 
-def build_policy(config: ModelConfig, observation_spec: ObservationSpec, num_actions: int) -> nn.Module:
-    """The policy of ``config.kind`` for observations laid out as ``observation_spec``."""
+def build_policy(
+    config: ModelConfig, observation_spec: ObservationSpec, num_actions: int, head: str = DEFAULT_HEAD
+) -> nn.Module:
+    """The policy of ``config.kind`` for observations laid out as ``observation_spec``, ending in ``head`` (``models.heads``)."""
     if config.kind not in _BUILDERS:
         raise ValueError(f"unknown model kind {config.kind!r}; valid kinds: {', '.join(POLICY_KINDS)}")
-    return _BUILDERS[config.kind](config, observation_spec, num_actions)
+    return _BUILDERS[config.kind](config, observation_spec, num_actions, head)

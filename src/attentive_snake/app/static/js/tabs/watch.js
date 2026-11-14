@@ -1,7 +1,9 @@
-// Tab 4: watch a checkpoint of the selected game play, with the attention it pays: a heatmap over a
-// board, weights per history frame, or weights per observation element.
+// Tab 4: watch a checkpoint of the selected game play, with the attention it pays (a heatmap over a
+// board, weights per history frame, or weights per observation element) and what it says about each
+// action (probabilities and state value, or Q-values: whatever the run's head outputs).
 
 import { del, get, post } from "../api.js";
+import { actionValueBars, actionValueNote } from "../action_values.js";
 import { elementWeightBars, frameWeightBars } from "../attention_bars.js";
 import { boardView } from "../board.js";
 import { formatNumber, formatSteps, h, message, replace } from "../dom.js";
@@ -58,7 +60,24 @@ function configureControls(info) {
   els.note.textContent = note;
   showFrames = attention === "weights";
   showElements = expectsElements(info);
-  els.sessionInfo.textContent = `${info.kind} · observation ${info.observation_shape.join("×")} · checkpoint at ${formatSteps(info.env_steps)} env steps`;
+  els.sessionInfo.textContent = `${info.kind} · ${info.algorithm} · observation ${info.observation_shape.join("×")} · checkpoint at ${formatSteps(info.env_steps)} env steps`;
+}
+
+/** Sampling needs a distribution over actions: Q-values have none, so the option is off for such runs. */
+function configureSampling(readout) {
+  const canSample = readout?.kind !== "q_values";
+  els.sample.disabled = !canSample;
+  if (!canSample) els.sample.checked = false;
+  els.sampleText.textContent = canSample ? "sample actions (instead of the most likely one)" : "sample actions (not for Q-values: always the highest)";
+}
+
+function renderActionValues(frame) {
+  const readout = frame.action_values;
+  if (readout) {
+    els.actionTitle.textContent = readout.label;
+    els.actionNote.textContent = actionValueNote(readout);
+  }
+  replace(els.actionValues, actionValueBars(readout, session.info.action_names));
 }
 
 function renderAttention(frame) {
@@ -87,6 +106,7 @@ function render(frames) {
   els.mean.textContent = mean === null ? "–" : `${formatNumber(mean, 2)} (${scores.length})`;
   els.caption.textContent = frame.done ? `Episode over: ${frame.event}, score ${formatNumber(frame.score, 2)}.` : frame.caption || "";
   renderAttention(frame);
+  renderActionValues(frame);
 }
 
 /** Run `fn` against the open session; the result is dropped if the session changed meanwhile. */
@@ -195,6 +215,7 @@ async function load() {
   lastEpisode = 0;
   els.attention.checked = created.info.attention_view !== null;
   configureControls(created.info);
+  configureSampling(created.frame.action_values);
   els.controls.hidden = false;
   render([created.frame]);
   showEvaluation(game, els.run.value, created.info.checkpoint, token);
@@ -253,6 +274,10 @@ export function init(root) {
     note: h("div", { class: "message info", hidden: true }),
     frameWeights: h("div", {}),
     elementWeights: h("div", {}),
+    actionValues: h("div", {}),
+    actionTitle: h("h3", { text: "Actions" }),
+    actionNote: h("p", { class: "muted small" }),
+    sampleText: h("span", { text: "sample actions (instead of the most likely one)" }),
     caption: h("div", { class: "muted small", "aria-live": "polite" }),
     sessionInfo: h("div", { class: "muted small" }),
     evaluation: h("div", { class: "muted small" }),
@@ -297,7 +322,7 @@ export function init(root) {
         h("div", { class: "row" }, els.play, els.step, els.reset),
         h("div", { class: "row" }, h("label", { for: "watch-speed", class: "label", text: "speed" }), els.speed, els.speedLabel),
         h("div", { class: "row" }, h("label", { for: "watch-per-tick", class: "label", text: "steps per update" }), els.perTick),
-        h("label", { class: "row", style: "gap:6px" }, els.sample, "sample actions (instead of the most likely one)"),
+        h("label", { class: "row", style: "gap:6px" }, els.sample, els.sampleText),
         h("label", { class: "row", style: "gap:6px" }, els.attention, "show attention"),
         h("div", { class: "row" }, h("label", { class: "row", style: "gap:6px" }, "layer", els.layer), els.frameField),
         els.note,
@@ -308,6 +333,7 @@ export function init(root) {
         { class: "panel" },
         h("div", { class: "readout", style: "margin-top:0" }, tile("score", els.score), tile("steps", els.steps), tile("episode", els.episode), tile("mean score (n)", els.mean)),
       ),
+      h("div", { class: "panel" }, els.actionTitle, els.actionNote, els.actionValues),
     ),
   );
   replace(
@@ -315,7 +341,7 @@ export function init(root) {
     h("h2", { text: "Watch & attention" }),
     h("p", {
       class: "lead",
-      text: "Play a checkpoint greedily or by sampling. Attention shows what the class token looks at when choosing the next action: orange shading over a board's cells, or bars per history frame or per observation number (scaled so the largest is 1).",
+      text: "Play a checkpoint greedily or by sampling. Next to the game: what the network says about each action (probabilities for PPO runs, Q-values for DQN runs). Attention shows what the class token looks at when choosing the next action: orange shading over a board's cells, or bars per history frame or per observation number (scaled so the largest is 1).",
     }),
     h(
       "div",

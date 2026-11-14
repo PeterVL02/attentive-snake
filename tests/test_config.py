@@ -6,15 +6,20 @@ import pytest
 
 from attentive_snake.config import EnvConfig, ExperimentConfig, load_experiment, save_experiment
 from attentive_snake.config.dataclass_table import dataclass_from_table, dataclass_to_table
-from attentive_snake.config.experiment import SECTIONS, section_types
+from attentive_snake.config.experiment import section_names, section_types
 from attentive_snake.config.experiment_io import experiment_from_tables, experiment_to_tables
-from attentive_snake.config.layout import default_config_path, rewards_dir
+from attentive_snake.config.defaults import default_experiment
+from attentive_snake.config.layout import algorithm_defaults_path, default_config_path, rewards_dir
+from attentive_snake.config.overrides import apply_overrides
 from attentive_snake.config.reward_schemes import load_scheme
 from attentive_snake.games.registry import game_names, get_game
 from attentive_snake.config.toml_writer import format_tables, format_value
 from attentive_snake.games.snake.reward import SnakeRewardConfig
 from attentive_snake.games.snake.config import SnakeConfig
 from attentive_snake.training import TrainConfig
+from attentive_snake.training.algorithms import algorithm_names, get_algorithm
+from attentive_snake.training.dqn.config import DqnConfig
+from attentive_snake.training.ppo.config import PpoConfig
 
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
 DEFAULT_TOML = CONFIGS / "snake" / "default.toml"
@@ -94,8 +99,9 @@ def test_none_in_field_with_non_none_default_cannot_be_written() -> None:
 def test_experiment_save_load_round_trip(tmp_path) -> None:
     config = ExperimentConfig(
         game=SnakeConfig(width=6, height=5, max_steps_without_food=40),
-        train=TrainConfig(total_env_steps=1000, target_kl=0.03, checkpoint_dir=Path("runs/x")),
+        train=TrainConfig(total_env_steps=1000, checkpoint_dir=Path("runs/x")),
         env=EnvConfig(num_envs=3),
+        algorithm_settings=PpoConfig(target_kl=0.03),
     )
     path = tmp_path / "nested" / "config.toml"
     save_experiment(config, path)
@@ -135,8 +141,9 @@ def test_every_game_has_a_default_config_listing_every_field_and_a_default_schem
     tables = tomllib.loads(path.read_text())
     assert tables["game"]["name"] == game
     assert "reward" not in tables  # the default reward values live only in the default scheme
-    types = section_types(game)
-    for section in SECTIONS:
+    algorithm = config.train.algorithm
+    types = section_types(game, algorithm)
+    for section in section_names(algorithm):
         if section == "reward":
             continue
         for field in dataclasses.fields(types[section]):
@@ -166,3 +173,46 @@ def test_default_toml_model_and_env_history_keys() -> None:
     config = load_experiment(DEFAULT_TOML)
     assert config.model.kind == "transformer"
     assert (config.env.history_length, config.env.history_actions) == (1, False)
+
+
+# --------------------------------------------------------------------------- algorithms
+
+
+@pytest.mark.parametrize("algorithm", algorithm_names())
+@pytest.mark.parametrize("game", game_names())
+def test_every_game_lists_every_field_of_every_algorithm_once(game: str, algorithm: str) -> None:
+    """Each algorithm's section is listed in full in exactly one file per game: default.toml for its own
+    algorithm, configs/<game>/algorithms/<name>.toml for the others; the merged defaults load."""
+    default_tables = tomllib.loads(default_config_path(CONFIGS, game).read_text())
+    own = default_tables["train"]["algorithm"]
+    path = default_config_path(CONFIGS, game) if algorithm == own else algorithm_defaults_path(CONFIGS, game, algorithm)
+    tables = tomllib.loads(path.read_text())
+    settings_type = get_algorithm(algorithm).settings_type
+    for field in dataclasses.fields(settings_type):
+        assert field.name in tables[algorithm] or field.default is None, f"{path}: [{algorithm}] {field.name} missing"
+    assert not algorithm_defaults_path(CONFIGS, game, own).exists()  # one source for the default algorithm's values
+    config = default_experiment(CONFIGS, game, algorithm)
+    assert config.train.algorithm == algorithm and isinstance(config.algorithm_settings, settings_type)
+    assert config.game_name == game and config.model == load_experiment(default_config_path(CONFIGS, game)).model
+
+
+def test_the_algorithm_selects_its_section_and_refuses_another() -> None:
+    config = experiment_from_tables({"train": {"algorithm": "dqn"}, "dqn": {"batch_size": 32}})
+    assert isinstance(config.algorithm_settings, DqnConfig) and config.algorithm_settings.batch_size == 32
+    assert list(experiment_to_tables(config)) == ["game", "reward", "model", "train", "dqn", "env", "evaluation"]
+    assert isinstance(ExperimentConfig().algorithm_settings, PpoConfig)
+    with pytest.raises(ValueError, match=r"\[ppo\] holds settings of the ppo algorithm, but \[train\] algorithm is 'dqn'"):
+        experiment_from_tables({"train": {"algorithm": "dqn"}, "ppo": {}})
+    with pytest.raises(ValueError, match="unknown algorithm 'a2c'"):
+        experiment_from_tables({"train": {"algorithm": "a2c"}})
+    with pytest.raises(TypeError, match="DqnConfig"):
+        ExperimentConfig(train=TrainConfig(algorithm="dqn"), algorithm_settings=PpoConfig())
+
+
+def test_overriding_the_algorithm_drops_the_old_section() -> None:
+    ppo = ExperimentConfig(algorithm_settings=PpoConfig(num_epochs=2))
+    dqn = apply_overrides(ppo, [("train", "algorithm", "dqn"), ("dqn", "batch_size", 16)])
+    assert dqn.train.algorithm == "dqn" and dqn.algorithm_settings == DqnConfig(batch_size=16)
+    with pytest.raises(ValueError, match=r"\[ppo\] holds settings"):
+        apply_overrides(dqn, [("ppo", "num_epochs", 3)])  # not without switching the algorithm
+    assert apply_overrides(dqn, [("train", "algorithm", "dqn")]) == dqn

@@ -1,7 +1,9 @@
-"""Train a policy on a game with PPO: start a new run, resume one, or continue one under a new name (fork).
+"""Train a policy on a game (PPO or DQN): start a new run, resume one, or continue one under a new name (fork).
 
 Every setting lives in a TOML experiment config (see configs/<game>/default.toml);
-``[game] name`` says which game. Each run gets a directory (by convention
+``[game] name`` says which game, ``[train] algorithm`` which algorithm (its settings are
+the section of the same name; without --config, ``--set train.algorithm=dqn`` starts from
+the game's DQN defaults, configs/<game>/algorithms/dqn.toml). Each run gets a directory (by convention
 runs/<game>/<name>) with its config.toml, checkpoints, model.html, metrics.jsonl,
 evaluations.jsonl (when [evaluation] interval > 0) and run.json (its start/resume/fork
 history with descriptions).
@@ -31,12 +33,12 @@ import tomllib
 from pathlib import Path
 
 from attentive_snake.config import ExperimentConfig, load_experiment, save_experiment
+from attentive_snake.config.defaults import default_experiment
 from attentive_snake.config.experiment_io import game_name_of
-from attentive_snake.config.layout import default_config_path
 from attentive_snake.config.fork_rules import require_forkable
 from attentive_snake.config.overrides import apply_overrides, parse_override
 from attentive_snake.evaluation.hook import PeriodicEvaluation
-from attentive_snake.factory import make_env, make_policy, make_vec_env
+from attentive_snake.factory import make_env, make_policy, make_trainer, make_vec_env
 from attentive_snake.games.registry import DEFAULT_GAME, game_names, get_game
 from attentive_snake.run_dir import (
     chosen_checkpoint,
@@ -139,6 +141,12 @@ def requested_game(args: argparse.Namespace) -> str:
     return DEFAULT_GAME
 
 
+def requested_algorithm(args: argparse.Namespace) -> str | None:
+    """The algorithm a ``--set train.algorithm=...`` asks for (the last one wins), else ``None``."""
+    algorithms = [value for section, key, value in (parse_override(text) for text in args.set or ()) if (section, key) == ("train", "algorithm")]
+    return str(algorithms[-1]) if algorithms else None
+
+
 def replace_some[T](obj: T, **changes) -> T:
     """``dataclasses.replace`` with the ``None``-valued changes (options not given) left out."""
     return dataclasses.replace(obj, **{name: value for name, value in changes.items() if value is not None})
@@ -170,9 +178,12 @@ def with_config_changes(config: ExperimentConfig, args: argparse.Namespace) -> E
 
 
 def new_run_config(args: argparse.Namespace) -> ExperimentConfig:
-    config_file = args.config or default_config_path(CONFIGS_DIR, requested_game(args))
-    config = with_config_changes(load_experiment(config_file), args)
-    return with_run_options(config, args, args.run_dir)
+    """--config, else the game's defaults for the requested algorithm; then the changes and run options."""
+    if args.config is not None:
+        base = load_experiment(args.config)
+    else:
+        base = default_experiment(CONFIGS_DIR, requested_game(args), requested_algorithm(args))
+    return with_run_options(with_config_changes(base, args), args, args.run_dir)
 
 
 def resumed_run_config(args: argparse.Namespace) -> ExperimentConfig:
@@ -245,7 +256,7 @@ def main() -> None:
     save_diagram(policy, diagram_path(run_dir))
 
     logger = TeeLogger(ConsoleLogger(), JsonlLogger(metrics_path(run_dir)))
-    trainer = Trainer(policy, env, config.train, logger, hooks=evaluation_hooks(config, run_dir))
+    trainer = make_trainer(config, policy, env, logger, evaluation_hooks(config, run_dir))
     if args.resume:
         event = resume(trainer, run_dir, description)
     elif args.fork:
@@ -254,7 +265,7 @@ def main() -> None:
         event = RunEvent("start", 0, description)
     append_event(run_dir, event)
     if not trainer.train():
-        print(f"nothing to do: all {trainer.num_updates} updates of total_env_steps={config.train.total_env_steps} are done")
+        print(f"nothing to do: all {trainer.num_iterations} iterations of total_env_steps={config.train.total_env_steps} are done")
 
 
 if __name__ == "__main__":

@@ -10,13 +10,15 @@ import { setCheckpointOptions } from "./run_options.js";
 
 /** Why resuming `detail` is not possible right now, or null. */
 function resumeBlocker(detail) {
+  if (!detail.config) return "This run's config.toml cannot be read by this version of the code.";
   if (detail.status.state === "running") return "This run is training right now. Stop it first, or wait until it finishes.";
-  if (detail.checkpoints.length === 0) return "Nothing to resume yet: the run has not saved a checkpoint (it saves one every train.checkpoint_interval updates).";
+  if (detail.checkpoints.length === 0) return "Nothing to resume yet: the run has not saved a checkpoint (it saves one every train.checkpoint_interval env steps).";
   return null;
 }
 
 /** Why a new run cannot start from `detail`'s checkpoints right now, or null. */
 function forkBlocker(detail) {
+  if (!detail.config) return "This run's config.toml cannot be read by this version of the code.";
   if (detail.checkpoints.length === 0) return "No checkpoint to start from yet: the run has not saved one.";
   return null;
 }
@@ -165,7 +167,7 @@ export function continueTrainingPanel(game, name, { onChanged, onForked }) {
       total && d.checkpoint_steps >= total
         ? `It reached its target of ${formatSteps(total)} steps; enter a larger total to train further.`
         : `Empty keeps the current target (${formatSteps(total)} steps).`;
-    if (!keepLoaded) {
+    if (!keepLoaded && d.config) {
       for (const key of Object.keys(EVALUATION_FIELDS)) els.evaluation[key].value = String(d.config.evaluation[key]);
       els.keep.checked = d.config.train.keep_checkpoints !== false;
       keepLoaded = true;

@@ -1,5 +1,6 @@
-"""PPO training for any policy module on any ``VecEnv``."""
+"""Training any policy module on any ``VecEnv`` with a selectable algorithm (``[train] algorithm``: PPO or DQN)."""
 
+from attentive_snake.training.build import build_trainer
 from attentive_snake.training.checkpoint import (
     checkpoint_steps,
     latest_checkpoint,
@@ -29,6 +30,7 @@ __all__ = [
     "TeeLogger",
     "TrainConfig",
     "Trainer",
+    "build_trainer",
     "checkpoint_steps",
     "fork_from_checkpoint",
     "latest_checkpoint",

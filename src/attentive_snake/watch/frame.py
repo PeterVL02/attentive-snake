@@ -18,7 +18,10 @@ class WatchFrame:
     (vector observations: class-token attention to each game number of the selected
     history frame, in the order of ``WatchSession.info["element_names"]``, scaled to [0, 1]
     by its maximum) belong to the observation the *next* action is chosen from, and are
-    ``None`` when not requested, not available or the episode is over.
+    ``None`` when not requested, not available or the episode is over. ``action_values``
+    (``models.acting.ActionReadout.to_dict``: action probabilities and state value, or
+    Q-values, one per ``WatchSession.info["action_names"]``) also belongs to that
+    observation; ``None`` once the episode is over.
     """
 
     view_kind: str
@@ -32,6 +35,7 @@ class WatchFrame:
     caption: str
     episode: int  # episodes completed so far
     element_weights: list[float] | None = None
+    action_values: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         generic = {
@@ -43,6 +47,7 @@ class WatchFrame:
             "heatmap": self.heatmap,
             "frame_weights": self.frame_weights,
             "element_weights": self.element_weights,
+            "action_values": self.action_values,
             "caption": self.caption,
             "episode": self.episode,
         }

@@ -63,7 +63,10 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
 
   const usedModelFields = new Set(["kind", ...(schema.model_kinds[config.model.kind]?.fields ?? [])]);
   const rewardWidgets = fieldsOf("reward");
-  const trainWidgets = fieldsOf("train");
+  const algorithm = config.train.algorithm;
+  const algorithmInfo = schema.algorithms[algorithm];
+  const trainWidgets = fieldsOf("train"); // train.algorithm among them, locked
+  const algorithmWidgets = fieldsOf(algorithm);
   const evaluationWidgets = fieldsOf("evaluation");
   const runWidgets = [...fieldsOf("env", (s) => !(`env.${s.name}` in locked)), ...fieldsOf("game", (s) => !(`game.${s.name}` in locked))];
   const lockedShown = [
@@ -137,7 +140,7 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
       h("h2", { id: "fork-title", text: `New run from ${parent.name}` }),
       h("p", {
         class: "lead",
-        text: `A new run starts from the weights and optimizer state of ${parent.name} at ${formatNumber(checkpoint.steps)} env steps (${checkpoint.name}). It counts its own steps from 0 with its own total_env_steps, and its learning-rate schedule starts again from learning_rate. ${parent.name} itself is not changed.`,
+        text: `A new run starts from the weights and optimizer state of ${parent.name} at ${formatNumber(checkpoint.steps)} env steps (${checkpoint.name}), trained with ${algorithmInfo?.label ?? algorithm} like its parent. It counts its own steps from 0 with its own total_env_steps, so its schedules start again (the learning rate from learning_rate; with DQN, exploration from epsilon_start and an empty replay buffer). ${parent.name} itself is not changed.`,
       }),
       panel("New run", h("div", { class: "fields" }, nameWidget.el), description.el),
       panel(
@@ -146,6 +149,7 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
         h("div", { class: "fields" }, rewardWidgets.map((w) => w.el)),
       ),
       panel("Training", h("div", { class: "fields" }, [...trainWidgets, ...runWidgets].map((w) => w.el))),
+      panel(`${algorithmInfo?.label ?? algorithm} settings`, h("div", { class: "fields" }, algorithmWidgets.map((w) => w.el))),
       panel(
         "Evaluation",
         h("p", { class: "muted small", text: "Greedy games played while the new run trains; its evaluations go to its own evaluations.jsonl (the parent's are not copied)." }),
@@ -155,7 +159,7 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
         "details",
         { class: "panel" },
         h("summary", { text: "Locked settings (taken from the parent)" }),
-        h("p", { class: "muted small", text: "These must stay as they are: the parent's weights only fit this network, these game rules and this observation." }),
+        h("p", { class: "muted small", text: "These must stay as they are: the parent's weights only fit this network (and its algorithm's head), these game rules and this observation." }),
         h("div", { class: "fields" }, lockedShown.map((w) => w.el)),
       ),
       note,

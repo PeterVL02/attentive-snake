@@ -1,25 +1,13 @@
-"""The PPO update: clipped-surrogate loss and the minibatch optimisation loop."""
+"""The PPO update: the minibatch optimisation loop over one rollout."""
 
 from dataclasses import dataclass
 
 import torch
-from torch import Tensor, nn
-from torch.distributions import Categorical
+from torch import nn
 
-from attentive_snake.training.config import TrainConfig
-from attentive_snake.training.rollout import TrainingBatch
-
-
-@dataclass(frozen=True)
-class LossTerms:
-    """Loss components of one minibatch. ``total`` carries gradients; the rest are detached."""
-
-    total: Tensor
-    policy_loss: Tensor
-    value_loss: Tensor
-    entropy: Tensor
-    approx_kl: Tensor
-    clip_fraction: Tensor
+from attentive_snake.training.ppo.config import PpoConfig
+from attentive_snake.training.ppo.loss import LossTerms, explained_variance, normalize, ppo_loss
+from attentive_snake.training.ppo.rollout import TrainingBatch
 
 
 @dataclass(frozen=True)
@@ -35,70 +23,11 @@ class UpdateStats:
     epochs_completed: int
 
 
-def ppo_loss(
-    logits: Tensor,
-    values: Tensor,
-    actions: Tensor,
-    old_log_probs: Tensor,
-    advantages: Tensor,
-    returns: Tensor,
-    clip_coef: float,
-    value_coef: float,
-    entropy_coef: float,
-) -> LossTerms:
-    """Clipped-surrogate PPO loss for a categorical policy (pure function).
-
-    ``logits`` is (B, A); every other tensor is (B,). ``advantages`` are used
-    as given (normalise them beforehand if desired).
-    """
-    if values.shape != returns.shape:
-        # Guards against silent (B, 1) - (B,) broadcasting into a (B, B) loss.
-        raise ValueError(f"values {tuple(values.shape)} and returns {tuple(returns.shape)} differ in shape.")
-    distribution = Categorical(logits=logits)
-    log_probs = distribution.log_prob(actions)
-    log_ratio = log_probs - old_log_probs
-    ratio = log_ratio.exp()
-
-    unclipped = -advantages * ratio
-    clipped = -advantages * torch.clamp(ratio, 1.0 - clip_coef, 1.0 + clip_coef)
-    policy_loss = torch.max(unclipped, clipped).mean()
-    value_loss = 0.5 * (values - returns).pow(2).mean()
-    entropy = distribution.entropy().mean()
-    total = policy_loss + value_coef * value_loss - entropy_coef * entropy
-
-    with torch.no_grad():
-        approx_kl = ((ratio - 1.0) - log_ratio).mean()
-        clip_fraction = ((ratio - 1.0).abs() > clip_coef).float().mean()
-    return LossTerms(
-        total=total,
-        policy_loss=policy_loss.detach(),
-        value_loss=value_loss.detach(),
-        entropy=entropy.detach(),
-        approx_kl=approx_kl,
-        clip_fraction=clip_fraction,
-    )
-
-
-def normalize(x: Tensor, eps: float = 1e-8) -> Tensor:
-    """Zero-mean, unit-std copy of ``x``. A single element maps to zero."""
-    if x.numel() < 2:
-        return x - x.mean()
-    return (x - x.mean()) / (x.std() + eps)
-
-
-def explained_variance(predictions: Tensor, targets: Tensor) -> float:
-    """1 - Var[targets - predictions] / Var[targets]; NaN if targets are constant."""
-    target_variance = targets.var()
-    if target_variance == 0:
-        return float("nan")
-    return float(1.0 - (targets - predictions).var() / target_variance)
-
-
 def ppo_update(
     policy: nn.Module,
     optimizer: torch.optim.Optimizer,
     batch: TrainingBatch,
-    config: TrainConfig,
+    config: PpoConfig,
     generator: torch.Generator | None = None,
 ) -> UpdateStats:
     """Run ``config.num_epochs`` epochs of shuffled minibatch updates on ``batch``.
@@ -119,7 +48,7 @@ def _run_epochs(
     policy: nn.Module,
     optimizer: torch.optim.Optimizer,
     batch: TrainingBatch,
-    config: TrainConfig,
+    config: PpoConfig,
     generator: torch.Generator | None,
 ) -> UpdateStats:
     totals = torch.zeros(5, device=batch.actions.device)
@@ -156,7 +85,7 @@ def _minibatch_step(
     policy: nn.Module,
     optimizer: torch.optim.Optimizer,
     minibatch: TrainingBatch,
-    config: TrainConfig,
+    config: PpoConfig,
 ) -> LossTerms:
     output = policy(minibatch.observations)
     advantages = normalize(minibatch.advantages) if config.normalize_advantages else minibatch.advantages

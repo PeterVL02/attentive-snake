@@ -34,4 +34,5 @@ GAME = GameSpec(
     make_env=make_env,
     observation_labels=OBSERVATION_LABELS,
     episode_metrics=LANDER_METRICS,
+    action_labels=("nothing", "left engine", "main engine", "right engine"),  # Gymnasium's discrete actions 0..3
 )

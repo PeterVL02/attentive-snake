@@ -13,7 +13,7 @@ import torch
 
 from attentive_snake.config.experiment_io import experiment_from_tables
 from attentive_snake.factory import make_policy, make_vec_env
-from attentive_snake.training import NullLogger, Trainer
+from attentive_snake.training import NullLogger, build_trainer
 from attentive_snake.training.runtime import seed_everything
 
 REFERENCE = Path(__file__).resolve().parent / "data" / "flag_off_reference_weights.pt"
@@ -23,12 +23,11 @@ TABLES = {
     "model": {"kind": "mlp", "d_model": 16, "num_layers": 1},
     "train": {
         "total_env_steps": 3 * 4 * 32,
-        "rollout_length": 32,
-        "num_minibatches": 2,
         "device": "cpu",
         "seed": 3,
         "log_interval": 1,
     },
+    "ppo": {"rollout_length": 32, "num_minibatches": 2},
     "env": {"num_envs": 4, "history_length": 2},
 }
 
@@ -48,7 +47,7 @@ def short_training(tables: dict = TABLES) -> tuple[dict[str, torch.Tensor], int]
     env.step = counting_step
     seed_everything(config.train.seed)
     policy = make_policy(config, env)
-    Trainer(policy, env, config.train, NullLogger()).train()
+    build_trainer(policy, env, config.train, config.algorithm_settings, NullLogger()).train()
     return {name: value.detach().clone() for name, value in policy.state_dict().items()}, sum(truncations)
 
 

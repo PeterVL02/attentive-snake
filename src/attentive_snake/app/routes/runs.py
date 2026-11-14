@@ -10,7 +10,6 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from attentive_snake.app import run_info
-from attentive_snake.app.config_json import experiment_to_json
 from attentive_snake.app.errors import conflict
 from attentive_snake.app.evaluation_info import recorded_evaluations
 from attentive_snake.app.game_lookup import DEFAULT_GAME, GameParam
@@ -25,8 +24,7 @@ from attentive_snake.app.run_lookup import (
     latest_checkpoint_in_run,
     new_run_dir,
 )
-from attentive_snake.config import load_experiment
-from attentive_snake.run_dir import config_path, list_runs
+from attentive_snake.run_dir import list_runs
 from attentive_snake.run_metadata import clean_description
 
 DESCRIPTION_LENGTH = 2000
@@ -93,7 +91,7 @@ def make_router(paths: AppPaths, jobs: TrainingJobs) -> APIRouter:
         run_dir = existing_run_dir(paths.runs_dir, game, name)
         return {
             **summary(game, run_dir.name),
-            "config": experiment_to_json(load_experiment(config_path(run_dir))),
+            "config": run_info.config_json(run_dir),  # None if unreadable: see config_error
             "checkpoints": run_info.checkpoints(run_dir),
             "metrics": run_info.metrics(run_dir),
             "log": run_info.log_tail(run_dir, log_lines),

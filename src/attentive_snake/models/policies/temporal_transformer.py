@@ -1,7 +1,7 @@
 """Attention across positions and time (``kind = "temporal_transformer"``).
 
 Children of ``self.net``, in order:
-embed -> positional -> temporal -> [action_embed] -> cls -> blocks -> norm -> pool -> {policy_head, value_head}
+embed -> positional -> temporal -> [action_embed] -> cls -> blocks -> norm -> pool -> head (policy_head + value_head, or q_head: models.heads)
 
 Token order (see ``token_layout``), T = 1 + K*P (+ K), P = positions per frame:
 

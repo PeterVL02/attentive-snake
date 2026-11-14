@@ -1,10 +1,11 @@
-"""Building environments and the policy from an ``ExperimentConfig``, for any game.
+"""Building environments, the policy and the trainer from an ``ExperimentConfig``, for any game and algorithm.
 
 The game (``config.game_name``) provides one ``GameEnv``; history, action channels and
 vectorisation are added here generically. The policy's input layout and action count come
 from the environment, so build the environment first and pass it to ``make_policy``.
 """
 
+from collections.abc import Sequence
 from typing import Protocol
 
 from torch import nn
@@ -16,6 +17,11 @@ from attentive_snake.env.vec_env import SyncVecEnv, env_seed
 from attentive_snake.games.registry import get_game
 from attentive_snake.models.registry import build_policy
 from attentive_snake.observation_spec import ObservationSpec
+from attentive_snake.training.algorithms import get_algorithm
+from attentive_snake.training.build import build_trainer
+from attentive_snake.training.hooks import UpdateHook
+from attentive_snake.training.metrics import MetricsLogger
+from attentive_snake.training.trainer import Trainer
 
 
 class EnvSpec(Protocol):
@@ -54,4 +60,17 @@ def observation_spec(config: ExperimentConfig, env: EnvSpec) -> ObservationSpec:
 
 
 def make_policy(config: ExperimentConfig, env: EnvSpec) -> nn.Module:
-    return build_policy(config.model, observation_spec(config, env), env.num_actions)
+    """The policy of ``[model]`` with the head its algorithm trains (``Algorithm.head``)."""
+    head = get_algorithm(config.train.algorithm).head
+    return build_policy(config.model, observation_spec(config, env), env.num_actions, head)
+
+
+def make_trainer(
+    config: ExperimentConfig,
+    policy: nn.Module,
+    env: SyncVecEnv,
+    logger: MetricsLogger | None = None,
+    hooks: Sequence[UpdateHook] = (),
+) -> Trainer:
+    """The trainer of ``config.train.algorithm`` with the algorithm's section (see ``training.build.build_trainer``)."""
+    return build_trainer(policy, env, config.train, config.algorithm_settings, logger, hooks)

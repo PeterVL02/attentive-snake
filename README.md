@@ -1,12 +1,12 @@
 # Attentive Snake
 
-Train neural networks to play games with reinforcement learning (PPO), and look
+Train neural networks to play games with reinforcement learning (PPO or DQN), and look
 inside them: which board cells or input numbers a transformer attends to, how the
 architecture is put together, and how different models and reward schemes compare.
 
 The project contains two games (Snake and Gymnasium's Lunar Lander), a
 game-agnostic headless parallel RL environment layer, six selectable policy
-architectures, a PPO trainer, an architecture-diagram tool, and a local web app
+architectures, two training algorithms (PPO and DQN), an architecture-diagram tool, and a local web app
 that ties it all together.
 
 ## Games
@@ -86,13 +86,54 @@ for the chosen game.
 The two temporal kinds need history: set `history_length` (for example 4) and
 `history_actions = true` under `[env]`. The app does this for you.
 
+## Training algorithms
+
+`[train] algorithm` picks how a run learns; its own settings are the section of
+the same name. Every model kind works with both: the network's trunk is the
+same, only its head differs, so attention and architecture diagrams work alike.
+
+| Algorithm | What it is here | Head |
+|---|---|---|
+| `ppo` (default) | Proximal policy optimisation: on-policy actor-critic. Plays rollouts with its own sampled actions, computes GAE advantages and takes a few epochs of clipped-surrogate updates on them, then throws them away. | policy (action probabilities) + value |
+| `dqn` | Double DQN: off-policy and value-based. Plays epsilon-greedily, stores every transition in a replay buffer, and takes gradient steps on random batches of it with a Huber loss against a target network (the online network picks the next action, the target network values it). | one Q-value per action |
+
+```bash
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/dqn --set train.algorithm=dqn
+```
+
+or pick DQN in the app's New-training form, which then shows DQN's settings and
+fills in the game's DQN defaults (`configs/<game>/algorithms/dqn.toml`, laid over
+`configs/<game>/default.toml`). Evaluation and watching are greedy for both (the
+most likely action, or the highest Q-value); the Watch tab shows the action
+probabilities and state value of a PPO run, or the Q-values of a DQN run.
+
+DQN settings that matter most: `learning_rate` (in `[train]`), `train_frequency`
+(env steps per gradient step, whatever `num_envs` is: the replay ratio),
+`target_update_interval`, `epsilon_fraction` / `epsilon_end` (exploration) and
+`buffer_size`. One DQN iteration is one step of every parallel game, so
+`num_envs` only changes how experience is gathered, not how much is learned
+per step.
+
+In one test (one seed each, CPU, 500k env steps on Lunar Lander with the default
+`mlp`): DQN with its defaults reached a greedy evaluation mean score of 203 (41
+of 50 games landed) in under 3 minutes; PPO with its defaults and the same
+budget ended at -29 (it needs its full 2M steps). On a 6x6 Snake board with
+the `cnn` kind and 1M env steps, DQN with its defaults reached a greedy mean
+score of 29.3 with 62 % of 50 games won; PPO with its defaults and the same
+budget reached 13.1 with none won. DQN was much slower per env step there,
+though (about 600 steps/s against about 5,000 on the same CPU: 27 minutes
+against 3), because every step of the 16 games is followed by four gradient
+steps. See the Caveats for what this does and does not say.
+
 ## Configs and runs
 
 Everything game-specific is per game: `[game] name` in a config says which game
 it is (a config without it is a Snake config).
 
 - `configs/<game>/default.toml` lists every setting with a comment, except the
-  reward values. Copy it to make your own experiment config.
+  reward values. Copy it to make your own experiment config. It trains with PPO;
+  `configs/<game>/algorithms/dqn.toml` holds the game's DQN defaults (the `[dqn]`
+  section and the shared values that differ), used when a new run asks for DQN.
 - `configs/<game>/rewards/*.toml` are the game's named reward schemes.
   `configs/<game>/rewards/default.toml` is the one place the game's default
   reward values are written down: a config without a `[reward]` section gets
@@ -110,9 +151,10 @@ it is (a config without it is a Snake config).
 
 ## Evaluation
 
-The training curve comes from the exploring policy (it samples its actions). An
-**evaluation** shows what the model can do: it plays complete games always taking
-its most likely action, on games of its own (a fixed seed, separate from
+The training curve comes from the exploring policy (PPO samples its actions, DQN
+takes random ones with probability epsilon). An **evaluation** shows what the model
+can do: it plays complete games always taking its best action (the most likely one,
+or the highest Q-value), on games of its own (a fixed seed, separate from
 training), and reports statistics per game:
 
 | Game | Its own statistics (plus scores, episode lengths, returns and how games ended) |
@@ -147,8 +189,8 @@ A statistic that cannot be computed (steps to win when no game was won) is N/A.
   for better scores, and they train slower.
 - **A model is tied to its board size.** A checkpoint cannot be used on a
   different grid.
-- **A continued run (fork) cannot change the game, network, board or observation.**
-  The game, all of `[model]`, the board size, `initial_length`, `history_length` and
+- **A continued run (fork) cannot change the game, algorithm, network, board or observation.**
+  The game, `train.algorithm`, all of `[model]`, the board size, `initial_length`, `history_length` and
   `history_actions` must match the parent, because its weights would not fit or
   would see a different input. It keeps the parent's Adam moments and starts its
   own learning-rate schedule from `learning_rate`, counting its steps from 0.
@@ -172,6 +214,20 @@ A statistic that cannot be computed (steps to win when no game was won) is N/A.
   input numbers, `mlp` and `cnn` learn faster; the transformer kinds are there to
   show which inputs the decision draws on.
 - **Keep dropout at 0.** PPO's probability ratio becomes noisy with dropout on.
+- **DQN's replay buffer is not saved.** Checkpoints hold the online and target
+  networks, the optimizer and the step count. A resumed or forked DQN run starts
+  with an empty buffer and takes no gradient step until it holds
+  `dqn.learning_starts` transitions again; a fork also restarts exploration from
+  `epsilon_start` (its step count starts at 0).
+- **DQN's replay buffer lives in memory**: about 2 x `buffer_size` x (numbers in
+  one observation) x 4 bytes, since each transition keeps its observation and the
+  next one as float32 (Snake 8x8 with 100k transitions: ~150 MB; history frames
+  multiply it).
+- **A DQN run cannot be forked into a PPO run (or back).** The weights end in the
+  other algorithm's head and the optimizer state belongs to it.
+- **One-seed comparisons of algorithms are anecdotes.** DQN and PPO react very
+  differently to their settings and budgets; the numbers above are single runs
+  with each algorithm's defaults, not tuned against each other.
 - **Architecture diagrams show containment and order, not true data flow.**
   Skip connections and branching are not visible. The rendered diagram in the
   app loads Mermaid from a CDN and falls back to the text tree offline.

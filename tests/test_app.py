@@ -1,6 +1,7 @@
 """The web app's API (FastAPI TestClient against temporary runs and rewards directories)."""
 
 import base64
+import json
 import shutil
 import sys
 import threading
@@ -38,7 +39,13 @@ DUMMY_GAMES = Path(__file__).resolve().parent / "dummy_games"
 BEACON = {"name": "beacon", "length": 4, "max_steps": 8}  # dummy game: image view, no reward table
 
 
-def tiny_tables(kind: str = "transformer", total_env_steps: int = 64, **train) -> dict:
+TINY_ALGORITHMS = {
+    "ppo": {"rollout_length": 8, "num_epochs": 1, "num_minibatches": 2},
+    "dqn": {"buffer_size": 64, "batch_size": 4, "learning_starts": 8, "target_update_interval": 16},
+}
+
+
+def tiny_tables(kind: str = "transformer", total_env_steps: int = 64, algorithm: str = "ppo", **train) -> dict:
     """A config that trains in a few seconds on the CPU."""
     history = 2 if kind in ("temporal_transformer", "frame_attention") else 1
     return {
@@ -47,14 +54,13 @@ def tiny_tables(kind: str = "transformer", total_env_steps: int = 64, **train) -
         "model": {"kind": kind, "d_model": 16, "num_heads": 2, "num_layers": 1, "mlp_ratio": 2, "conv_channels": 8, "conv_layers": 1},
         "train": {
             "total_env_steps": total_env_steps,
-            "rollout_length": 8,
-            "num_epochs": 1,
-            "num_minibatches": 2,
             "log_interval": 1,
-            "checkpoint_interval": 2,
+            "checkpoint_interval": 32,  # every second update of 16 env steps
             "device": "cpu",
+            "algorithm": algorithm,
             **train,
         },
+        algorithm: dict(TINY_ALGORITHMS[algorithm]),
         "env": {"num_envs": 2, "history_length": history, "history_actions": False},
     }
 
@@ -65,6 +71,7 @@ def paths(tmp_path: Path) -> AppPaths:
     (configs / "snake" / "rewards").mkdir(parents=True)
     shutil.copy(PROJECT_ROOT / "configs" / "snake" / "default.toml", configs / "snake" / "default.toml")
     shutil.copy(PROJECT_ROOT / "configs" / "snake" / "rewards" / "default.toml", configs / "snake" / "rewards" / "default.toml")
+    shutil.copytree(PROJECT_ROOT / "configs" / "snake" / "algorithms", configs / "snake" / "algorithms")
     real = default_paths()
     return AppPaths(
         runs_dir=tmp_path / "runs",
@@ -169,11 +176,12 @@ def test_schema_defaults_and_page(client: TestClient):
     assert client.get("/api/schema", params={"game": "snake"}).json() == client.get("/api/schema").json()
     schema = client.get("/api/schema").json()
     assert schema["game"] == "snake"
-    assert set(schema["sections"]) == {"game", "reward", "model", "train", "env", "evaluation"}
+    assert set(schema["sections"]) == {"game", "reward", "model", "train", "env", "evaluation", *schema["algorithms"]}
+    assert schema["algorithms"]["ppo"]["section"] == "ppo" and "ppo" in schema["sections"]
     assert set(schema["model_kinds"]) >= set(KINDS)  # more kinds may exist (e.g. for vector observations)
     defaults = client.get("/api/defaults").json()
     assert defaults["model"]["kind"] == "transformer" and defaults["game"]["name"] == "snake"
-    assert defaults["train"]["target_kl"] is None  # nullable fields are present as null
+    assert defaults["ppo"]["target_kl"] is None  # nullable fields are present as null
     # The forms are built from the schema: bootstrap_truncated shows up with its help text (off for Snake).
     bootstrap = next(row for row in schema["sections"]["train"] if row["name"] == "bootstrap_truncated")
     assert bootstrap["type"] == "bool" and "cut short by a limit" in bootstrap["description"]
@@ -353,6 +361,10 @@ def test_architecture_for_each_kind(client: TestClient, kind: str):
     assert body["kind"] == kind
     assert body["parameters"] > 0
     assert body["text"] and body["mermaid"].lstrip().startswith(("flowchart", "graph", "%%"))
+    assert (body["algorithm"], body["head"]) == ("ppo", "actor_critic") and "value_head" in body["text"]
+    q = client.post("/api/architecture", json=tiny_tables(kind, algorithm="dqn")).json()
+    assert (q["algorithm"], q["head"]) == ("dqn", "q_values") and "q_head" in q["text"] and "value_head" not in q["text"]
+    assert q["parameters"] < body["parameters"]  # one linear head instead of two: the trunk is the same
 
 
 def test_architecture_validation_and_runs(client: TestClient, paths: AppPaths):
@@ -505,9 +517,9 @@ def test_compare_runs(client: TestClient, paths: AppPaths):
 
 def test_differing_fields():
     base = experiment_to_json(ExperimentConfig())
-    other = experiment_to_json(experiment_from_tables({"game": {"width": 6}, "train": {"target_kl": 0.02}}))
+    other = experiment_to_json(experiment_from_tables({"game": {"width": 6}, "ppo": {"target_kl": 0.02}}))
     diff = differing_fields({"x": base, "y": other})
-    assert [(d["section"], d["field"]) for d in diff] == [("game", "width"), ("train", "target_kl")]
+    assert [(d["section"], d["field"]) for d in diff] == [("game", "width"), ("ppo", "target_kl")]
     assert diff[1]["values"] == {"x": None, "y": 0.02}
     assert differing_fields({"x": base}) == []
     assert differing_fields({"x": {"s": {"v": 1}}, "y": {"s": {"v": 1.0}}}) == []  # int vs float is equal
@@ -663,7 +675,7 @@ def test_unknown_or_malicious_games_are_rejected(client: TestClient, paths: AppP
     make_run(paths, "x")
     response = client.request(method.upper(), url, params={"game": game}, json=body)
     assert response.status_code == 404 and "unknown game" in response.json()["detail"], (url, response.text)
-    assert sorted(path.name for path in paths.configs_dir.rglob("*.toml")) == ["default.toml", "default.toml"]
+    assert sorted(path.name for path in paths.configs_dir.rglob("*.toml")) == ["default.toml", "default.toml", "dqn.toml"]
     assert sorted(path.name for path in paths.runs_dir.iterdir()) == ["snake"]
 
 
@@ -799,7 +811,7 @@ def test_the_forms_config_with_evaluation_trains_and_a_config_without_it_still_r
     form = client.get("/api/defaults").json()
     assert "evaluation" in form
     small = tiny_tables(total_env_steps=32)
-    for section in ("game", "model", "train", "env"):
+    for section in ("game", "model", "train", "ppo", "env"):
         form[section].update(small[section])
     form["train"]["checkpoint_dir"] = None
     form["evaluation"].update({"interval": 16, "games": 2})
@@ -817,3 +829,84 @@ def test_the_forms_config_with_evaluation_trains_and_a_config_without_it_still_r
     detail = wait_until_done(client, "form")
     assert detail["status"]["state"] == "finished", detail["log"]
     assert len(detail["evaluations"]) == 2  # evaluation off for the resumed part
+
+
+# --------------------------------------------------------------------------- algorithms
+
+
+def wait_for_evaluation(client: TestClient, name: str) -> dict:
+    deadline = time.monotonic() + JOB_TIMEOUT
+    while time.monotonic() < deadline:
+        status = client.get(f"/api/runs/{name}/evaluate").json()
+        if status["state"] not in ("running", "idle"):
+            return status
+        time.sleep(0.2)
+    raise AssertionError(f"evaluation of {name} still running after {JOB_TIMEOUT}s")
+
+
+def test_algorithm_defaults_and_schema(client: TestClient):
+    schema = client.get("/api/schema").json()
+    assert set(schema["algorithms"]) == {"ppo", "dqn"}
+    assert schema["algorithms"]["dqn"]["head"] == "q_values" and "loss" in [m["key"] for m in schema["algorithms"]["dqn"]["metrics"]]
+    algorithm_row = next(row for row in schema["sections"]["train"] if row["name"] == "algorithm")
+    assert algorithm_row["choices"] == ["ppo", "dqn"]
+    ppo = client.get("/api/defaults").json()
+    dqn = client.get("/api/defaults", params={"algorithm": "dqn"}).json()
+    assert ppo["train"]["algorithm"] == "ppo" and "ppo" in ppo and "dqn" not in ppo
+    assert dqn["train"]["algorithm"] == "dqn" and "dqn" in dqn and "ppo" not in dqn
+    assert dqn["dqn"]["buffer_size"] == 100_000 and dqn["env"]["num_envs"] == 16  # configs/snake/algorithms/dqn.toml
+    assert dqn["model"] == ppo["model"] and dqn["game"] == ppo["game"]
+    assert client.get("/api/defaults", params={"algorithm": "a2c"}).status_code == 404
+
+
+def test_a_dqn_run_through_the_api_trains_watches_evaluates_forks_and_compares(client: TestClient, paths: AppPaths):
+    started = client.post("/api/runs", json={"name": "dqn", "config": tiny_tables("cnn", algorithm="dqn")})
+    assert started.status_code == 201, started.text
+    detail = wait_until_done(client, "dqn")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert detail["algorithm"] == "dqn" and detail["config"]["train"]["algorithm"] == "dqn" and "dqn" in detail["config"]
+    assert "loss" in detail["metrics"][-1] and detail["metrics"][-1]["env_steps"] == 64
+    assert next(run for run in client.get("/api/runs").json() if run["name"] == "dqn")["algorithm"] == "dqn"
+
+    watch = client.post("/api/watch", json={"run": "dqn"}).json()
+    assert watch["info"]["algorithm"] == "dqn" and watch["info"]["action_names"] == ["up", "right", "down", "left"]
+    assert watch["frame"]["action_values"]["kind"] == "q_values" and len(watch["frame"]["action_values"]["values"]) == 4
+    assert client.post(f"/api/watch/{watch['id']}/step", json={"count": 2}).status_code == 200
+
+    assert client.post("/api/runs/dqn/evaluate", json={"games": 3}).status_code == 202
+    evaluated = wait_for_evaluation(client, "dqn")
+    assert evaluated["state"] == "finished", evaluated
+    assert evaluated["result"]["evaluation"]["statistics"]["games"] == 3
+
+    changed = tiny_tables("cnn", total_env_steps=32, algorithm="dqn")
+    changed["dqn"]["epsilon_start"] = 0.2
+    assert client.post("/api/runs/dqn/fork", json={"name": "dqn-v2", "config": changed}).status_code == 201
+    other = tiny_tables("cnn", algorithm="ppo")
+    refused = client.post("/api/runs/dqn/fork", json={"name": "as-ppo", "config": other})
+    assert refused.status_code == 422 and "train.algorithm" in refused.json()["detail"]
+    child = wait_until_done(client, "dqn-v2")
+    assert child["status"]["state"] == "finished", child["log"]
+    assert child["config"]["dqn"]["epsilon_start"] == 0.2 and child["parent"]["run"] == "dqn"
+
+    make_run(paths, "ppo", kind="cnn")
+    compared = client.post("/api/compare", json={"runs": ["dqn", "ppo"]}).json()
+    assert [run["algorithm"] for run in compared["runs"]] == ["dqn", "ppo"]
+    differing = {(d["section"], d["field"]) for d in compared["differences"]}
+    assert ("train", "algorithm") in differing and ("dqn", "buffer_size") in differing and ("ppo", "rollout_length") in differing
+    architecture = client.get("/api/runs/dqn/architecture").json()
+    assert "q_head" in json.dumps(architecture) and "policy_head" not in json.dumps(architecture)
+
+
+def test_a_run_whose_config_cannot_be_read_is_listed_and_shown_not_a_server_error(client: TestClient, paths: AppPaths):
+    run_dir = make_run(paths, "old")
+    config_path(run_dir).write_text('[train]\nrollout_length = 128\n')  # a [train] key from before [ppo] existed
+    listed = next(run for run in client.get("/api/runs").json() if run["name"] == "old")
+    assert listed["kind"] is None and "rollout_length" in listed["config_error"]
+    detail = client.get("/api/runs/old")
+    assert detail.status_code == 200 and detail.json()["config"] is None and "rollout_length" in detail.json()["config_error"]
+    make_run(paths, "new")
+    compared = client.post("/api/compare", json={"runs": ["old", "new"]})
+    assert compared.status_code == 200 and compared.json()["runs"][0]["config"] is None
+    assert client.get("/api/runs/old/architecture").status_code == 422
+    assert client.post("/api/watch", json={"run": "old"}).status_code == 422
+    assert client.post("/api/runs/old/evaluate", json={}).status_code == 422

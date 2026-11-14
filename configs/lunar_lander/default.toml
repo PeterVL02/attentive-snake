@@ -31,28 +31,31 @@ conv_channels = 64            # cnn, hybrid, frame_attention: width of the layer
 conv_layers = 2               # cnn, hybrid, frame_attention: number of those layers
 kernel_size = 3               # unused for vector observations
 
-[train]  # attentive_snake.training.config.TrainConfig
+[train]  # attentive_snake.training.config.TrainConfig: what every algorithm shares
+algorithm = "ppo"             # "ppo" (the [ppo] section below) or "dqn" (its defaults: configs/lunar_lander/algorithms/dqn.toml)
 total_env_steps = 2000000     # summed over all envs; train.py --steps overrides it
+gamma = 0.999                 # landing pays off hundreds of steps after the decisive actions
+bootstrap_truncated = true     # the time limit is not a landing or a crash: value the cut state, do not count it as an end
+learning_rate = 0.0003
+anneal_lr = true              # linear decay to 0 over total_env_steps
+device = "auto"               # "auto" = cuda if available, else cpu
+seed = 0
+log_interval = 40960          # env steps (one PPO update here is 8192)
+# checkpoint_dir = "runs/x"   # set to the run directory by train.py
+checkpoint_interval = 204800  # env steps
+keep_checkpoints = true       # false: delete older checkpoints after each save (only the latest remains)
+
+[ppo]  # attentive_snake.training.ppo.config.PpoConfig (only with train.algorithm = "ppo")
 rollout_length = 256          # steps per env per update (update = rollout_length * num_envs = 8192 steps)
 num_epochs = 4
 num_minibatches = 32          # 256 steps per minibatch: enough gradient steps per update (8 learned clearly slower)
-gamma = 0.999                 # landing pays off hundreds of steps after the decisive actions
 gae_lambda = 0.98
-bootstrap_truncated = true     # the time limit is not a landing or a crash: value the cut state, do not count it as an end
 clip_coef = 0.2
 value_coef = 0.5
 entropy_coef = 0.01
-learning_rate = 0.0003
-anneal_lr = true              # linear decay to 0 over total_env_steps
 max_grad_norm = 0.5
 normalize_advantages = true
 # target_kl = 0.02            # early-stop an update's epochs above this KL (None = off)
-device = "auto"               # "auto" = cuda if available, else cpu
-seed = 0
-log_interval = 5              # updates
-# checkpoint_dir = "runs/x"   # set to the run directory by train.py
-checkpoint_interval = 25      # updates
-keep_checkpoints = true       # false: delete older checkpoints after each save (only the latest remains)
 
 [env]  # attentive_snake.config.EnvConfig
 num_envs = 32

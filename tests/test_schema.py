@@ -5,7 +5,9 @@ import pytest
 import torch
 
 from attentive_snake.config import ExperimentConfig
+from attentive_snake.config.experiment import section_types
 from attentive_snake.config.schema import experiment_schema
+from attentive_snake.training.algorithms import algorithm_names
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.registry import KIND_INFO, POLICY_KINDS, build_policy
 from attentive_snake.observation_spec import ObservationSpec
@@ -15,10 +17,9 @@ SCHEMA = experiment_schema()
 
 def test_sections_in_order_and_cover_every_dataclass_field() -> None:
     assert SCHEMA["game"] == "snake"
-    assert list(SCHEMA["sections"]) == ["game", "reward", "model", "train", "env", "evaluation"]
-    experiment = ExperimentConfig()
+    assert list(SCHEMA["sections"]) == ["game", "reward", "model", "train", "env", "evaluation", *algorithm_names()]
     for section, rows in SCHEMA["sections"].items():
-        fields = [f.name for f in dataclasses.fields(getattr(experiment, section))]
+        fields = [f.name for f in dataclasses.fields(section_types("snake", section if section in algorithm_names() else "ppo")[section])]
         assert [row["name"] for row in rows] == fields
     assert "name" not in [row["name"] for row in SCHEMA["sections"]["game"]]  # [game] name is the top-level "game"
 
@@ -44,7 +45,7 @@ def test_nullable_and_choices_and_defaults() -> None:
     rows = {(s, r["name"]): r for s, rs in SCHEMA["sections"].items() for r in rs}
     assert rows["game", "max_steps_without_food"]["nullable"] and rows["game", "max_steps_without_food"]["default"] is None
     assert rows["train", "checkpoint_dir"]["type"] == "path"
-    assert rows["train", "target_kl"]["type"] == "float"
+    assert rows["ppo", "target_kl"]["type"] == "float"
     assert not rows["train", "gamma"]["nullable"] and rows["train", "gamma"]["default"] == 0.99
     assert rows["model", "kind"]["choices"] == list(POLICY_KINDS)
     assert rows["model", "d_model"]["choices"] is None
@@ -134,3 +135,36 @@ def test_unlisted_num_heads_does_not_change_outputs(kind) -> None:
     b = _build(dataclasses.replace(base, num_heads=4))
     obs = torch.rand(2, *a.observation_shape)
     assert torch.equal(a(obs).logits, b(obs).logits)
+
+
+TINY_LEARNERS = {
+    "ppo": {"rollout_length": 8, "num_epochs": 1, "num_minibatches": 2},
+    "dqn": {"buffer_size": 64, "batch_size": 4, "learning_starts": 8},
+}
+
+
+@pytest.mark.parametrize("algorithm", algorithm_names())
+def test_each_algorithm_row_is_truthful(algorithm: str) -> None:
+    """The schema's head is the one the policy gets, its fields are the section's, and its metrics are exactly what it logs."""
+    from attentive_snake.config.experiment_io import experiment_from_tables
+    from attentive_snake.factory import make_policy, make_trainer, make_vec_env
+    from attentive_snake.models.heads import HEADS
+    from attentive_snake.training import NullLogger
+
+    row = SCHEMA["algorithms"][algorithm]
+    assert row["section"] == algorithm and row["head"] in HEADS and row["label"] and row["description"]
+    assert all(metric["label"] and metric["description"] for metric in row["metrics"])
+    config = experiment_from_tables({
+        "game": {"width": 4, "height": 4},
+        "model": {"kind": "mlp", "d_model": 8, "num_layers": 1},
+        "train": {"algorithm": algorithm, "total_env_steps": 64, "device": "cpu", "log_interval": 1},
+        algorithm: TINY_LEARNERS[algorithm],
+        "env": {"num_envs": 2},
+    })
+    env = make_vec_env(config)
+    policy = make_policy(config, env)
+    assert list(policy.net)[-len(HEADS[row["head"]].modules(8, 4)):] == list(HEADS[row["head"]].modules(8, 4))
+    records = make_trainer(config, policy, env, NullLogger()).train()
+    shared = {"iteration", "env_steps", "episodes", "mean_score", "mean_length", "mean_return", "learning_rate", "steps_per_second"}
+    logged = set().union(*records) - shared
+    assert logged == {metric["key"] for metric in row["metrics"]}

@@ -9,8 +9,8 @@ from torch.distributions import Categorical
 
 from attentive_snake.env.types import EpisodeSummary, VecEnv
 from attentive_snake.models.types import PolicyOutput
-from attentive_snake.training.rollout import RolloutBuffer
-from attentive_snake.training.truncation import TruncationBootstrap
+from attentive_snake.training.ppo.rollout import RolloutBuffer
+from attentive_snake.training.ppo.truncation import TruncationBootstrap
 
 
 @dataclass(frozen=True)

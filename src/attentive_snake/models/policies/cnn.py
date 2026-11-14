@@ -1,6 +1,6 @@
 """Actor-critic baseline without attention (``kind = "cnn"``).
 
-Children of ``self.net``: encoder -> readout -> {policy_head, value_head} (from ``FEATURE_STAGES``).
+Children of ``self.net``: encoder -> readout -> head (policy_head + value_head, or q_head: models.heads) (from ``FEATURE_STAGES``).
 
 Grid: ``encoder`` is ``conv_layers`` same-padded convs (``conv_channels`` wide, residual
 after the first); ``readout`` flattens the whole feature map, linear to ``d_model``, GELU.
@@ -17,7 +17,7 @@ from torch import Tensor, nn
 
 from attentive_snake.models.input_stages.catalog import FEATURE_STAGES, readable_kinds
 from attentive_snake.models.input_stages.stage import run_stage, whole_observation
-from attentive_snake.models.policies.base import BasePolicy, output_heads
+from attentive_snake.models.policies.base import BasePolicy
 
 
 class CnnPolicy(BasePolicy):
@@ -26,7 +26,7 @@ class CnnPolicy(BasePolicy):
     def _build_net(self) -> dict[str, nn.Module]:
         stage = self._input_stage(FEATURE_STAGES, whole_observation(self.observation_spec))
         self._stage_names = tuple(stage.modules)
-        return {**stage.modules, **output_heads(self.config.d_model, self.num_actions)}
+        return dict(stage.modules)
 
     def _pooled(self, obs: Tensor, need_weights: bool) -> tuple[Tensor, list[Tensor]]:
         return run_stage(self.net, self._stage_names, obs), []

@@ -18,7 +18,8 @@ def test_locked_fields_cover_the_game_model_board_and_observation_layout() -> No
     assert locked == locked_fields() and "game.name" in locked
     assert {f"model.{field.name}" for field in dataclasses.fields(ModelConfig)} <= set(locked)
     assert {"game.width", "game.height", "game.initial_length", "env.history_length", "env.history_actions"} <= set(locked)
-    assert not {key for key in locked if key.startswith(("reward.", "train."))}
+    assert not {key for key in locked if key.startswith(("reward.", "train.", "ppo."))} - {"train.algorithm"}
+    assert "train.algorithm" in locked
     assert "env.num_envs" not in locked and "game.max_steps_without_food" not in locked
     assert all(reason for reason in locked.values())
 
@@ -27,7 +28,7 @@ def test_locked_fields_cover_the_game_model_board_and_observation_layout() -> No
     "section, values",
     [
         ("reward", {"food": 5.0, "step": 0.0}),
-        ("train", {"learning_rate": 1e-4, "total_env_steps": 123, "entropy_coef": 0.0, "seed": 3, "keep_checkpoints": False}),
+        ("train", {"learning_rate": 1e-4, "total_env_steps": 123, "seed": 3, "keep_checkpoints": False}),
         ("env", {"num_envs": 3}),
         ("game", {"max_steps_without_food": 7}),
     ],

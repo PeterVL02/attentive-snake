@@ -49,6 +49,7 @@ async function render() {
       "div",
       { class: "stats", style: "margin-bottom:16px" },
       h("div", { class: "stat" }, h("div", { class: "k", text: "kind" }), h("div", { class: "v", text: data.kind })),
+      h("div", { class: "stat", title: "The head follows the training algorithm: PPO trains a policy and a value head, DQN a Q-value head." }, h("div", { class: "k", text: "algorithm · head" }), h("div", { class: "v", text: `${data.algorithm} · ${data.head}` })),
       h("div", { class: "stat" }, h("div", { class: "k", text: "parameters" }), h("div", { class: "v", text: formatNumber(data.parameters) })),
       h("div", { class: "stat" }, h("div", { class: "k", text: "observation shape" }), h("div", { class: "v", text: data.observation_shape.join("×") })),
     ),
@@ -73,7 +74,7 @@ export function init(root) {
   replace(
     root,
     h("h2", { text: "Architecture" }),
-    h("p", { class: "lead", text: "The network a config builds (on the CPU, untrained), with its parameter count." }),
+    h("p", { class: "lead", text: "The network a config builds (on the CPU, untrained), with its parameter count. Its head follows the training algorithm (switch it in the New-training form to see the other head)." }),
     h(
       "div",
       { class: "panel" },

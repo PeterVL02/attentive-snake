@@ -12,7 +12,7 @@ from typing import Any
 from attentive_snake.evaluation.config import EvalConfig
 
 PARALLEL_GAMES = 32
-POLICY = "greedy"  # the most likely action of every step; no sampling
+POLICY = "greedy"  # the best action of every step (most likely, or highest Q-value); no sampling
 
 
 @dataclass(frozen=True)
