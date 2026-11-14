@@ -12,6 +12,7 @@ Layers, inner to outer:
   episode summaries; this is what the trainer drives.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -46,7 +47,7 @@ class EnvStep:
     observation: np.ndarray  # float32, shape == observation_shape
     reward: float
     terminated: bool  # ended by the game's rules (death, win)
-    truncated: bool  # cut short by a limit; treated like termination by the trainer
+    truncated: bool  # cut short by a limit (the trainer may bootstrap from the final observation)
     event: str
     score: float
 
@@ -87,7 +88,11 @@ class VecEnvStep:
 
     Environments that finished are reset automatically, so ``observations[i]``
     is already the first observation of the next episode when
-    ``terminated[i] or truncated[i]``.
+    ``terminated[i] or truncated[i]``. The last observation of the finished episode
+    (what the ``SingleEnv``'s ``step`` returned before the reset) is in
+    ``final_observations[i]``: a learner bootstraps from it when the episode was
+    truncated, since the game would have gone on from there. ``final_observations``
+    holds exactly the envs that finished in this step (empty if none did).
     """
 
     observations: np.ndarray  # float32, (num_envs, *observation_shape)
@@ -95,6 +100,7 @@ class VecEnvStep:
     terminated: np.ndarray  # bool, (num_envs,)
     truncated: np.ndarray  # bool, (num_envs,)
     finished_episodes: tuple[EpisodeSummary, ...]
+    final_observations: Mapping[int, np.ndarray]  # env index -> float32 observation_shape
 
 
 class VecEnv(Protocol):

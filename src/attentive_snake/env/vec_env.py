@@ -18,6 +18,8 @@ def env_seed(seed: int | None, index: int) -> int | None:
 class SyncVecEnv:
     """N ``SingleEnv``s stepped in a Python loop; finished envs are reset automatically.
 
+    The last observation of each finished episode is kept in ``VecEnvStep.final_observations``.
+
     All envs must agree on ``observation_shape`` and ``num_actions``. ``reset(seed)``
     gives env ``i`` the seed ``env_seed(seed, i)``.
     """
@@ -51,6 +53,7 @@ class SyncVecEnv:
         terminated = np.zeros(n, dtype=bool)
         truncated = np.zeros(n, dtype=bool)
         finished: list[EpisodeSummary] = []
+        final_observations: dict[int, np.ndarray] = {}
         for i, env in enumerate(self.envs):
             result = env.step(int(actions[i]))
             rewards[i] = result.reward
@@ -59,7 +62,8 @@ class SyncVecEnv:
             summary = self._tracker.update(i, result)
             if summary is not None:
                 finished.append(summary)
+                final_observations[i] = np.array(result.observation, dtype=np.float32)
                 self._obs[i] = env.reset()
             else:
                 self._obs[i] = result.observation
-        return VecEnvStep(self._obs.copy(), rewards, terminated, truncated, tuple(finished))
+        return VecEnvStep(self._obs.copy(), rewards, terminated, truncated, tuple(finished), final_observations)

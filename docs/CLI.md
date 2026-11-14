@@ -42,6 +42,9 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/m
 # Another model kind; the temporal kinds want history
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/tt --set model.kind=temporal_transformer \
     --set env.history_length=4 --set env.history_actions=true
+
+# Treat the time limit like a real ending, as runs made before train.bootstrap_truncated existed did
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/no-bootstrap --set train.bootstrap_truncated=false
 ```
 
 - `--game NAME` (new runs only) picks `configs/<NAME>/default.toml` and the default run directory `runs/<NAME>/default`.
@@ -54,6 +57,12 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/t
 - `--set section.key=value` changes one setting (repeatable; the value is read as TOML, e.g. `1e-4`, `true`, `"cpu"`).
   It cannot set a value to None; use a config file for that.
 - `--description TEXT` is saved in the run's `run.json` (see below) and shown in the app.
+- `train.bootstrap_truncated` decides what a game cut short by a limit (Lunar Lander's time limit, Snake's
+  starvation limit) is worth after the cut: `true` counts the value the network expects from the cut-off state,
+  `false` counts nothing, like a real ending. Default: `true` for Lunar Lander, `false` for Snake (starving is one
+  of its rules, with its own reward); a config without the key (every run made before it existed) is `false`. It
+  can be changed when continuing a run under a new name (fork), not with `--resume`. Logged scores and returns are
+  the game's own in both cases.
 - `--no-keep-checkpoints` deletes the older checkpoints of the run each time a new one is saved, so only the
   latest remains (saved as `train.keep_checkpoints = false`). Deleted checkpoints can no longer be watched,
   continued from or re-evaluated. `--keep-checkpoints` (the default) keeps them all.
@@ -80,7 +89,7 @@ uv run python scripts/train.py --resume runs/snake/8x8 --steps 10000000 --eval-i
 `--resume` uses the run's own `config.toml` (including its game); `--game`, `--config`, `--set`, `--width`,
 `--height`, `--num-envs`, `--seed` and `--fork` are rejected with it. `--steps`, `--[no-]keep-checkpoints`,
 `--description` and `--eval-interval/--eval-games/--eval-seed` are accepted. A resumed run appends to its
-`evaluations.jsonl`. To continue with other settings, start a new run from a checkpoint (next section). To continue with other settings, start a new run from a checkpoint (next section).
+`evaluations.jsonl`. To continue with other settings, start a new run from a checkpoint (next section).
 
 ## Continue a run under a new name with changed settings (fork)
 

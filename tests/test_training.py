@@ -75,12 +75,14 @@ class CorridorVecEnv:
         truncated = ~terminated & (self.steps >= self.max_steps)
         rewards = terminated.astype(np.float32)
         finished = []
-        for i in np.flatnonzero(terminated | truncated):
+        ended = np.flatnonzero(terminated | truncated)
+        final_observations = {int(i): obs for i, obs in zip(ended, self._observations()[ended], strict=True)}
+        for i in ended:
             event = "won" if terminated[i] else "starved"
             finished.append(EpisodeSummary(int(i), int(terminated[i]), int(self.steps[i]), float(rewards[i]), event))
             self.positions[i] = 0
             self.steps[i] = 0
-        return VecEnvStep(self._observations(), rewards, terminated, truncated, tuple(finished))
+        return VecEnvStep(self._observations(), rewards, terminated, truncated, tuple(finished), final_observations)
 
 
 class ScriptedVecEnv:
@@ -107,7 +109,8 @@ class ScriptedVecEnv:
         self.counter += 1
         terminated = np.full(self.num_envs, self.counter % 3 == 0)
         truncated = np.zeros(self.num_envs, dtype=bool)
-        return VecEnvStep(self._observations(), rewards, terminated, truncated, ())
+        finals = {i: obs for i, obs in enumerate(self._observations())} if terminated.any() else {}
+        return VecEnvStep(self._observations(), rewards, terminated, truncated, (), finals)
 
 
 # --------------------------------------------------------------------------- GAE & buffer
