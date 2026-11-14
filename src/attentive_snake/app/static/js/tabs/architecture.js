@@ -1,8 +1,9 @@
-// Tab 3: the policy network of the New-training form or of an existing run.
+// Tab 3: the policy network of the New-training form or of an existing run of the selected game.
 
 import { get, post } from "../api.js";
 import { use } from "../bus.js";
 import { formatNumber, h, message, replace } from "../dom.js";
+import { currentGame, gameUrl, isCurrent } from "../game.js";
 import { renderMermaid } from "../mermaid_view.js";
 import { fillRunSelect } from "../run_options.js";
 
@@ -12,29 +13,34 @@ const CAVEAT =
   "so skips and branches inside forward() are not visible.";
 
 let els = {};
+let renderToken = 0; // a render that finds it changed (newer render, other game) is dropped
 
 function source() {
   return els.root.querySelector('input[name="arch-source"]:checked').value;
 }
 
 async function render() {
+  const token = ++renderToken;
+  const game = currentGame().name;
+  const stale = () => token !== renderToken || !isCurrent(game);
   message(els.status, "info", "Building the model…");
   replace(els.result);
   let data;
   try {
     if (source() === "form") {
       const form = use("formConfig");
-      if (!form) throw new Error("The New-training form is not ready yet.");
+      if (!form || form.tables.game.name !== game) throw new Error("The New-training form is not ready yet.");
       if (form.errors) throw new Error("The New-training form has invalid fields; fix them there first.");
       data = await post("/api/architecture", form.tables);
     } else {
       if (!els.run.value) throw new Error("Choose a run.");
-      data = await get(`/api/runs/${encodeURIComponent(els.run.value)}/architecture`);
+      data = await get(gameUrl(`/api/runs/${encodeURIComponent(els.run.value)}/architecture`, game));
     }
   } catch (error) {
-    message(els.status, "error", error.message);
+    if (!stale()) message(els.status, "error", error.message);
     return;
   }
+  if (stale()) return;
   message(els.status, "", "");
   const diagram = h("div", { class: "mermaid-out" }, h("div", { class: "muted small", text: "Rendering diagram…" }));
   replace(
@@ -44,7 +50,7 @@ async function render() {
       { class: "stats", style: "margin-bottom:16px" },
       h("div", { class: "stat" }, h("div", { class: "k", text: "kind" }), h("div", { class: "v", text: data.kind })),
       h("div", { class: "stat" }, h("div", { class: "k", text: "parameters" }), h("div", { class: "v", text: formatNumber(data.parameters) })),
-      h("div", { class: "stat" }, h("div", { class: "k", text: "observation (C×H×W)" }), h("div", { class: "v", text: data.observation_shape.join("×") })),
+      h("div", { class: "stat" }, h("div", { class: "k", text: "observation shape" }), h("div", { class: "v", text: data.observation_shape.join("×") })),
     ),
     h("p", { class: "muted small", text: CAVEAT }),
     h("div", { class: "panel" }, h("h3", { text: "Diagram" }), diagram),
@@ -83,11 +89,20 @@ export function init(root) {
 }
 
 export async function show(params = {}) {
+  const game = currentGame().name;
   try {
-    await fillRunSelect(els.run, params.run || els.run.value);
+    await fillRunSelect(els.run, game, params.run || els.run.value);
   } catch (error) {
-    message(els.status, "error", error.message);
+    if (isCurrent(game)) message(els.status, "error", error.message);
   }
+  if (!isCurrent(game)) return;
   if (params.source) els.root.querySelector(`input[value="${params.source}"]`).checked = true;
   if (params.source || !els.result.hasChildNodes()) render();
+}
+
+export function reset() {
+  renderToken += 1;
+  replace(els.run);
+  replace(els.result);
+  message(els.status, "", "");
 }

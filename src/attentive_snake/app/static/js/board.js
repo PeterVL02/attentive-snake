@@ -1,6 +1,7 @@
-// Drawing a watched frame on a canvas: grid, attention heatmap, snake (distinct head) and food.
+// The "board" view kind: a watched frame drawn on a canvas as a grid with the attention heatmap,
+// the player body (distinct head) and the target cell (payload keys: see views/board.py).
 
-import { cssVar } from "./dom.js";
+import { cssVar, h } from "./dom.js";
 
 const MAX_BOARD_PX = 520;
 
@@ -70,4 +71,10 @@ export function drawBoard(canvas, frame) {
     ctx.arc(fx * cell + cell / 2, fy * cell + cell / 2, cell * 0.3, 0, 2 * Math.PI);
     ctx.fill();
   }
+}
+
+/** The board view for the Watch tab: {el, draw(frame)}. */
+export function boardView() {
+  const canvas = h("canvas", { role: "img", "aria-label": "Game board with attention heatmap" });
+  return { el: canvas, draw: (frame) => drawBoard(canvas, frame) };
 }

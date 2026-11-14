@@ -1,10 +1,11 @@
-// Filling <select> elements with runs and checkpoints (shared by several tabs).
+// Filling <select> elements with a game's runs and a run's checkpoints (shared by several tabs).
 
 import { get } from "./api.js";
 import { formatSteps, h, replace } from "./dom.js";
+import { gameUrl } from "./game.js";
 
-export async function fillRunSelect(select, selected) {
-  const runs = await get("/api/runs");
+export async function fillRunSelect(select, game, selected) {
+  const runs = await get(gameUrl("/api/runs", game));
   replace(
     select,
     runs.length === 0 ? h("option", { value: "", text: "No runs yet" }) : null,
@@ -14,19 +15,24 @@ export async function fillRunSelect(select, selected) {
   return runs;
 }
 
-/** Fills with the run's checkpoints, latest first; returns them. */
-export async function fillCheckpointSelect(select, run, selected) {
+/** Fill `select` with `checkpoints` ([{name, steps}], ascending), latest first; keeps `selected` if present. */
+export function setCheckpointOptions(select, checkpoints, selected = select.value) {
+  const latestFirst = [...checkpoints].reverse();
+  replace(
+    select,
+    latestFirst.length === 0 ? h("option", { value: "", text: "No checkpoints yet" }) : null,
+    latestFirst.map((c, i) => h("option", { value: c.name, text: `${formatSteps(c.steps)} steps${i === 0 ? " (latest)" : ""}` })),
+  );
+  if (latestFirst.some((c) => c.name === selected)) select.value = selected;
+  return latestFirst;
+}
+
+/** Fills with the checkpoints of `run` of `game`, latest first; returns them. */
+export async function fillCheckpointSelect(select, game, run, selected) {
   if (!run) {
     replace(select, h("option", { value: "", text: "—" }));
     return [];
   }
-  const detail = await get(`/api/runs/${encodeURIComponent(run)}?log_lines=1`);
-  const checkpoints = [...detail.checkpoints].reverse();
-  replace(
-    select,
-    checkpoints.length === 0 ? h("option", { value: "", text: "No checkpoints yet" }) : null,
-    checkpoints.map((c, i) => h("option", { value: c.name, text: `${formatSteps(c.steps)} steps${i === 0 ? " (latest)" : ""}` })),
-  );
-  if (selected && checkpoints.some((c) => c.name === selected)) select.value = selected;
-  return checkpoints;
+  const detail = await get(gameUrl(`/api/runs/${encodeURIComponent(run)}?log_lines=1`, game));
+  return setCheckpointOptions(select, detail.checkpoints, selected);
 }

@@ -95,13 +95,18 @@ code, pre, .mono { font-family: var(--mono); font-size: 0.9em; }
   margin: 0 auto;
   padding: 0 20px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 28px;
+  column-gap: 28px;
 }
 
-.app-title { font-weight: 650; font-size: 16px; white-space: nowrap; }
+.app-title { font-weight: 650; font-size: 16px; white-space: nowrap; padding: 10px 0; }
 
-.tabs { display: flex; gap: 2px; overflow-x: auto; }
+.game-picker { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.game-picker select { min-height: 30px; padding: 3px 8px; font-weight: 600; }
+.game-description { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+.tabs { display: flex; gap: 2px; overflow-x: auto; flex-basis: 100%; }
 
 .tabs button {
   border: 0;
@@ -141,7 +146,7 @@ h3 { font-size: 15px; margin: 0 0 12px; font-weight: 650; }
 .columns { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
 .columns.wide-right { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .columns.narrow-left { grid-template-columns: 240px minmax(0, 1fr); }
-.sticky { position: sticky; top: 72px; }
+.sticky { position: sticky; top: 108px; } /* below the two-row header */
 
 @media (max-width: 980px) {
   .columns, .columns.wide-right, .columns.narrow-left { grid-template-columns: minmax(0, 1fr); }
@@ -230,6 +235,7 @@ details.advanced > summary { cursor: pointer; color: var(--muted); font-weight: 
 .message { border-radius: 6px; padding: 10px 12px; font-size: 14px; }
 .message.error { background: var(--danger-soft); color: var(--danger); white-space: pre-wrap; }
 .message.info { background: var(--surface-2); color: var(--muted); }
+.message.warn { background: var(--surface-2); color: var(--warn); margin-bottom: 14px; }
 .message:empty { display: none; }
 
 .empty { color: var(--muted); padding: 24px 0; text-align: center; }
@@ -332,6 +338,13 @@ pre.log, pre.tree {
 .weights { display: flex; align-items: flex-end; gap: 6px; height: 90px; margin-top: 8px; }
 .weights .bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font-size: 11px; color: var(--muted); }
 .weights .bar div { width: 100%; background: rgb(var(--heat)); border-radius: 3px 3px 0 0; min-height: 1px; }
+.game-image { display: block; max-width: 100%; height: auto; border-radius: 6px; background: var(--board-bg); }
+.element-weights { display: grid; gap: 4px; }
+.element-row { display: grid; grid-template-columns: minmax(80px, 14ch) minmax(0, 1fr) 4ch; gap: 8px; align-items: center; font-size: 12.5px; }
+.element-name { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.element-track { height: 10px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.element-fill { height: 100%; background: rgb(var(--heat)); border-radius: 3px; }
+.element-value { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 input[type="range"] { accent-color: var(--accent); }
 
 /* ---------- architecture ---------- */
@@ -366,6 +379,16 @@ textarea { width: 100%; resize: vertical; line-height: 1.4; }
 .pre-wrap { white-space: pre-wrap; }
 .run-label { display: flex; flex-direction: column; min-width: 0; }
 .run-description { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-meta { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- continue training (Runs tab) ---------- */
+
+.continue-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.continue-option { background: var(--surface-2); border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.continue-option h4 { margin: 0; font-size: 14.5px; }
+.continue-option > p { margin: 0; }
+.continue-option .field input, .continue-option .field select { width: 100%; }
+.continue-option .message.info { background: var(--surface); }
 .lineage { color: var(--muted); font-size: 13.5px; margin: 2px 0 12px; }
 .lineage button.link { color: var(--accent); font-family: var(--mono); font-size: 13px; }
 .inline-check { gap: 6px; cursor: pointer; }
