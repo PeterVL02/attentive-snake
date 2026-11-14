@@ -345,6 +345,8 @@ pre.log, pre.tree {
 .element-track { height: 10px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
 .element-fill { height: 100%; background: rgb(var(--heat)); border-radius: 3px; }
 .element-value { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.action-values .element-row { grid-template-columns: minmax(80px, 14ch) minmax(0, 1fr) 8ch; }
+.action-values .best-action .element-name, .action-values .best-action .element-value { font-weight: 600; color: var(--text); }
 input[type="range"] { accent-color: var(--accent); }
 
 /* ---------- architecture ---------- */

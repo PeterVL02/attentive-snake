@@ -159,7 +159,7 @@ export function evaluationRunner(game, name, { onSaved }) {
     const previous = els.checkpoint.value;
     setCheckpointOptions(els.checkpoint, d.checkpoints);
     els.checkpoint.disabled = d.checkpoints.length === 0;
-    if (!defaultsLoaded) {
+    if (!defaultsLoaded && d.config) {
       els.games.value = String(d.config.evaluation.games);
       els.seed.value = String(d.config.evaluation.seed);
       defaultsLoaded = true;

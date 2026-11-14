@@ -3,7 +3,7 @@
 import dataclasses
 from pathlib import Path
 
-from attentive_snake.app.config_json import dataclass_to_json
+from attentive_snake.app.config_json import dataclass_to_json, experiment_to_json
 from attentive_snake.config import load_experiment
 from attentive_snake.run_dir import config_path, list_checkpoints, metrics_path
 from attentive_snake.run_metadata import event_to_json, latest_description, lineage, read_events
@@ -26,6 +26,14 @@ def checkpoints(run_dir: Path) -> list[dict]:
 def metrics(run_dir: Path) -> list[dict]:
     path = metrics_path(run_dir)
     return read_metrics(path) if path.is_file() else []
+
+
+def config_json(run_dir: Path) -> dict | None:
+    """The run's config.toml as JSON tables, or ``None`` if it cannot be read (``config_summary`` says why)."""
+    try:
+        return experiment_to_json(load_experiment(config_path(run_dir)))
+    except (OSError, ValueError, TypeError):
+        return None
 
 
 def config_summary(run_dir: Path) -> dict:

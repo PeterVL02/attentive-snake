@@ -11,16 +11,16 @@ import { LineChart, renderLegend, seriesColor } from "../chart.js";
 import { monotonic, points } from "../metric_series.js";
 import { setCheckpointOptions } from "../run_options.js";
 import { rulesSummary } from "../rules_summary.js";
+import { loadSchema } from "../schema.js";
 
+// Logged by every algorithm; each algorithm adds its own (schema.algorithms[name].metrics).
 const METRICS = [
   { key: "mean_score", label: "mean score", hidden: false },
   { key: "mean_length", label: "mean episode length", hidden: true },
   { key: "mean_return", label: "mean return", hidden: true },
 ];
-const STAT_KEYS = [
-  "mean_score", "mean_length", "mean_return", "episodes", "policy_loss", "value_loss", "entropy",
-  "approx_kl", "clip_fraction", "explained_variance", "learning_rate", "steps_per_second",
-];
+const SHARED_STATS = ["mean_score", "mean_length", "mean_return", "episodes"];
+const LOOP_STATS = ["learning_rate", "steps_per_second"];
 const FAST_POLL_MS = 2000;
 const SLOW_POLL_MS = 8000;
 
@@ -31,8 +31,26 @@ let visible = false;
 let timer = null;
 let detail = null;
 let chart = null;
-const series = METRICS.map((m, i) => ({ ...m, color: null, index: i, points: [] }));
+let series = [];
+let seriesAlgorithm; // the algorithm whose metrics `series` holds
+let algorithmInfos = {}; // schema.algorithms of the selected game
 let els = {};
+
+/** The run's algorithm facts from the schema (label, metrics), or null for an unreadable config. */
+function algorithmInfo(name) {
+  return algorithmInfos[name] ?? null;
+}
+
+/** Chart series: the shared metrics, then the algorithm's own (hidden until switched on in the legend). */
+function chartSeries(info) {
+  const own = (info?.metrics ?? []).map((m) => ({ key: m.key, label: m.label, hidden: true }));
+  return [...METRICS, ...own].map((m, i) => ({ ...m, color: seriesColor(i), index: i, points: [] }));
+}
+
+function runMeta(run) {
+  if (run.config_error) return "config.toml cannot be read by this version";
+  return `${run.kind ?? "?"} · ${algorithmInfo(run.algorithm)?.label ?? run.algorithm ?? "?"} · ${rulesSummary(run.rules)}`;
+}
 
 function runUrl(name, suffix = "") {
   return gameUrl(`/api/runs/${encodeURIComponent(name)}${suffix}`);
@@ -56,7 +74,7 @@ function renderList(runs) {
             "span",
             { class: "run-label" },
             h("span", { class: "name", text: run.name, title: run.name }),
-            h("span", { class: "run-meta", text: `${run.kind ?? "?"} · ${rulesSummary(run.rules)}` }),
+            h("span", { class: "run-meta", text: runMeta(run) }),
             run.description ? h("span", { class: "run-description", text: run.description, title: run.description }) : null,
           ),
           badge(run.status.state),
@@ -82,6 +100,7 @@ function buildDetail(name) {
     legend: h("div", { class: "legend" }),
     chartWrap: h("div", { class: "chart-wrap" }),
     stats: h("div", { class: "stats" }),
+    configError: h("div", { class: "message error", role: "alert", hidden: true }),
     checkpoint: h("select", { id: "run-checkpoint", "aria-label": "checkpoint" }),
     log: h("pre", { class: "log" }),
     config: h("div", {}),
@@ -90,6 +109,7 @@ function buildDetail(name) {
     detailEl,
     h("div", { class: "row spread" }, h("div", { class: "row" }, els.title, els.badge), els.stop),
     els.meta,
+    els.configError,
     els.lineage,
     h(
       "div",
@@ -120,8 +140,21 @@ function buildDetail(name) {
     h("details", { class: "panel" }, h("summary", { text: "Config (read-only)" }), els.config),
   );
   chart = new LineChart(els.chartWrap, { xFormat: formatSteps, empty: "No metrics logged yet." });
-  series.forEach((s) => (s.color = seriesColor(s.index)));
+  seriesAlgorithm = undefined;
+}
+
+/** Rebuild the series and legend when the shown run's algorithm (and so its metrics) differs. */
+function useAlgorithmSeries(algorithm) {
+  if (algorithm === seriesAlgorithm) return;
+  seriesAlgorithm = algorithm;
+  series = chartSeries(algorithmInfo(algorithm));
   renderLegend(els.legend, series, () => chart.draw());
+}
+
+/** [key, label] of the latest-metrics tiles: shared statistics, the algorithm's own, then the loop's. */
+function statKeys(info) {
+  const own = (info?.metrics ?? []).map((m) => [m.key, m.label]);
+  return [...SHARED_STATS.map((k) => [k, k]), ...own, ...LOOP_STATS.map((k) => [k, k])];
 }
 
 function renderLineage(parent) {
@@ -159,6 +192,7 @@ function renderHistory(events) {
 }
 
 function renderConfig(config) {
+  if (!config) return h("p", { class: "muted small", text: "Not available: config.toml cannot be read (see above)." });
   return Object.entries(config).map(([section, table]) =>
     h(
       "div",
@@ -174,7 +208,11 @@ function renderDetail(d) {
   els.title.textContent = d.name;
   replace(els.badge, badge(state));
   if (state === "failed") els.badge.append(h("span", { class: "muted small", text: ` exit code ${d.status.exit_code}` }));
-  els.meta.textContent = `${currentGame().title} · ${d.kind ?? "?"} · ${rulesSummary(d.rules)}`;
+  els.meta.textContent = `${currentGame().title} · ${runMeta(d)}`;
+  els.configError.hidden = !d.config_error;
+  els.configError.textContent = d.config_error
+    ? `This run's config.toml cannot be read by this version of the code, so it cannot be resumed, forked, watched or evaluated here: ${d.config_error}`
+    : "";
   els.stop.hidden = state !== "running";
   els.continuePanel.update(d);
   els.evaluationPanel.update(d);
@@ -186,6 +224,8 @@ function renderDetail(d) {
   els.progress.style.width = `${pct}%`;
   els.progressText.textContent = `${formatNumber(d.env_steps)} / ${formatNumber(total)} env steps (${pct.toFixed(1)}%) · last checkpoint at ${formatNumber(d.checkpoint_steps)}`;
 
+  const info = algorithmInfo(d.algorithm);
+  useAlgorithmSeries(d.algorithm);
   const records = monotonic(d.metrics);
   for (const s of series) s.points = points(records, s.key);
   chart.setSeries(series);
@@ -194,7 +234,7 @@ function renderDetail(d) {
   replace(
     els.stats,
     latest
-      ? STAT_KEYS.filter((k) => k in latest).map((k) => h("div", { class: "stat" }, h("div", { class: "k", text: k }), h("div", { class: "v", text: formatNumber(latest[k]) })))
+      ? statKeys(info).filter(([k]) => k in latest).map(([k, label]) => h("div", { class: "stat", title: k }, h("div", { class: "k", text: label }), h("div", { class: "v", text: formatNumber(latest[k]) })))
       : h("div", { class: "muted", text: "No metrics yet." }),
   );
   setCheckpointOptions(els.checkpoint, d.checkpoints);
@@ -211,8 +251,9 @@ async function refresh() {
   const run = selected;
   const stale = () => game !== currentGame().name || run !== selected;
   try {
-    const runs = await get(gameUrl("/api/runs", game));
+    const [runs, { schema }] = await Promise.all([get(gameUrl("/api/runs", game)), loadSchema(game)]);
     if (stale()) return;
+    algorithmInfos = schema.algorithms;
     renderList(runs);
     if (run) {
       const loaded = await get(gameUrl(`/api/runs/${encodeURIComponent(run)}`, game));

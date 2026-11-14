@@ -166,4 +166,5 @@ def test_a_dqn_run_is_watched_and_evaluated_greedily_with_q_values(tmp_path, kin
         assert frames[0].heatmap is not None  # attention works the same with the Q-value head
     settings = EvalSettings(games=3, seed=1, max_episode_steps=50, parallel_games=2, device="cpu")
     first = evaluate_checkpoint(run_dir, latest_checkpoint(run_dir), settings)
-    assert first.statistics["games"] == 3 and evaluate_checkpoint(run_dir, latest_checkpoint(run_dir), settings) == first
+    assert first.statistics["games"] == 3
+    assert evaluate_checkpoint(run_dir, latest_checkpoint(run_dir), settings).statistics == first.statistics

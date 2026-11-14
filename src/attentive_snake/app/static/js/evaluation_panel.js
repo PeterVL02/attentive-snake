@@ -10,7 +10,7 @@ import { evaluationDetails } from "./evaluation_view.js";
 const SOURCES = { training: "while training", manual: "on request" };
 
 function emptyState(detail) {
-  const interval = detail.config.evaluation?.interval ?? 0;
+  const interval = detail.config?.evaluation?.interval ?? 0;
   if (interval === 0) {
     return "This run was not evaluated while it trained (evaluation.interval = 0). Evaluate any checkpoint below, or resume the run with an evaluation interval to record evaluations as it trains.";
   }

@@ -39,7 +39,7 @@ function runRow(run) {
       "label",
       { for: id },
       h("span", { class: "name", text: run.name }),
-      h("span", { class: "muted small", text: `${run.kind ?? "?"} · ${rulesSummary(run.rules)} · ${formatSteps(run.env_steps)} / ${formatSteps(run.total_env_steps)}` }),
+      h("span", { class: "muted small", text: `${run.kind ?? "?"} · ${run.algorithm ?? "?"} · ${rulesSummary(run.rules)} · ${formatSteps(run.env_steps)} / ${formatSteps(run.total_env_steps)}` }),
       run.description ? h("span", { class: "run-description", text: run.description, title: run.description }) : null,
     ),
     badge(run.status.state),
@@ -137,8 +137,8 @@ function tableEvaluationMetric() {
 function summaryTable() {
   const evaluated = tableEvaluationMetric();
   const evalHead = evaluated ? [`latest evaluation: ${evaluated.label}`, `best evaluation: ${evaluated.label}`] : [];
-  const head = ["", "run", "kind", "parameters", "rules", "final mean score (training)", "best mean score (training)", ...evalHead, "steps / s", "description"];
-  const numeric = (t, i) => (i >= 3 && i !== 4 && i < head.length - 1 ? "num" : null);
+  const head = ["", "run", "kind", "algorithm", "parameters", "rules", "final mean score (training)", "best mean score (training)", ...evalHead, "steps / s", "description"];
+  const numeric = (t, i) => (i >= 4 && i !== 5 && i < head.length - 1 ? "num" : null);
   return h(
     "table",
     {},
@@ -155,9 +155,10 @@ function summaryTable() {
           {},
           h("td", {}, h("span", { class: "swatch", style: `background:${seriesColor(i)}` })),
           h("td", { class: "mono", text: run.name }),
-          h("td", { text: run.config.model.kind }),
+          h("td", { text: run.kind ?? "?" }),
+          h("td", { text: run.algorithm ?? "?", title: run.config_error ?? "" }),
           h("td", { class: "num", text: formatNumber(run.parameters) }),
-          h("td", { text: rulesSummary(run.config.game) }),
+          h("td", { text: rulesSummary(run.rules) }),
           h("td", { class: "num", text: scores.length ? formatNumber(scores[scores.length - 1], 2) : "–" }),
           h("td", { class: "num", text: scores.length ? formatNumber(Math.max(...scores), 2) : "–" }),
           evaluated ? evaluationCells(run, evaluated) : null,
