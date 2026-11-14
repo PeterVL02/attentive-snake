@@ -29,21 +29,18 @@ def metrics(run_dir: Path) -> list[dict]:
 
 
 def config_summary(run_dir: Path) -> dict:
-    """Game, model kind, game rules and training target from config.toml (``None`` values if it cannot be read).
+    """Game, model kind, game rules (every ``[game]`` field but ``name``) and training target from config.toml.
 
-    ``width`` / ``height`` are the rules' fields of that name for grid games such as Snake
-    (``None`` for games without them); the current Runs tab shows them.
+    All values are ``None`` if the config cannot be read.
     """
     try:
         config = load_experiment(config_path(run_dir))
     except (OSError, ValueError, TypeError):
-        return {"game": None, "kind": None, "rules": None, "width": None, "height": None, "total_env_steps": None}
+        return {"game": None, "kind": None, "rules": None, "total_env_steps": None}
     return {
         "game": config.game_name,
         "kind": config.model.kind,
         "rules": dataclass_to_json(config.game),
-        "width": getattr(config.game, "width", None),
-        "height": getattr(config.game, "height", None),
         "total_env_steps": config.train.total_env_steps,
     }
 

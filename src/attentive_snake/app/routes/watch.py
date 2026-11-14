@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -12,9 +12,10 @@ from attentive_snake.app.game_lookup import DEFAULT_GAME
 from attentive_snake.app.paths import AppPaths
 from attentive_snake.app.run_lookup import checkpoint_in_run, existing_run_dir
 from attentive_snake.app.watch_sessions import UnknownSession, WatchSessions
-from attentive_snake.watch import WatchSession
+from attentive_snake.watch import WatchFrame, WatchSession
 
 MAX_STEPS_PER_CALL = 100
+EPISODE_KEYS = ("score", "steps", "event", "done", "episode")  # what a frame that is not drawn still needs
 
 
 class Options(BaseModel):
@@ -37,6 +38,18 @@ class NewSession(BaseModel):
 
 class Steps(BaseModel):
     count: int = Field(default=1, ge=1, le=MAX_STEPS_PER_CALL)
+    frames: Literal["all", "last"] = Field(
+        default="all",
+        description='"last": only the last frame in full; the others carry only the episode keys (score, steps, event, done, episode)',
+    )
+
+
+def step_frames(frames: list[WatchFrame], keep: Literal["all", "last"]) -> list[dict[str, Any]]:
+    """The frames as JSON; with ``keep="last"`` all but the last are cut down to ``EPISODE_KEYS`` (no view, no attention)."""
+    dicts = [frame.to_dict() for frame in frames]
+    if keep == "last":
+        dicts[:-1] = [{key: frame[key] for key in EPISODE_KEYS} for frame in dicts[:-1]]
+    return dicts
 
 
 def make_router(paths: AppPaths, sessions: WatchSessions) -> APIRouter:
@@ -72,7 +85,7 @@ def make_router(paths: AppPaths, sessions: WatchSessions) -> APIRouter:
     @router.post("/{session_id}/step")
     def step(session_id: str, request: Steps) -> dict:
         with session(session_id) as watch:
-            return {"frames": [watch.step().to_dict() for _ in range(request.count)]}
+            return {"frames": step_frames([watch.step() for _ in range(request.count)], request.frames)}
 
     @router.post("/{session_id}/reset")
     def reset(session_id: str) -> dict:
