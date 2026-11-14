@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from attentive_snake.env.types import EnvStep
+from attentive_snake.episode_metrics import GameMetrics, MetricDefinition, rate
 from attentive_snake.games.spec import GameSpec
 from attentive_snake.views.board import board_payload
 
@@ -59,6 +60,13 @@ class WalkEnv:
         return obs
 
 
+REACH_RATE = MetricDefinition("reach_rate", "reach rate", "Share of games that reached the goal.", True, "rate")
+WALK_METRICS = GameMetrics(
+    definitions=(REACH_RATE,),
+    compute=lambda records: {"reach_rate": rate(sum(r.outcome == "won" for r in records), len(records))},
+)
+
+
 GAME = GameSpec(
     name="walk",
     title="Walk",
@@ -69,4 +77,5 @@ GAME = GameSpec(
     reward_type=WalkReward,
     make_env=WalkEnv,
     locked_rules={"length": "it fixes the input size"},
+    episode_metrics=WALK_METRICS,
 )

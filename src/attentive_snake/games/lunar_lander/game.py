@@ -2,6 +2,7 @@
 
 from attentive_snake.games.lunar_lander.config import LanderRules
 from attentive_snake.games.lunar_lander.env import LunarLanderEnv
+from attentive_snake.games.lunar_lander.metrics import LANDER_METRICS
 from attentive_snake.games.lunar_lander.reward import LanderReward
 from attentive_snake.games.spec import GameSpec
 
@@ -32,4 +33,5 @@ GAME = GameSpec(
     reward_type=LanderReward,
     make_env=make_env,
     observation_labels=OBSERVATION_LABELS,
+    episode_metrics=LANDER_METRICS,
 )
