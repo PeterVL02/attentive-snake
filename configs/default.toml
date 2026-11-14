@@ -57,6 +57,7 @@ seed = 0
 log_interval = 10             # updates
 # checkpoint_dir = "runs/x"   # set to the run directory by train.py
 checkpoint_interval = 100     # updates
+keep_checkpoints = true       # false: delete older checkpoints after each save (only the latest remains)
 
 [env]  # attentive_snake.config.EnvConfig
 num_envs = 64

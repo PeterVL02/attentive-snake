@@ -32,6 +32,7 @@ class TrainConfig:
     log_interval: int = field(default=10, metadata={"help": "Record the training metrics every this many updates."})
     checkpoint_dir: Path | None = field(default=None, metadata={"help": "Folder where checkpoints are saved. Set automatically to the run folder; empty disables checkpoints."})
     checkpoint_interval: int = field(default=100, metadata={"help": "Save a checkpoint every this many updates (and at the end of training)."})
+    keep_checkpoints: bool = field(default=True, metadata={"help": "Keep every saved checkpoint. When off, older checkpoints of the run are deleted each time a new one is saved, so only the latest remains (saves disk space, but older checkpoints can then no longer be watched or continued from)."})
 
     def __post_init__(self) -> None:
         positive_ints = (

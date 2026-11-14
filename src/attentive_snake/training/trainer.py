@@ -7,7 +7,7 @@ import torch
 from torch import nn
 
 from attentive_snake.env.types import VecEnv
-from attentive_snake.training.checkpoint import checkpoint_path, save_checkpoint
+from attentive_snake.training.checkpoint import checkpoint_path, prune_checkpoints, save_checkpoint
 from attentive_snake.training.collector import RolloutCollector
 from attentive_snake.training.config import TrainConfig
 from attentive_snake.training.metrics import ConsoleLogger, EpisodeStatsWindow, MetricsLogger
@@ -88,7 +88,10 @@ class Trainer:
 
     def save_checkpoint(self) -> None:
         assert self.config.checkpoint_dir is not None
-        save_checkpoint(checkpoint_path(self.config.checkpoint_dir, self.env_steps), self.policy, self.optimizer, self.env_steps)
+        path = checkpoint_path(self.config.checkpoint_dir, self.env_steps)
+        save_checkpoint(path, self.policy, self.optimizer, self.env_steps)
+        if not self.config.keep_checkpoints:
+            prune_checkpoints(self.config.checkpoint_dir, keep=path)
 
     def _train_one_update(self, update: int) -> dict[str, float]:
         start = time.perf_counter()
