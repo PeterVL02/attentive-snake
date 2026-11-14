@@ -4,11 +4,11 @@ import pytest
 from attentive_snake.config.experiment import EnvConfig
 from attentive_snake.env.frame import FrameBuilder
 from attentive_snake.env.history import FrameHistory
-from attentive_snake.env.observation import ObservationEncoder
-from attentive_snake.env.snake_env import SnakeEnv
+from attentive_snake.games.snake.observation import ObservationEncoder
+from attentive_snake.games.snake.env import SnakeEnv
 from attentive_snake.env.vec_env import SyncVecSnakeEnv
-from attentive_snake.game.config import GameConfig
-from attentive_snake.game.types import Action
+from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.types import Action
 
 CFG = GameConfig(width=7, height=6)
 

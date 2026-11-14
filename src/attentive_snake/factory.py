@@ -9,7 +9,7 @@ from typing import Protocol
 from torch import nn
 
 from attentive_snake.config import ExperimentConfig
-from attentive_snake.env.snake_env import SnakeEnv
+from attentive_snake.games.snake.env import SnakeEnv
 from attentive_snake.env.vec_env import SyncVecSnakeEnv
 from attentive_snake.models.registry import build_policy
 

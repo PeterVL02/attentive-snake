@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from attentive_snake.env.observation import ObservationEncoder
-from attentive_snake.game.types import Action, GameState
+from attentive_snake.games.snake.observation import ObservationEncoder
+from attentive_snake.games.snake.types import Action, GameState
 
 NUM_ACTION_PLANES = len(Action)
 

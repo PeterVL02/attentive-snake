@@ -8,7 +8,7 @@ from typing import Protocol
 
 import numpy as np
 
-from attentive_snake.game.types import StepEvent
+from attentive_snake.games.snake.types import StepEvent
 
 
 @dataclass(frozen=True)

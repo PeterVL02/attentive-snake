@@ -1,12 +1,12 @@
 import numpy as np
 import pytest
 
-from attentive_snake.env.observation import ObservationEncoder
-from attentive_snake.env.reward import RewardConfig, build_reward
-from attentive_snake.env.snake_env import SnakeEnv
+from attentive_snake.games.snake.observation import ObservationEncoder
+from attentive_snake.games.snake.reward import RewardConfig, build_reward
+from attentive_snake.games.snake.env import SnakeEnv
 from attentive_snake.env.vec_env import SyncVecSnakeEnv
-from attentive_snake.game.config import GameConfig
-from attentive_snake.game.types import Action, GameState, StepEvent, StepResult
+from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.types import Action, GameState, StepEvent, StepResult
 
 
 def make_state(snake, food, w=6, h=5, done=False):

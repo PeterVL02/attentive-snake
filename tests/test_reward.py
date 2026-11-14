@@ -1,8 +1,8 @@
 import pytest
 
-from attentive_snake.env.reward import RewardConfig, build_reward
-from attentive_snake.env.reward_pipeline import RewardBuilder, RewardPipeline
-from attentive_snake.env.reward_terms import (
+from attentive_snake.games.snake.reward import RewardConfig, build_reward
+from attentive_snake.games.snake.reward_pipeline import RewardBuilder, RewardPipeline
+from attentive_snake.games.snake.reward_terms import (
     DeathPenalty,
     FoodDistanceShaping,
     FoodReward,
@@ -10,7 +10,7 @@ from attentive_snake.env.reward_terms import (
     StepCost,
     WinReward,
 )
-from attentive_snake.game.types import Action, GameState, StepEvent, StepResult
+from attentive_snake.games.snake.types import Action, GameState, StepEvent, StepResult
 
 
 def state(snake, food, score=0):

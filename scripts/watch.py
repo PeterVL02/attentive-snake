@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import pygame
 
-from attentive_snake.game.renderer import PygameRenderer
+from attentive_snake.games.snake.renderer import PygameRenderer
 from attentive_snake.training import latest_checkpoint
 from attentive_snake.watch import WatchFrame, WatchSession
 

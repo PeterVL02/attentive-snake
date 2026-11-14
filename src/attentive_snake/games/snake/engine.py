@@ -3,8 +3,8 @@
 import random
 from collections import deque
 
-from attentive_snake.game.config import GameConfig
-from attentive_snake.game.types import Action, GameState, Position, StepEvent, StepResult
+from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.types import Action, GameState, Position, StepEvent, StepResult
 
 
 class SnakeGame:

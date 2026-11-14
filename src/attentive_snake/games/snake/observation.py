@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from attentive_snake.game.types import GameState
+from attentive_snake.games.snake.types import GameState
 
 HEAD, BODY, FOOD = 0, 1, 2
 

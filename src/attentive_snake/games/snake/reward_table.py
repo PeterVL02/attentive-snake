@@ -4,8 +4,8 @@ Each situation is a tiny hand-built (previous state, step result) pair on a 5x5 
 scored by the pipeline that ``build_reward`` makes from the config.
 """
 
-from attentive_snake.env.reward import RewardConfig, build_reward
-from attentive_snake.game.types import Action, GameState, Position, StepEvent, StepResult
+from attentive_snake.games.snake.reward import RewardConfig, build_reward
+from attentive_snake.games.snake.types import Action, GameState, Position, StepEvent, StepResult
 
 _DIGITS = 9  # hides float noise such as -0.060000000000000005
 _SIZE = 5

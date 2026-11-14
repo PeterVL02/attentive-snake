@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 from attentive_snake.env.types import EpisodeSummary, VecEnvStep
-from attentive_snake.game.types import StepEvent
+from attentive_snake.games.snake.types import StepEvent
 from attentive_snake.models.types import PolicyOutput
 from attentive_snake.training import (
     NullLogger,

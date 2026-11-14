@@ -5,7 +5,7 @@ import pytest
 
 from attentive_snake.config import EnvConfig, ExperimentConfig, save_experiment
 from attentive_snake.factory import make_policy, make_vec_env
-from attentive_snake.game.config import GameConfig
+from attentive_snake.games.snake.config import GameConfig
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.registry import KIND_INFO, POLICY_KINDS
 from attentive_snake.run_dir import config_path

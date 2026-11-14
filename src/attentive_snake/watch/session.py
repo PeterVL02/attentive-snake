@@ -7,7 +7,7 @@ import torch
 
 from attentive_snake.config import load_experiment
 from attentive_snake.factory import make_env, make_policy
-from attentive_snake.game.types import GameState
+from attentive_snake.games.snake.types import GameState
 from attentive_snake.models.registry import KIND_INFO
 from attentive_snake.run_dir import config_path
 from attentive_snake.training.checkpoint import latest_checkpoint, load_checkpoint

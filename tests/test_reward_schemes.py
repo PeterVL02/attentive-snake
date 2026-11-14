@@ -11,7 +11,7 @@ from attentive_snake.config.reward_schemes import (
     reward_table,
     save_scheme,
 )
-from attentive_snake.env.reward import RewardConfig
+from attentive_snake.games.snake.reward import RewardConfig
 
 SHIPPED = Path(__file__).resolve().parents[1] / "configs" / "rewards"
 

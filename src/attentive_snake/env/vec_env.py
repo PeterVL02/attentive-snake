@@ -2,11 +2,11 @@
 
 import numpy as np
 
-from attentive_snake.env.reward import RewardConfig, RewardTerm
-from attentive_snake.env.snake_env import SnakeEnv
+from attentive_snake.games.snake.reward import RewardConfig, RewardTerm
+from attentive_snake.games.snake.env import SnakeEnv
 from attentive_snake.env.types import EpisodeSummary, VecEnvStep
-from attentive_snake.game.config import GameConfig
-from attentive_snake.game.types import GameState, StepEvent
+from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.types import GameState, StepEvent
 
 
 class EpisodeTracker:

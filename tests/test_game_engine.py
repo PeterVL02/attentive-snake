@@ -2,9 +2,9 @@ from collections import deque
 
 import pytest
 
-from attentive_snake.game.config import GameConfig
-from attentive_snake.game.engine import SnakeGame
-from attentive_snake.game.types import Action, StepEvent
+from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.engine import SnakeGame
+from attentive_snake.games.snake.types import Action, StepEvent
 
 
 def make_game(config: GameConfig, snake, direction=Action.RIGHT, food=None, seed=0) -> SnakeGame:

@@ -5,7 +5,7 @@ All commands run from the project root with `uv run ...`.
 ## Play the game yourself
 
 ```bash
-uv run python -m attentive_snake.game.play --width 10 --height 10 --fps 8 --cell-size 30
+uv run python -m attentive_snake.games.snake.play --width 10 --height 10 --fps 8 --cell-size 30
 ```
 
 Arrow keys or WASD steer, `R` restarts after a game over, `Esc` quits.

@@ -4,12 +4,12 @@ import numpy as np
 
 from attentive_snake.env.frame import FrameBuilder
 from attentive_snake.env.history import FrameHistory
-from attentive_snake.env.observation import ObservationEncoder
-from attentive_snake.env.reward import RewardConfig, RewardTerm, resolve_reward
+from attentive_snake.games.snake.observation import ObservationEncoder
+from attentive_snake.games.snake.reward import RewardConfig, RewardTerm, resolve_reward
 from attentive_snake.env.types import EnvStep
-from attentive_snake.game.config import GameConfig
-from attentive_snake.game.engine import SnakeGame
-from attentive_snake.game.types import Action, GameState, StepEvent
+from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.engine import SnakeGame
+from attentive_snake.games.snake.types import Action, GameState, StepEvent
 
 
 class SnakeEnv:

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from attentive_snake.env.reward_terms import (
+from attentive_snake.games.snake.reward_terms import (
     DeathPenalty,
     FoodDistanceShaping,
     FoodReward,
@@ -11,7 +11,7 @@ from attentive_snake.env.reward_terms import (
     StepCost,
     WinReward,
 )
-from attentive_snake.game.types import GameState, StepResult
+from attentive_snake.games.snake.types import GameState, StepResult
 
 
 @dataclass(frozen=True)

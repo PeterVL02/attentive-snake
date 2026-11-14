@@ -2,9 +2,9 @@
 
 from dataclasses import dataclass, field
 
-from attentive_snake.env.reward_pipeline import RewardBuilder, RewardPipeline
-from attentive_snake.env.reward_terms import RewardTerm
-from attentive_snake.game.types import GameState, StepResult
+from attentive_snake.games.snake.reward_pipeline import RewardBuilder, RewardPipeline
+from attentive_snake.games.snake.reward_terms import RewardTerm
+from attentive_snake.games.snake.types import GameState, StepResult
 
 __all__ = ["RewardConfig", "build_reward", "resolve_reward", "RewardBuilder", "RewardPipeline",
            "RewardTerm"]

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pygame
 
-from attentive_snake.game.types import GameState
+from attentive_snake.games.snake.types import GameState
 
 Color = tuple[int, int, int]
 

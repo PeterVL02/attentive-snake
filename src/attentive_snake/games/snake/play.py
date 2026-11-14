@@ -4,10 +4,10 @@ import argparse
 
 import pygame
 
-from attentive_snake.game.config import GameConfig
-from attentive_snake.game.engine import SnakeGame
-from attentive_snake.game.renderer import PygameRenderer
-from attentive_snake.game.types import Action
+from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.engine import SnakeGame
+from attentive_snake.games.snake.renderer import PygameRenderer
+from attentive_snake.games.snake.types import Action
 
 _KEY_TO_ACTION: dict[int, Action] = {
     pygame.K_UP: Action.UP,

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import ClassVar, Protocol
 
-from attentive_snake.game.types import GameState, Position, StepEvent, StepResult
+from attentive_snake.games.snake.types import GameState, Position, StepEvent, StepResult
 
 
 class RewardTerm(Protocol):

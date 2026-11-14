@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 import torch
 
-from attentive_snake.game.renderer import PygameRenderer
-from attentive_snake.game.types import Action, GameState
+from attentive_snake.games.snake.renderer import PygameRenderer
+from attentive_snake.games.snake.types import Action, GameState
 from attentive_snake.viz import attention_rollout, cls_attention_grid
 
 H, W = 4, 5

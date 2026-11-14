@@ -5,8 +5,8 @@ Pure data. Reading and writing it lives in ``attentive_snake.config.experiment_i
 
 from dataclasses import dataclass, field
 
-from attentive_snake.env.reward import RewardConfig
-from attentive_snake.game.config import GameConfig
+from attentive_snake.games.snake.reward import RewardConfig
+from attentive_snake.games.snake.config import GameConfig
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.training.config import TrainConfig
 

@@ -8,8 +8,8 @@ from attentive_snake.config import EnvConfig, ExperimentConfig, load_experiment,
 from attentive_snake.config.dataclass_table import dataclass_from_table, dataclass_to_table
 from attentive_snake.config.experiment_io import experiment_from_tables
 from attentive_snake.config.toml_writer import format_tables, format_value
-from attentive_snake.env.reward import RewardConfig
-from attentive_snake.game.config import GameConfig
+from attentive_snake.games.snake.reward import RewardConfig
+from attentive_snake.games.snake.config import GameConfig
 from attentive_snake.training import TrainConfig
 
 DEFAULT_TOML = Path(__file__).resolve().parents[1] / "configs" / "default.toml"

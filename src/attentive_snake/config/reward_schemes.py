@@ -10,8 +10,8 @@ from pathlib import Path
 
 from attentive_snake.config.dataclass_table import dataclass_from_table, dataclass_to_table
 from attentive_snake.config.toml_writer import format_value
-from attentive_snake.config.reward_table import reward_table
-from attentive_snake.env.reward import RewardConfig
+from attentive_snake.games.snake.reward_table import reward_table
+from attentive_snake.games.snake.reward import RewardConfig
 from attentive_snake.run_dir import validate_run_name
 
 __all__ = ["delete_scheme", "list_schemes", "load_scheme", "reward_table", "save_scheme"]
