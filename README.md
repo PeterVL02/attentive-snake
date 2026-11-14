@@ -1,17 +1,23 @@
 # Attentive Snake
 
-Train neural networks to play Snake with reinforcement learning (PPO), and look
-inside them: which board cells a transformer attends to, how the architecture is
-put together, and how different models and reward schemes compare.
+Train neural networks to play games with reinforcement learning (PPO), and look
+inside them: which board cells or input numbers a transformer attends to, how the
+architecture is put together, and how different models and reward schemes compare.
 
-The project contains a classic Snake game, a game-agnostic headless parallel RL
-environment layer, five selectable policy architectures, a PPO trainer, an
-architecture-diagram tool, and a local web app that ties it all together.
+The project contains two games (Snake and Gymnasium's Lunar Lander), a
+game-agnostic headless parallel RL environment layer, six selectable policy
+architectures, a PPO trainer, an architecture-diagram tool, and a local web app
+that ties it all together.
 
-Snake is the first game; the code is organised so that other games (Gymnasium
-classics such as Lunar Lander next) can be dropped in as one directory under
-`src/attentive_snake/games/` plus their configs. See
-[docs/ADDING_A_GAME.md](docs/ADDING_A_GAME.md).
+## Games
+
+| Game | Observation | What the model sees |
+|---|---|---|
+| `snake` (default) | grid | The whole board: one cell per position, channels head / body / food. |
+| `lunar_lander` | vector | 8 numbers: x, y, vx, vy, angle, angular velocity, left and right leg contact (Gymnasium's `LunarLander-v3`, discrete actions). Watched as the game's own picture. |
+
+A game is one directory under `src/attentive_snake/games/` plus its configs;
+nothing else is edited. See [docs/ADDING_A_GAME.md](docs/ADDING_A_GAME.md).
 
 ## Quick start
 
@@ -24,6 +30,17 @@ uv run python -m attentive_snake.app
 ```
 
 Open <http://127.0.0.1:8000>. The app only listens on your own machine.
+
+### Lunar Lander quick start
+
+```bash
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/mlp   # about 2-3 minutes on a CPU
+uv run python scripts/watch.py runs/lunar_lander/mlp
+```
+
+The default (`configs/lunar_lander/default.toml`: `mlp`, 32 envs, 2M steps)
+went from a mean score of about -170 to about +145 in one test run. 200 counts
+as solved; the default does not get there (see Caveats).
 
 ## The app
 
@@ -52,6 +69,15 @@ Chosen with `kind` in the `[model]` section of a config (or the dropdown in the 
 | `hybrid` | A conv stem embeds each cell with its neighbourhood, then transformer blocks. | Board heatmap |
 | `temporal_transformer` | Attention over the cells of the last K frames plus one token per past action. | Board heatmap per frame |
 | `frame_attention` | A CNN turns each of the last K frames into one vector; attention runs across frames. | Weight per frame |
+| `mlp` | A plain multilayer perceptron on the flattened observation. Baseline for vector games. | None |
+
+Every kind reads both grids and vectors; only the input stage changes. On a
+vector observation (Lunar Lander) every number becomes a token where a board cell
+would, the convolutions become fully connected layers (a convolution over an
+arbitrary order of numbers means nothing), and the attention view is one weight per
+input number instead of a board heatmap. `mlp` and `cnn` (which is then an MLP)
+are the recommended kinds for vector games; the app marks the recommended kinds
+for the chosen game.
 
 The two temporal kinds need history: set `history_length` (for example 4) and
 `history_actions = true` under `[env]`. The app does this for you.
@@ -88,8 +114,6 @@ it is (a config without it is a Snake config).
 - **Pure transformers are slow to start learning.** In short tests the kinds
   with a convolutional stage (`hybrid`, `cnn`, `frame_attention`) began scoring
   much sooner. These were single short runs, not a benchmark.
-- **The web app shows Snake only for now.** The backend accepts a `game`
-  parameter everywhere, but the pages do not offer a game choice yet.
 - **History adds no information in principle.** Snake is fully observable from
   one frame, so the temporal models are for studying attention over time, not
   for better scores, and they train slower.
@@ -103,8 +127,17 @@ it is (a config without it is a Snake config).
 - **Extending a run raises the learning rate.** The linear decay is re-stretched
   over the new total, so the rate jumps up at the resume point. A resumed run is
   not bit-identical to an uninterrupted one.
-- **Starvation is treated as a terminal state** when estimating values, which
-  introduces a small bias.
+- **Starvation (Snake) and the time limit (Lunar Lander) are treated as terminal
+  states** when estimating values, which introduces a small bias: the value of a
+  state just before the cut does not include what would have come after.
+- **Lunar Lander's default stalls below "solved".** The default mlp learns to
+  hover and land slowly, and many episodes end by the 1000-step time limit (mean
+  length about 900). A negative `reward.timeout` or a longer run are the
+  first things to try. "landed" means the lander came to rest anywhere, not
+  necessarily between the flags.
+- **Attention kinds on Lunar Lander are for looking, not for scores.** With 8
+  input numbers, `mlp` and `cnn` learn faster; the transformer kinds are there to
+  show which inputs the decision draws on.
 - **Keep dropout at 0.** PPO's probability ratio becomes noisy with dropout on.
 - **Architecture diagrams show containment and order, not true data flow.**
   Skip connections and branching are not visible. The rendered diagram in the

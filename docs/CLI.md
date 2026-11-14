@@ -2,9 +2,9 @@
 
 All commands run from the project root with `uv run ...`.
 
-Every run belongs to one game. Each game has its own default config (`configs/<game>/default.toml`), its own
-reward schemes (`configs/<game>/rewards/`) and its own runs directory (`runs/<game>/`). Snake is the default
-game; `--game NAME` picks another for a new run. Resuming, forking and watching read the game from the run's
+Every run belongs to one game: `snake` (the default) or `lunar_lander` (Gymnasium's LunarLander-v3). Each game
+has its own default config (`configs/<game>/default.toml`), its own reward schemes (`configs/<game>/rewards/`) and
+its own runs directory (`runs/<game>/`). `--game NAME` picks the game for a new run. Resuming, forking and watching read the game from the run's
 `config.toml`.
 
 ## Play Snake yourself
@@ -33,6 +33,15 @@ uv run python scripts/train.py --run-dir runs/snake/small --width 6 --height 6 -
 # Any single setting, a description, and keeping only the latest checkpoint
 uv run python scripts/train.py --run-dir runs/snake/lr-test --set train.learning_rate=1e-4 --set reward.step=0 \
     --description "lower LR, no living cost" --no-keep-checkpoints
+```
+
+```bash
+# Lunar Lander with its defaults (mlp, 32 envs, 2M steps: a few minutes on a CPU), run saved in runs/lunar_lander/mlp
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/mlp
+
+# Another model kind; the temporal kinds want history
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/tt --set model.kind=temporal_transformer \
+    --set env.history_length=4 --set env.history_actions=true
 ```
 
 - `--game NAME` (new runs only) picks `configs/<NAME>/default.toml` and the default run directory `runs/<NAME>/default`.
@@ -106,16 +115,22 @@ uv run python scripts/watch.py runs/snake/8x8 --attention --layer 0 --sample --f
 uv run python scripts/watch.py runs/snake/8x8 --checkpoint runs/snake/8x8/checkpoint_0000100000.pt
 ```
 
+```bash
+# Lunar Lander: the game's own picture; --attention puts the weight of each input number in the window title
+uv run python scripts/watch.py runs/lunar_lander/tt --attention --scale 0.75
+```
+
 The window shows the run's game (it reads the game from the run's `config.toml`); games whose view is a board
-(Snake) are drawn cell by cell. Other flags: `--cell-size N`, `--frame N`. `Esc` or closing the window quits.
+(Snake) are drawn cell by cell (`--cell-size N`), games whose view is an image (Lunar Lander) show the picture
+(`--scale F`). Other flag: `--frame N`. `Esc` or closing the window quits.
 `--layer` picks the transformer block (negative counts from the last); `--frame` picks the history frame (0 = oldest, -1 = newest).
 
-| model kind | `--attention` shows |
-| --- | --- |
-| `transformer`, `hybrid` | heatmap of what the class token attends to on the board (`--layer` applies, `--frame` must stay -1/0) |
-| `temporal_transformer` | heatmap for one of the history frames (`--layer`, `--frame`) |
-| `frame_attention` | one weight per history frame, printed in the window title (`--layer`) |
-| `cnn` | nothing: there is no attention, so `--attention` is refused |
+| model kind | `--attention` shows (board games) | (vector games such as Lunar Lander) |
+| --- | --- | --- |
+| `transformer`, `hybrid` | heatmap of what the class token attends to on the board (`--layer` applies, `--frame` must stay -1/0) | one weight per input number in the window title, e.g. `x 0.12, y 1.00, ...` |
+| `temporal_transformer` | heatmap for one of the history frames (`--layer`, `--frame`) | one weight per number of one history frame (`--frame`) |
+| `frame_attention` | one weight per history frame, printed in the window title (`--layer`) | the same |
+| `cnn`, `mlp` | nothing: there is no attention, so `--attention` is refused | the same |
 
 ## Where configs live
 
@@ -166,15 +181,16 @@ Lower both for short experiments.
 
 Set `kind` in `[model]` and `history_length` / `history_actions` in `[env]`.
 
-| `model.kind` | idea | suggested `[env]` |
-| --- | --- | --- |
-| `transformer` | each board cell is a token | `history_length = 1` |
-| `cnn` | convolutional baseline, no attention | `history_length = 1` |
-| `hybrid` | conv stem, then transformer over cells | `history_length = 1` |
-| `temporal_transformer` | attention over the cells of several frames (plus action tokens) | `history_length = 4`, `history_actions = true` |
-| `frame_attention` | CNN per frame, attention across frames | `history_length = 4`, `history_actions = true` |
+| `model.kind` | idea on a board (Snake) | on numbers (Lunar Lander) | suggested `[env]` |
+| --- | --- | --- | --- |
+| `transformer` | each board cell is a token | each number is a token | `history_length = 1` |
+| `cnn` | convolutional baseline, no attention | an MLP (nothing to convolve); recommended | `history_length = 1` |
+| `hybrid` | conv stem, then transformer over cells | per-number MLP stem, then transformer over numbers | `history_length = 1` |
+| `temporal_transformer` | attention over the cells of several frames (plus action tokens) | attention over every number of several frames (plus action tokens) | `history_length = 4`, `history_actions = true` |
+| `frame_attention` | CNN per frame, attention across frames | MLP per frame, attention across frames | `history_length = 4`, `history_actions = true` |
+| `mlp` | flattened board, weak baseline | plain MLP; recommended | `history_length = 1` |
 
-The non-temporal kinds see stacked frames only as extra input channels. Which `[model]` fields each kind uses
+The non-temporal kinds see stacked frames only as extra input channels (extra values per number). Which `[model]` fields each kind uses
 (for example `cnn` ignores `num_heads`) is listed by the app's config page.
 
 ## Draw a model diagram from Python
@@ -216,4 +232,4 @@ uv run python -m attentive_snake.app [--port 8000] [--runs-dir runs] [--configs-
 ```
 
 Serves http://127.0.0.1:8000: configure, start and resume training, continue a run under a new name with changed
-settings, watch an agent with the attention heatmap, view the architecture and edit reward schemes.
+settings, watch an agent with its attention, view the architecture and edit reward schemes.
