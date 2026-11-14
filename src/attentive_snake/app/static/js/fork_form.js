@@ -64,6 +64,7 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
   const usedModelFields = new Set(["kind", ...(schema.model_kinds[config.model.kind]?.fields ?? [])]);
   const rewardWidgets = fieldsOf("reward");
   const trainWidgets = fieldsOf("train");
+  const evaluationWidgets = fieldsOf("evaluation");
   const runWidgets = [...fieldsOf("env", (s) => !(`env.${s.name}` in locked)), ...fieldsOf("game", (s) => !(`game.${s.name}` in locked))];
   const lockedShown = [
     ...fieldsOf("model", (s) => usedModelFields.has(s.name)),
@@ -145,6 +146,11 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
         h("div", { class: "fields" }, rewardWidgets.map((w) => w.el)),
       ),
       panel("Training", h("div", { class: "fields" }, [...trainWidgets, ...runWidgets].map((w) => w.el))),
+      panel(
+        "Evaluation",
+        h("p", { class: "muted small", text: "Greedy games played while the new run trains; its evaluations go to its own evaluations.jsonl (the parent's are not copied)." }),
+        h("div", { class: "fields" }, evaluationWidgets.map((w) => w.el)),
+      ),
       h(
         "details",
         { class: "panel" },

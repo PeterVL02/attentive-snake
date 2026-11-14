@@ -1,10 +1,11 @@
-// Tab 2: the selected game's runs, their progress, metrics and history; stop, continue training
-// (resume or a new run from a checkpoint), and jump to watching a checkpoint.
+// Tab 2: the selected game's runs, their progress, metrics, evaluations and history; stop, continue training
+// (resume or a new run from a checkpoint), evaluate a checkpoint, and jump to watching one.
 
 import { get, post } from "../api.js";
 import { navigate } from "../bus.js";
 import { badge, formatNumber, formatSteps, h, message, replace } from "../dom.js";
 import { continueTrainingPanel } from "../continue_training.js";
+import { evaluationPanel } from "../evaluation_panel.js";
 import { currentGame, gameUrl } from "../game.js";
 import { LineChart, renderLegend, seriesColor } from "../chart.js";
 import { monotonic, points } from "../metric_series.js";
@@ -74,6 +75,7 @@ function buildDetail(name) {
     progress: h("div", {}),
     progressText: h("div", { class: "muted small" }),
     continuePanel: continueTrainingPanel(currentGame().name, name, { onChanged: refresh, onForked: (newRun) => select(newRun) }),
+    evaluationPanel: evaluationPanel(currentGame().name, name, { onSaved: refresh }),
     lineage: h("div", { class: "lineage" }),
     history: h("div", {}),
     actionMessage: h("div", { class: "message", role: "alert" }),
@@ -98,7 +100,8 @@ function buildDetail(name) {
       h("div", { style: "margin-top:10px" }, els.actionMessage),
     ),
     els.continuePanel.el,
-    h("div", { class: "panel" }, h("h3", { text: "Training curve" }), els.chartWrap, els.legend),
+    h("div", { class: "panel" }, h("h3", { text: "Training curve (with exploration)" }), els.chartWrap, els.legend),
+    els.evaluationPanel.el,
     h("div", { class: "panel" }, h("h3", { text: "Latest metrics" }), els.stats),
     h(
       "div",
@@ -174,6 +177,7 @@ function renderDetail(d) {
   els.meta.textContent = `${currentGame().title} · ${d.kind ?? "?"} · ${rulesSummary(d.rules)}`;
   els.stop.hidden = state !== "running";
   els.continuePanel.update(d);
+  els.evaluationPanel.update(d);
   replace(els.lineage, renderLineage(d.parent));
   els.lineage.hidden = !d.parent;
   replace(els.history, renderHistory(d.history));

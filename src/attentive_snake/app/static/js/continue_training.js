@@ -21,6 +21,13 @@ function forkBlocker(detail) {
   return null;
 }
 
+// [evaluation] settings a resume may change: field -> [input id, label, help, minimum].
+const EVALUATION_FIELDS = {
+  interval: ["resume-eval-interval", "evaluate every (env steps)", "0 = no evaluation while training.", 0],
+  games: ["resume-eval-games", "games per evaluation", "Complete greedy games each evaluation plays.", 1],
+  seed: ["resume-eval-seed", "evaluation seed", "Same seed and games give the same numbers for the same checkpoint.", null],
+};
+
 function option(title, when, ...body) {
   return h("div", { class: "continue-option" }, h("h4", { text: title }), h("p", { class: "muted small", text: when }), ...body);
 }
@@ -38,6 +45,9 @@ export function continueTrainingPanel(game, name, { onChanged, onForked }) {
     keepNote: h("div", { class: "muted small" }),
     target: h("div", { class: "muted small" }),
     description: descriptionField("Optional. Saved in the run's history (run.json) with this resume."),
+    evaluation: Object.fromEntries(
+      Object.entries(EVALUATION_FIELDS).map(([key, [id, , , min]]) => [key, h("input", { type: "number", id, step: "1", min: min ?? undefined })]),
+    ),
     resume: h("button", { type: "button", class: "primary", text: "Resume this run" }),
     resumeBlocked: h("div", { class: "message info" }),
     checkpoint: h("select", { id: "fork-checkpoint" }),
@@ -52,7 +62,26 @@ export function continueTrainingPanel(game, name, { onChanged, onForked }) {
       : "Older checkpoints will be deleted each time a new one is saved; only the latest can then be watched or continued from.";
   }
 
+  /** {evaluation_interval: n, ...} for the evaluation settings that differ from the run's, or {error}. */
+  function evaluationChanges() {
+    const changes = {};
+    for (const [key, [, label, , min]] of Object.entries(EVALUATION_FIELDS)) {
+      const raw = els.evaluation[key].value.trim();
+      const value = Number(raw);
+      if (raw === "" || !Number.isInteger(value) || (min !== null && value < min)) {
+        return { error: `${label}: enter a whole number${min !== null ? ` of at least ${min}` : ""}.` };
+      }
+      if (value !== detail.config.evaluation[key]) changes[`evaluation_${key}`] = value;
+    }
+    return { changes };
+  }
+
   async function resume() {
+    const evaluation = evaluationChanges();
+    if (evaluation.error) {
+      message(els.message, "error", evaluation.error);
+      return;
+    }
     const raw = els.steps.value.trim();
     const steps = raw === "" ? null : Number(raw);
     if (steps !== null && (!Number.isInteger(steps) || steps < 1)) {
@@ -65,7 +94,7 @@ export function continueTrainingPanel(game, name, { onChanged, onForked }) {
     }
     els.resume.disabled = true;
     try {
-      const body = { total_env_steps: steps, keep_checkpoints: els.keep.checked, description: els.description.get() };
+      const body = { total_env_steps: steps, keep_checkpoints: els.keep.checked, description: els.description.get(), ...evaluation.changes };
       await post(gameUrl(`/api/runs/${encodeURIComponent(name)}/resume`, game), body);
       message(els.message, "info", "Resumed.");
       els.steps.value = "";
@@ -102,6 +131,10 @@ export function continueTrainingPanel(game, name, { onChanged, onForked }) {
         h("div", { class: "field" }, h("label", { for: "resume-steps", text: "train until (total env steps)" }), els.steps, els.target),
         h("label", { class: "row inline-check", for: "resume-keep" }, els.keep, h("span", { class: "label", text: "keep older checkpoints" })),
         els.keepNote,
+        h("p", { class: "muted small", text: "Evaluation while training (greedy games recorded in evaluations.jsonl):" }),
+        Object.entries(EVALUATION_FIELDS).map(([key, [id, label, help]]) =>
+          h("div", { class: "field" }, h("label", { for: id, text: label }), els.evaluation[key], h("div", { class: "description", text: help })),
+        ),
         els.description.el,
         h("div", { class: "row", style: "margin-top:10px" }, els.resume),
         els.resumeBlocked,
@@ -133,6 +166,7 @@ export function continueTrainingPanel(game, name, { onChanged, onForked }) {
         ? `It reached its target of ${formatSteps(total)} steps; enter a larger total to train further.`
         : `Empty keeps the current target (${formatSteps(total)} steps).`;
     if (!keepLoaded) {
+      for (const key of Object.keys(EVALUATION_FIELDS)) els.evaluation[key].value = String(d.config.evaluation[key]);
       els.keep.checked = d.config.train.keep_checkpoints !== false;
       keepLoaded = true;
       updateKeepNote();

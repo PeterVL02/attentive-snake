@@ -46,3 +46,17 @@ export function median(values) {
   const mid = sorted.length >> 1;
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
+
+/**
+ * The estimated training seconds at env step `steps`, read off the training records and their `seconds`
+ * (from estimatedSeconds): linear between the records around it; null outside them.
+ */
+export function secondsAtSteps(records, seconds, steps) {
+  for (let i = 0; i < records.length; i += 1) {
+    if (records[i].env_steps < steps) continue;
+    if (records[i].env_steps === steps || i === 0) return records[i].env_steps === steps ? seconds[i] : null;
+    const [s0, s1] = [records[i - 1].env_steps, records[i].env_steps];
+    return seconds[i - 1] + ((steps - s0) / (s1 - s0)) * (seconds[i] - seconds[i - 1]);
+  }
+  return null;
+}

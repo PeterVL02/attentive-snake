@@ -412,3 +412,12 @@ dialog.fork-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .dialog-actions { margin: 4px 0 12px; }
 details.panel > summary { cursor: pointer; font-weight: 650; }
 details.panel[open] > summary { margin-bottom: 12px; }
+
+/* ---------- evaluation ---------- */
+
+.evaluation-heading { margin: 4px 0; font-size: 14.5px; }
+.evaluation > p { margin: 0 0 8px; }
+.evaluation-table td:first-child { white-space: nowrap; }
+.evaluation-runner .fields { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.evaluation-runner .message.info { background: var(--surface); }
+.evaluation-headline { margin-top: 6px; }

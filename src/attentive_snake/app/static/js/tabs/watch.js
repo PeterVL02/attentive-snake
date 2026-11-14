@@ -1,11 +1,12 @@
 // Tab 4: watch a checkpoint of the selected game play, with the attention it pays: a heatmap over a
 // board, weights per history frame, or weights per observation element.
 
-import { del, post } from "../api.js";
+import { del, get, post } from "../api.js";
 import { elementWeightBars, frameWeightBars } from "../attention_bars.js";
 import { boardView } from "../board.js";
 import { formatNumber, formatSteps, h, message, replace } from "../dom.js";
-import { currentGame, isCurrent } from "../game.js";
+import { formatMetric, headlineDefinition, metricDefinitions } from "../evaluation_metrics.js";
+import { currentGame, gameUrl, isCurrent } from "../game.js";
 import { imageView } from "../image_view.js";
 import { fillCheckpointSelect, fillRunSelect } from "../run_options.js";
 
@@ -196,6 +197,27 @@ async function load() {
   configureControls(created.info);
   els.controls.hidden = false;
   render([created.frame]);
+  showEvaluation(game, els.run.value, created.info.checkpoint, token);
+}
+
+/** "Recorded evaluation of this checkpoint (100 greedy games): win rate 12.0 % · mean score 21.4", or a hint. */
+function evaluationText(evaluations, checkpoint) {
+  const evaluation = evaluations.filter((e) => e.checkpoint === checkpoint).at(-1);
+  if (!evaluation) return "No recorded evaluation of this checkpoint (the Runs tab can run one).";
+  const shown = [headlineDefinition(), metricDefinitions().find((d) => d.key === "mean_score")].filter((d, i, all) => d && all.indexOf(d) === i);
+  const values = shown.map((d) => `${d.label} ${formatMetric(d, evaluation.statistics[d.key])}`).join(" · ");
+  return `Recorded evaluation of this checkpoint (${formatNumber(evaluation.settings.games)} greedy games): ${values}`;
+}
+
+/** Fill in the recorded evaluation of the session's checkpoint, unless another load started meanwhile. */
+async function showEvaluation(game, run, checkpointPath, token) {
+  els.evaluation.textContent = "";
+  try {
+    const detail = await get(gameUrl(`/api/runs/${encodeURIComponent(run)}?log_lines=1`, game));
+    if (token === loadToken) els.evaluation.textContent = evaluationText(detail.evaluations, checkpointPath.split(/[\\/]/).pop());
+  } catch {
+    /* only a hint: leave it empty */
+  }
 }
 
 async function refreshCheckpoints(selected) {
@@ -233,6 +255,7 @@ export function init(root) {
     elementWeights: h("div", {}),
     caption: h("div", { class: "muted small", "aria-live": "polite" }),
     sessionInfo: h("div", { class: "muted small" }),
+    evaluation: h("div", { class: "muted small" }),
     score: v(),
     steps: v(),
     episode: v(),
@@ -270,6 +293,7 @@ export function init(root) {
         "div",
         { class: "panel stack" },
         els.sessionInfo,
+        els.evaluation,
         h("div", { class: "row" }, els.play, els.step, els.reset),
         h("div", { class: "row" }, h("label", { for: "watch-speed", class: "label", text: "speed" }), els.speed, els.speedLabel),
         h("div", { class: "row" }, h("label", { for: "watch-per-tick", class: "label", text: "steps per update" }), els.perTick),
