@@ -19,11 +19,11 @@ attended by the class token trivially, so nothing is lost).
 
 from torch import Tensor, nn
 
+from attentive_snake.models.blocks.conv import ConvEncoder, FlattenReadout
+from attentive_snake.models.blocks.temporal import ActionEmbedding, TemporalEmbedding
 from attentive_snake.models.config import ModelConfig
-from attentive_snake.models.conv_blocks import ConvEncoder, FlattenReadout
 from attentive_snake.models.frames import BOARD_CHANNELS, action_ids, board_planes, split_frames
-from attentive_snake.models.policy_base import AttentivePolicy
-from attentive_snake.models.temporal_blocks import ActionEmbedding, TemporalEmbedding
+from attentive_snake.models.policies.base import AttentivePolicy
 from attentive_snake.models.token_layout import TokenLayout
 
 

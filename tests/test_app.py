@@ -18,7 +18,8 @@ from attentive_snake.app.watch_sessions import UnknownSession, WatchSessions
 from attentive_snake.config import ExperimentConfig, save_experiment
 from attentive_snake.config.experiment_io import experiment_from_tables
 from attentive_snake.factory import make_env, make_policy
-from attentive_snake.run_dir import config_path
+from attentive_snake.run_dir import config_path, list_checkpoints
+from attentive_snake.run_metadata import RunEvent, append_event
 from attentive_snake.training import save_checkpoint
 from attentive_snake.training.checkpoint import checkpoint_path
 
@@ -102,6 +103,7 @@ def test_schema_defaults_and_page(client: TestClient):
     assert client.get("/").status_code == 200
     script = client.get("/static/js/main.js")
     assert script.status_code == 200 and "javascript" in script.headers["content-type"]
+    assert client.get("/static/js/fork_form.js").status_code == 200
     assert "# " in client.get("/api/cheatsheet").text
 
 
@@ -163,6 +165,93 @@ def test_stop_a_long_job_and_refuse_a_second_one(client: TestClient):
     assert stopped.json()["status"]["state"] == "stopped"
     assert client.post("/api/runs/long/stop").status_code == 409  # nothing running any more
     assert client.get("/api/runs/long").json()["status"]["state"] == "stopped"
+
+
+def test_descriptions_and_keep_checkpoints_through_the_api(client: TestClient, paths: AppPaths):
+    tables = tiny_tables(total_env_steps=64)
+    started = client.post("/api/runs", json={"name": "noted", "config": tables, "description": "  -first try  "})
+    assert started.status_code == 201, started.text
+    assert wait_until_done(client, "noted")["status"]["state"] == "finished"
+    assert len(list_checkpoints(paths.runs_dir / "noted")) > 1  # keep_checkpoints defaults to true
+
+    resumed = client.post(
+        "/api/runs/noted/resume", json={"total_env_steps": 96, "keep_checkpoints": False, "description": "longer"}
+    )
+    assert resumed.status_code == 200, resumed.text
+    detail = wait_until_done(client, "noted")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert [c["name"] for c in detail["checkpoints"]] == ["checkpoint_0000000096.pt"]
+    assert detail["config"]["train"]["keep_checkpoints"] is False
+    assert [(e["action"], e["description"], e["env_steps_at_action"]) for e in detail["history"]] == [
+        ("start", "-first try", 0),
+        ("resume", "longer", 64),
+    ]
+    listed = {run["name"]: run for run in client.get("/api/runs").json()}
+    assert listed["noted"]["description"] == "longer" and listed["noted"]["parent"] is None
+    compared = client.post("/api/compare", json={"runs": ["noted"]}).json()
+    assert compared["runs"][0]["description"] == "longer"
+    too_long = client.post("/api/runs/noted/resume", json={"description": "x" * 2001})
+    assert too_long.status_code == 422
+
+
+def test_fork_rules(client: TestClient):
+    locked = client.get("/api/fork-rules").json()["locked"]
+    assert "model.kind" in locked and "game.width" in locked and "env.history_length" in locked
+    assert "train.learning_rate" not in locked and "env.num_envs" not in locked
+
+
+def test_fork_through_the_api(client: TestClient, paths: AppPaths):
+    parent = make_run(paths, "parent")
+    append_event(parent, RunEvent("start", 0, "parent run"))
+    parent_files = {path.name: path.stat().st_mtime_ns for path in parent.iterdir()}
+    tables = tiny_tables(total_env_steps=32, learning_rate=1e-3)
+    tables["reward"] = {"food": 2.0}
+    forked = client.post(
+        "/api/runs/parent/fork",
+        json={"name": "parent-v2", "checkpoint": "checkpoint_0000000016.pt", "config": tables, "description": "lr up"},
+    )
+    assert forked.status_code == 201, forked.text
+    assert forked.json()["status"]["mode"] == "fork"
+    detail = wait_until_done(client, "parent-v2")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert detail["checkpoints"][-1]["steps"] == 32  # its own counter
+    assert detail["config"]["train"]["learning_rate"] == 1e-3 and detail["config"]["reward"]["food"] == 2.0
+    assert detail["parent"] == {"run": "parent", "checkpoint": "checkpoint_0000000016.pt", "env_steps": 16}
+    assert detail["description"] == "lr up"
+    assert [e["action"] for e in detail["history"]] == ["fork"]
+    assert {path.name: path.stat().st_mtime_ns for path in parent.iterdir()} == parent_files  # parent untouched
+
+    latest = client.post("/api/runs/parent/fork", json={"name": "parent-v3", "config": tiny_tables()})
+    assert latest.status_code == 201, latest.text
+    assert wait_until_done(client, "parent-v3")["parent"]["checkpoint"] == "checkpoint_0000000016.pt"
+
+
+def test_fork_validation(client: TestClient, paths: AppPaths):
+    make_run(paths, "parent")
+    make_run(paths, "taken")
+
+    def fork(parent: str = "parent", **body) -> dict:
+        return client.post(f"/api/runs/{parent}/fork", json={"name": "child", "config": tiny_tables()} | body)
+
+    assert fork("missing").status_code == 404
+    assert fork(name="../escape").status_code == 422
+    assert fork(name="taken").status_code == 409
+    assert fork(name="parent").status_code == 409
+    assert fork(checkpoint="checkpoint_0000000099.pt").status_code == 404
+    assert fork(checkpoint="../taken/checkpoint_0000000016.pt").status_code == 404
+    for section, field, value in [("model", "d_model", 32), ("game", "width", 5), ("env", "history_length", 2)]:
+        tables = tiny_tables()
+        tables[section][field] = value
+        response = fork(config=tables)
+        assert response.status_code == 422 and f"{section}.{field}" in response.json()["detail"]
+    tables = tiny_tables()
+    tables["train"]["learning_rate"] = -1.0
+    assert fork(config=tables).status_code == 422
+    assert not (paths.runs_dir / "child").exists()
+
+    (paths.runs_dir / "empty").mkdir()
+    save_experiment(experiment_from_tables(tiny_tables()), config_path(paths.runs_dir / "empty"))
+    assert fork("empty").status_code == 409  # no checkpoint to continue from
 
 
 def test_unknown_runs(client: TestClient):
@@ -346,6 +435,7 @@ def test_differing_fields():
         ("get", "/api/runs/.hidden", None),
         ("get", "/api/runs/..%2F..%2Fetc", None),
         ("post", "/api/runs/..%2Fx/resume", {}),
+        ("post", "/api/runs/..%2Fx/fork", {"name": "y", "config": {}}),
         ("get", "/api/runs/..%2Fx/architecture", None),
         ("get", "/api/rewards/..%2F..%2Fpyproject", None),
         ("put", "/api/rewards/..%2Fevil", {"food": 1.0}),

@@ -9,7 +9,7 @@ class-token pool, heads) for subclasses that only have to produce input tokens.
 import torch
 from torch import Tensor, nn
 
-from attentive_snake.models.blocks import (
+from attentive_snake.models.blocks.transformer import (
     ClassToken,
     ClassTokenPool,
     PolicyHead,

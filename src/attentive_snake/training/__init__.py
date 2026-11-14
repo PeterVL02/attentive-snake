@@ -5,9 +5,11 @@ from attentive_snake.training.checkpoint import (
     latest_checkpoint,
     list_checkpoints,
     load_checkpoint,
+    prune_checkpoints,
     save_checkpoint,
 )
 from attentive_snake.training.config import TrainConfig
+from attentive_snake.training.fork import fork_from_checkpoint
 from attentive_snake.training.metrics import (
     ConsoleLogger,
     JsonlLogger,
@@ -28,9 +30,11 @@ __all__ = [
     "TrainConfig",
     "Trainer",
     "checkpoint_steps",
+    "fork_from_checkpoint",
     "latest_checkpoint",
     "list_checkpoints",
     "load_checkpoint",
+    "prune_checkpoints",
     "read_metrics",
     "resume_from_checkpoint",
     "save_checkpoint",

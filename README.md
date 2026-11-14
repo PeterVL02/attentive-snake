@@ -24,13 +24,13 @@ Open <http://127.0.0.1:8000>. The app only listens on your own machine.
 
 | Tab | What it is for |
 |---|---|
-| **New training** | Pick a model, fill in its settings (each with a description), choose the board, reward scheme and training settings, and start a run. The state representation (history length, past actions) is pre-set from the chosen model. |
-| **Runs** | Live status, score chart, log and config of a run. Stop it, or resume it with an optional new step total. Open any checkpoint in the watch tab. |
+| **New training** | Pick a model, fill in its settings (each with a description), choose the board, reward scheme and training settings, add an optional description, and start a run. The state representation (history length, past actions) is pre-set from the chosen model. |
+| **Runs** | Live status, score chart, log, config and history (descriptions, where a run was continued from) of a run. Stop it, resume it with an optional new step total and description, or **continue with changes**: a new run under a new name that starts from a chosen checkpoint with edited rewards and training settings. Open any checkpoint in the watch tab. |
 | **Architecture** | Diagram, text tree and parameter count for the config in the form or for an existing run. |
 | **Watch & attention** | Watch a checkpoint play, with the attention heatmap drawn over the board. |
 | **Rewards** | Create and edit named reward schemes, with a live table of what a scheme pays in each situation. |
 | **CLI cheat sheet** | The contents of [docs/CLI.md](docs/CLI.md). |
-| **Compare** | Plot the score curves of several runs on one chart and list the config fields that differ. |
+| **Compare** | Plot the score curves of several runs on one chart, with their descriptions, and list the config fields that differ. |
 
 Everything the app does is also available from the terminal: see the
 [CLI cheat sheet](docs/CLI.md) for playing the game yourself, training,
@@ -53,14 +53,19 @@ The two temporal kinds need history: set `history_length` (for example 4) and
 
 ## Configs and runs
 
-- `configs/default.toml` lists every setting with a comment. Copy it to make
-  your own experiment config.
-- `configs/rewards/*.toml` are named reward schemes. Choosing one for a run
-  copies its values into the run; editing the scheme later does not change
-  existing runs.
+- `configs/default.toml` lists every setting with a comment, except the reward
+  values. Copy it to make your own experiment config.
+- `configs/rewards/*.toml` are named reward schemes. `configs/rewards/default.toml`
+  is the one place the default reward values are written down: a config without
+  a `[reward]` section gets exactly those. Choosing a scheme for a run copies its
+  values into the run; editing the scheme later does not change existing runs.
 - Each run lives in `runs/<name>/` with its resolved `config.toml`, checkpoints,
-  `metrics.jsonl`, `train.log` (when started from the app) and `model.html`.
+  `metrics.jsonl`, `run.json` (history of starts, resumes and forks, with
+  descriptions), `train.log` (when started from the app) and `model.html`.
   `runs/` is not tracked by git.
+- `train.keep_checkpoints = false` (`--no-keep-checkpoints`, or the checkbox in
+  the app) keeps only a run's latest checkpoint to save disk space; older
+  checkpoints are deleted and can no longer be watched or continued from.
 
 ## Caveats
 
@@ -77,6 +82,11 @@ The two temporal kinds need history: set `history_length` (for example 4) and
   for better scores, and they train slower.
 - **A model is tied to its board size.** A checkpoint cannot be used on a
   different grid.
+- **A continued run (fork) cannot change the network, board or observation.**
+  All of `[model]`, the board size, `initial_length`, `history_length` and
+  `history_actions` must match the parent, because its weights would not fit or
+  would see a different input. It keeps the parent's Adam moments and starts its
+  own learning-rate schedule from `learning_rate`, counting its steps from 0.
 - **Extending a run raises the learning rate.** The linear decay is re-stretched
   over the new total, so the rate jumps up at the resume point. A resumed run is
   not bit-identical to an uninterrupted one.

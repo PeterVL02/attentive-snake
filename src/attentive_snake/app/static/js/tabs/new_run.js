@@ -3,7 +3,7 @@
 import { ApiError, get, post } from "../api.js";
 import { navigate, provide } from "../bus.js";
 import { debounce, formatSteps, h, message, replace } from "../dom.js";
-import { attachServerError, fieldControl, readFields } from "../fields.js";
+import { attachServerError, descriptionField, fieldControl, readFields } from "../fields.js";
 import { rewardTable } from "../reward_table.js";
 import { loadSchema } from "../schema.js";
 
@@ -15,10 +15,12 @@ const COMMON_TRAIN = [
   ["train", "entropy_coef"],
   ["train", "seed"],
   ["train", "device"],
+  ["train", "keep_checkpoints"],
 ];
 const HIDDEN = new Set(["train.checkpoint_dir", "model.kind"]); // set by the app / by the kind dropdown
 const STATE_FIELDS = ["history_length", "history_actions"];
-const DEFAULT_TOML = ""; // reward-scheme option value meaning "the [reward] of configs/default.toml"
+const DEFAULT_SCHEME = "default"; // configs/rewards/default.toml: the single source of the default reward values
+const BUILT_IN = ""; // option value used only when no scheme can be listed: the code defaults (same values)
 
 let schema;
 let defaults;
@@ -30,6 +32,7 @@ let modelFields;
 let explain;
 let nameWidget;
 let nameEdited = false;
+let description;
 let rewardSelect;
 let rewardPreview;
 let rewardValues = null;
@@ -141,7 +144,7 @@ function currentTables() {
 async function loadReward() {
   const name = rewardSelect.value;
   try {
-    rewardValues = name === DEFAULT_TOML ? { ...defaults.reward } : await get(`/api/rewards/${encodeURIComponent(name)}`);
+    rewardValues = name === BUILT_IN ? { ...defaults.reward } : await get(`/api/rewards/${encodeURIComponent(name)}`);
     const rows = await post("/api/rewards/preview", { reward: rewardValues });
     replace(rewardPreview, rewardTable(rows));
   } catch (error) {
@@ -159,10 +162,11 @@ async function fillRewardSchemes() {
   }
   replace(
     rewardSelect,
-    h("option", { value: DEFAULT_TOML, text: "configs/default.toml values" }),
+    schemes.length === 0 ? h("option", { value: BUILT_IN, text: "built-in default values" }) : null,
     schemes.map((s) => h("option", { value: s, text: s })),
   );
-  if ([DEFAULT_TOML, ...schemes].includes(previous)) rewardSelect.value = previous;
+  if (schemes.includes(previous)) rewardSelect.value = previous;
+  else if (schemes.includes(DEFAULT_SCHEME)) rewardSelect.value = DEFAULT_SCHEME;
   await loadReward();
 }
 
@@ -179,8 +183,9 @@ async function start() {
   startButton.disabled = true;
   startButton.textContent = "Starting…";
   try {
-    const result = await post("/api/runs", { name: nameResult.value, config: tables });
+    const result = await post("/api/runs", { name: nameResult.value, config: tables, description: description.get() });
     nameEdited = false;
+    description.set("");
     navigate("runs", { run: result.name });
   } catch (error) {
     const text = error.message;
@@ -201,6 +206,7 @@ function build() {
   const nameSpec = { name: "run name", type: "str", nullable: false, description: "Directory under runs/: letters, digits, '.', '_' and '-'." };
   nameWidget = fieldControl(nameSpec, "");
   nameWidget.onChange(() => (nameEdited = true));
+  description = descriptionField();
 
   const kindSpec = schema.sections.model.find((f) => f.name === "kind");
   kindSelect = h("select", { id: "kind-select" }, kindSpec.choices.map((k) => h("option", { value: k, text: k })));
@@ -234,7 +240,7 @@ function build() {
   const left = h(
     "div",
     {},
-    panel("Run", h("div", { class: "fields" }, nameWidget.el)),
+    panel("Run", h("div", { class: "fields" }, nameWidget.el), description.el),
     panel(
       "Model",
       h("div", { class: "field" }, h("label", { for: "kind-select", text: "kind" }), kindSelect),

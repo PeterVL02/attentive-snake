@@ -107,3 +107,25 @@ export function attachServerError(widgets, text) {
   if (match) match.setError(text);
   return Boolean(match);
 }
+
+/** An optional free-text note saved with the run (run.json): {el, get() -> string | null, set(text)}. */
+export function descriptionField(help = "Optional. Saved with the run's history (run.json) and shown in the Runs and Compare tabs.") {
+  const id = `f${nextId++}-description`;
+  const input = h("textarea", { id, rows: "2", maxlength: "2000", placeholder: "What is this run trying out?", "aria-describedby": `${id}-desc` });
+  const el = h(
+    "div",
+    { class: "field description-field" },
+    h("label", { for: id, text: "description" }),
+    input,
+    h("div", { class: "description", id: `${id}-desc`, text: help }),
+  );
+  return {
+    el,
+    get() {
+      return input.value.trim() || null;
+    },
+    set(text) {
+      input.value = text || "";
+    },
+  };
+}

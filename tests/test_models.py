@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from attentive_snake.models.config import ModelConfig
-from attentive_snake.models.transformer_policy import SnakeTransformerPolicy
+from attentive_snake.models.policies.transformer import SnakeTransformerPolicy
 from attentive_snake.models.types import PolicyOutput
 
 NET_PARTS = ["embed", "positional", "cls", "blocks", "norm", "pool", "policy_head", "value_head"]

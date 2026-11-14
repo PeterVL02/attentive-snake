@@ -38,6 +38,18 @@ def latest_checkpoint(directory: Path) -> Path | None:
     return checkpoints[-1] if checkpoints else None
 
 
+def prune_checkpoints(directory: Path, keep: Path) -> list[Path]:
+    """Delete every checkpoint file in ``directory`` except ``keep``; returns the deleted paths.
+
+    Only files named like checkpoints (``checkpoint_<env_steps>.pt``) are touched.
+    """
+    keep = Path(keep).resolve()
+    deleted = [path for path in list_checkpoints(directory) if path.resolve() != keep]
+    for path in deleted:
+        path.unlink(missing_ok=True)
+    return deleted
+
+
 def save_checkpoint(path: Path, policy: nn.Module, optimizer: torch.optim.Optimizer, env_steps: int) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

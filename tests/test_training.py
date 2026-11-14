@@ -12,8 +12,11 @@ from attentive_snake.training import (
     NullLogger,
     TrainConfig,
     Trainer,
+    fork_from_checkpoint,
     latest_checkpoint,
+    list_checkpoints,
     load_checkpoint,
+    prune_checkpoints,
     resume_from_checkpoint,
     save_checkpoint,
 )
@@ -321,17 +324,8 @@ def _corridor_trainer(seed: int, total_env_steps: int, **overrides) -> Trainer:
     env = CorridorVecEnv(num_envs=8, length=5, max_steps=20)
     torch.manual_seed(seed)
     policy = MLPPolicy(env.observation_shape, env.num_actions)
-    config = TrainConfig(
-        total_env_steps=total_env_steps,
-        rollout_length=32,
-        num_epochs=4,
-        num_minibatches=4,
-        learning_rate=3e-3,
-        gamma=0.9,
-        device="cpu",
-        seed=seed,
-        **overrides,
-    )
+    settings = dict(rollout_length=32, num_epochs=4, num_minibatches=4, learning_rate=3e-3, gamma=0.9, device="cpu")
+    config = TrainConfig(total_env_steps=total_env_steps, seed=seed, **(settings | overrides))
     return Trainer(policy, env, config, logger=NullLogger())
 
 
@@ -400,3 +394,52 @@ def test_resume_at_or_past_total_trains_nothing(tmp_path) -> None:
     resume_from_checkpoint(second, latest_checkpoint(tmp_path))
     assert second.train() == []
     assert second.env_steps == 512
+
+
+# --------------------------------------------------------------------------- keeping checkpoints
+
+
+def test_prune_checkpoints_keeps_the_given_one_and_ignores_other_files(tmp_path) -> None:
+    names = ["checkpoint_0000000001.pt", "checkpoint_0000000002.pt", "checkpoint_0000000003.pt"]
+    others = ["checkpoint_99.pt.bak", "other.pt", "config.toml", "metrics.jsonl"]
+    for name in names + others:
+        (tmp_path / name).touch()
+    deleted = prune_checkpoints(tmp_path, keep=tmp_path / "checkpoint_0000000003.pt")
+    assert sorted(path.name for path in deleted) == names[:2]
+    assert sorted(path.name for path in tmp_path.iterdir()) == sorted(["checkpoint_0000000003.pt", *others])
+    assert prune_checkpoints(tmp_path / "missing", keep=tmp_path / "x.pt") == []
+
+
+def test_trainer_without_keep_checkpoints_leaves_only_the_latest(tmp_path) -> None:
+    (tmp_path / "notes.txt").touch()
+    trainer = _corridor_trainer(
+        seed=0, total_env_steps=4 * 256, checkpoint_dir=tmp_path, checkpoint_interval=1, keep_checkpoints=False
+    )
+    trainer.train()
+    assert [path.name for path in list_checkpoints(tmp_path)] == ["checkpoint_0000001024.pt"]
+    assert (tmp_path / "notes.txt").exists()
+
+
+# --------------------------------------------------------------------------- forking
+
+
+def test_fork_loads_parent_weights_and_optimizer_but_starts_its_own_counter(tmp_path) -> None:
+    parent_dir, child_dir = tmp_path / "parent", tmp_path / "child"
+    parent = _corridor_trainer(seed=0, total_env_steps=2 * 256, checkpoint_dir=parent_dir)
+    parent.train()
+    checkpoint = latest_checkpoint(parent_dir)
+    parent_files = sorted(path.name for path in parent_dir.iterdir())
+
+    child = _corridor_trainer(seed=7, total_env_steps=3 * 256, checkpoint_dir=child_dir, learning_rate=1e-3)
+    assert fork_from_checkpoint(child, checkpoint) == 512
+    assert child.env_steps == 0 and child.completed_updates == 0
+    for a, b in zip(parent.policy.state_dict().values(), child.policy.state_dict().values()):
+        torch.testing.assert_close(a, b, rtol=0, atol=0)
+    parent_state = parent.optimizer.state_dict()["state"][0]
+    torch.testing.assert_close(child.optimizer.state_dict()["state"][0]["exp_avg"], parent_state["exp_avg"], rtol=0, atol=0)
+
+    history = child.train()
+    assert [record["update"] for record in history] == [1.0, 2.0, 3.0]
+    assert history[0]["learning_rate"] == pytest.approx(1e-3)  # the child's own LR schedule, from its start
+    assert [path.name for path in list_checkpoints(child_dir)] == ["checkpoint_0000000768.pt"]
+    assert sorted(path.name for path in parent_dir.iterdir()) == parent_files  # the parent is untouched

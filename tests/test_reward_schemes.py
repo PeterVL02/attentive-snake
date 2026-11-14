@@ -1,3 +1,5 @@
+import dataclasses
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -45,7 +47,7 @@ def test_unknown_key_in_a_scheme_file_is_an_error(tmp_path) -> None:
 
 
 def test_shipped_starter_schemes() -> None:
-    assert list_schemes(SHIPPED) == ["big_win", "default", "distance_shaping"]
+    assert {"big_win", "default", "distance_shaping"} <= set(list_schemes(SHIPPED))  # user-added schemes are fine
     assert load_scheme(SHIPPED, "default") == RewardConfig()
     big = load_scheme(SHIPPED, "big_win")
     assert big.win > RewardConfig().win and big.food_growth > 0
@@ -84,3 +86,10 @@ def test_reward_table_reflects_growth_and_shaping() -> None:
     assert shaped["Move closer to the food"] == pytest.approx(0.1)
     assert shaped["Move farther from the food"] == pytest.approx(-0.2)
     assert shaped["Plain move (ignoring distance to food)"] == 0.0
+
+
+def test_default_scheme_is_the_single_source_of_the_default_reward_values() -> None:
+    """configs/rewards/default.toml lists every RewardConfig field with exactly the code defaults."""
+    listed = tomllib.loads((SHIPPED / "default.toml").read_text())
+    assert set(listed) == {field.name for field in dataclasses.fields(RewardConfig)}
+    assert load_scheme(SHIPPED, "default") == RewardConfig()

@@ -14,8 +14,8 @@ the class token can attend to the cells that matter (head, nearby body, food).
 
 from torch import Tensor, nn
 
-from attentive_snake.models.blocks import CellEmbedding, PositionalEmbedding2D
-from attentive_snake.models.policy_base import AttentivePolicy
+from attentive_snake.models.blocks.transformer import CellEmbedding, PositionalEmbedding2D
+from attentive_snake.models.policies.base import AttentivePolicy
 from attentive_snake.models.token_layout import TokenLayout
 
 
