@@ -21,7 +21,7 @@ _TEMPLATE = """<!doctype html>
 </pre>
 <script type="module">
 import mermaid from "{url}";
-mermaid.initialize({{ startOnLoad: true, securityLevel: "strict" }});
+mermaid.initialize({{ startOnLoad: true, securityLevel: "strict", flowchart: {{ subGraphTitleMargin: {{ top: 8, bottom: 30 }} }} }});
 </script>
 </body>
 </html>
