@@ -9,3 +9,6 @@ wheels/
 # Virtual environments
 .venv
 runs/
+
+# Local agent notes
+CLAUDE.md
