@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from attentive_snake.app.errors import invalid_input_as_422, not_found
+from attentive_snake.app.errors import conflict, invalid_input_as_422, not_found
 from attentive_snake.run_dir import config_path, list_checkpoints, validate_run_name
 
 
@@ -26,3 +26,11 @@ def checkpoint_in_run(run_dir: Path, checkpoint: str) -> Path:
         if path.name == checkpoint:
             return path
     raise not_found(f"run {run_dir.name!r} has no checkpoint {checkpoint!r}.")
+
+
+def latest_checkpoint_in_run(run_dir: Path) -> Path:
+    """The newest checkpoint file of ``run_dir``; 409 if it has none yet."""
+    checkpoints = list_checkpoints(run_dir)
+    if not checkpoints:
+        raise conflict(f"run {run_dir.name!r} has no checkpoints yet.")
+    return checkpoints[-1]

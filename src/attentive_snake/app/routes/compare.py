@@ -31,6 +31,7 @@ def make_router(paths: AppPaths, jobs: TrainingJobs) -> APIRouter:
             "config": experiment_to_json(load_experiment(config_path(run_dir))),
             "parameters": run_parameter_count(config_path(run_dir)),
             "metrics": run_info.metrics(run_dir),
+            "description": run_info.history(run_dir)["description"],
         }
 
     @router.post("/compare")
