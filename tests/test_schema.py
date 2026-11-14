@@ -15,7 +15,7 @@ SCHEMA = experiment_schema()
 
 def test_sections_in_order_and_cover_every_dataclass_field() -> None:
     assert SCHEMA["game"] == "snake"
-    assert list(SCHEMA["sections"]) == ["game", "reward", "model", "train", "env"]
+    assert list(SCHEMA["sections"]) == ["game", "reward", "model", "train", "env", "evaluation"]
     experiment = ExperimentConfig()
     for section, rows in SCHEMA["sections"].items():
         fields = [f.name for f in dataclasses.fields(getattr(experiment, section))]

@@ -2,8 +2,9 @@
 
 Every setting lives in a TOML experiment config (see configs/<game>/default.toml);
 ``[game] name`` says which game. Each run gets a directory (by convention
-runs/<game>/<name>) with its config.toml, checkpoints, model.html, metrics.jsonl and
-run.json (its start/resume/fork history with descriptions).
+runs/<game>/<name>) with its config.toml, checkpoints, model.html, metrics.jsonl,
+evaluations.jsonl (when [evaluation] interval > 0) and run.json (its start/resume/fork
+history with descriptions).
 
     # new run (refuses a directory that already has checkpoints)
     uv run python scripts/train.py [--game snake] --run-dir runs/snake/8x8 [--config configs/snake/default.toml]
@@ -16,8 +17,9 @@ run.json (its start/resume/fork history with descriptions).
     uv run python scripts/train.py --run-dir runs/snake/8x8-lowlr --fork runs/snake/8x8
         [--fork-checkpoint checkpoint_0000500000.pt] [--set train.learning_rate=1e-4 ...]
 
-All three take ``--description TEXT`` (saved in run.json) and
-``--keep-checkpoints / --no-keep-checkpoints`` (saved in config.toml).
+All three take ``--description TEXT`` (saved in run.json),
+``--keep-checkpoints / --no-keep-checkpoints`` and ``--eval-interval N --eval-games X
+--eval-seed S`` (saved in config.toml; ``--eval-interval 0`` turns evaluation off).
 ``--steps`` sets ``train.total_env_steps``. When it extends a resumed run, the
 linearly annealed learning rate is re-stretched over the new total. A forked
 run counts its own steps from 0 with its own total and learning-rate schedule.
@@ -33,9 +35,18 @@ from attentive_snake.config.experiment_io import game_name_of
 from attentive_snake.config.layout import default_config_path
 from attentive_snake.config.fork_rules import require_forkable
 from attentive_snake.config.overrides import apply_overrides, parse_override
-from attentive_snake.factory import make_policy, make_vec_env
-from attentive_snake.games.registry import DEFAULT_GAME, game_names
-from attentive_snake.run_dir import config_path, diagram_path, game_runs_dir, list_checkpoints, metrics_path
+from attentive_snake.evaluation.hook import PeriodicEvaluation
+from attentive_snake.factory import make_env, make_policy, make_vec_env
+from attentive_snake.games.registry import DEFAULT_GAME, game_names, get_game
+from attentive_snake.run_dir import (
+    chosen_checkpoint,
+    config_path,
+    diagram_path,
+    evaluations_path,
+    game_runs_dir,
+    list_checkpoints,
+    metrics_path,
+)
 from attentive_snake.run_metadata import Lineage, RunEvent, append_event, clean_description
 from attentive_snake.training import (
     ConsoleLogger,
@@ -70,6 +81,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="keep every checkpoint (the default for new runs), or delete older ones after each save",
     )
     parser.add_argument("--description", help="note about this start/resume/fork, saved in the run's run.json")
+    evaluation = parser.add_argument_group("evaluation while training (every mode; saved in config.toml)")
+    evaluation.add_argument("--eval-interval", type=int, metavar="N", help="set evaluation.interval: evaluate every N env steps (0 = off)")
+    evaluation.add_argument("--eval-games", type=int, metavar="X", help="set evaluation.games: games per evaluation")
+    evaluation.add_argument("--eval-seed", type=int, metavar="S", help="set evaluation.seed: seed of the evaluation games")
     fork = parser.add_argument_group("continuing another run under a new name (with --run-dir)")
     fork.add_argument("--fork", type=Path, metavar="PARENT_RUN_DIR", help="start from a checkpoint of this run")
     fork.add_argument("--fork-checkpoint", type=Path, metavar="FILE", help="checkpoint of the parent (default: its latest)")
@@ -130,11 +145,12 @@ def replace_some[T](obj: T, **changes) -> T:
 
 
 def with_run_options(config: ExperimentConfig, args: argparse.Namespace, run_dir: Path) -> ExperimentConfig:
-    """``config`` with the options every mode accepts (--steps, --keep-checkpoints) and the run directory."""
+    """``config`` with the options every mode accepts (--steps, --keep-checkpoints, --eval-*) and the run directory."""
     train = replace_some(
         config.train, total_env_steps=args.steps, keep_checkpoints=args.keep_checkpoints, checkpoint_dir=run_dir
     )
-    return dataclasses.replace(config, train=train)
+    evaluation = replace_some(config.evaluation, interval=args.eval_interval, games=args.eval_games, seed=args.eval_seed)
+    return dataclasses.replace(config, train=train, evaluation=evaluation)
 
 
 def with_config_changes(config: ExperimentConfig, args: argparse.Namespace) -> ExperimentConfig:
@@ -175,15 +191,17 @@ def forked_run_config(args: argparse.Namespace) -> ExperimentConfig:
 
 def fork_checkpoint(parent_dir: Path, requested: Path | None) -> Path:
     """The parent's checkpoint to start from: ``requested`` (a file name or a path inside it), else its latest."""
-    checkpoints = list_checkpoints(parent_dir)
-    if not checkpoints:
+    if not list_checkpoints(parent_dir):
         raise ValueError(f"{parent_dir} has no checkpoints to continue from.")
-    if requested is None:
-        return checkpoints[-1]
-    for path in checkpoints:
-        if path.name == requested.name and (requested.parent == Path() or requested.resolve() == path.resolve()):
-            return path
-    raise ValueError(f"{requested} is not a checkpoint of {parent_dir}; it has {', '.join(p.name for p in checkpoints)}.")
+    return chosen_checkpoint(parent_dir, requested)
+
+
+def evaluation_hooks(config: ExperimentConfig, run_dir: Path) -> list[PeriodicEvaluation]:
+    """The periodic evaluation of the run, if ``[evaluation] interval`` is set; it appends to the run's evaluations.jsonl."""
+    if not config.evaluation.enabled:
+        return []
+    game = get_game(config.game_name)
+    return [PeriodicEvaluation(game, lambda: make_env(config), config.evaluation, evaluations_path(run_dir))]
 
 
 def resume(trainer: Trainer, run_dir: Path, description: str | None) -> RunEvent:
@@ -226,7 +244,8 @@ def main() -> None:
     print(diagram(policy))
     save_diagram(policy, diagram_path(run_dir))
 
-    trainer = Trainer(policy, env, config.train, TeeLogger(ConsoleLogger(), JsonlLogger(metrics_path(run_dir))))
+    logger = TeeLogger(ConsoleLogger(), JsonlLogger(metrics_path(run_dir)))
+    trainer = Trainer(policy, env, config.train, logger, hooks=evaluation_hooks(config, run_dir))
     if args.resume:
         event = resume(trainer, run_dir, description)
     elif args.fork:

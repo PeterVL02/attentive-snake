@@ -1,18 +1,19 @@
-"""The complete description of one experiment: which game, its rules and rewards, and the model, training and env settings.
+"""The complete description of one experiment: which game, its rules and rewards, and the model, training, env and evaluation settings.
 
 Pure data. Reading and writing it lives in ``attentive_snake.config.experiment_io``.
 ``[game]`` and ``[reward]`` are the dataclasses of the chosen game (``GameSpec.rules_type``
-and ``reward_type``); ``[model] [train] [env]`` are the same for every game.
+and ``reward_type``); ``[model] [train] [env] [evaluation]`` are the same for every game.
 """
 
 from dataclasses import dataclass, field
 from typing import Any
 
+from attentive_snake.evaluation.config import EvalConfig
 from attentive_snake.games.registry import DEFAULT_GAME, get_game
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.training.config import TrainConfig
 
-SECTIONS: tuple[str, ...] = ("game", "reward", "model", "train", "env")
+SECTIONS: tuple[str, ...] = ("game", "reward", "model", "train", "env", "evaluation")
 GAME_NAME_KEY = "name"  # the key of [game] that selects the game; the other keys are its rules
 
 
@@ -46,6 +47,7 @@ class ExperimentConfig:
     model: ModelConfig = field(default_factory=ModelConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
     env: EnvConfig = field(default_factory=EnvConfig)
+    evaluation: EvalConfig = field(default_factory=EvalConfig)
 
     def __post_init__(self) -> None:
         types = section_types(self.game_name)
@@ -63,4 +65,11 @@ class ExperimentConfig:
 def section_types(game_name: str) -> dict[str, type]:
     """The dataclass of every section for an experiment of ``game_name`` (``ValueError`` for an unknown game)."""
     game = get_game(game_name)
-    return {"game": game.rules_type, "reward": game.reward_type, "model": ModelConfig, "train": TrainConfig, "env": EnvConfig}
+    return {
+        "game": game.rules_type,
+        "reward": game.reward_type,
+        "model": ModelConfig,
+        "train": TrainConfig,
+        "env": EnvConfig,
+        "evaluation": EvalConfig,
+    }
