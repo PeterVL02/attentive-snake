@@ -3,7 +3,10 @@
 // games). Runs of different games are never mixed: the list is the selected game's runs only.
 
 import { get, post } from "../api.js";
-import { badge, debounce, formatDuration, formatNumber, formatSteps, h, message, replace } from "../dom.js";
+import { debounce, formatDuration, formatNumber, formatSteps, h, message, replace } from "../dom.js";
+import { groupSection } from "../compare_group.js";
+import { groupRuns } from "../run_groups.js";
+import { loadSchema } from "../schema.js";
 import { currentGame, gameUrl, isCurrent } from "../game.js";
 import { LineChart, movingAverage, renderLegend, seriesColor, seriesDash } from "../chart.js";
 import { bestValue, chartableDefinitions, evaluationPoints, formatMetric, headlineDefinition, trainingEvaluations } from "../evaluation_metrics.js";
@@ -22,38 +25,36 @@ let data = null; // {runs, differences}
 let series = []; // persistent per run name so legend toggles survive redraws
 let visible = false;
 let timer = null;
+let kindOrder = []; // the schema's model kind names, in schema order
+const collapsed = new Set(); // kinds the viewer folded in the run list (kept across refreshes)
 
-function runRow(run) {
-  const id = `cmp-${run.name}`;
-  const box = h("input", { type: "checkbox", id, checked: checked.has(run.name) });
-  box.addEventListener("change", () => {
-    if (box.checked) checked.add(run.name);
-    else checked.delete(run.name);
-    scheduleCompare();
-  });
-  return h(
-    "li",
-    { class: "compare-item" },
-    box,
-    h(
-      "label",
-      { for: id },
-      h("span", { class: "name", text: run.name }),
-      h("span", { class: "muted small", text: `${run.kind ?? "?"} · ${run.algorithm ?? "?"} · ${rulesSummary(run.rules)} · ${formatSteps(run.env_steps)} / ${formatSteps(run.total_env_steps)}` }),
-      run.description ? h("span", { class: "run-description", text: run.description, title: run.description }) : null,
-    ),
-    badge(run.status.state),
-  );
+function onToggle(names, on) {
+  for (const name of names) {
+    if (on) checked.add(name);
+    else checked.delete(name);
+  }
+  scheduleCompare();
+}
+
+/** The runs of `data` grouped by kind, in the schema's kind order: the order of the list, chart legend and table. */
+function groupedRuns() {
+  return groupRuns(data.runs, kindOrder);
 }
 
 async function refreshRuns() {
   const game = currentGame().name;
   try {
-    const runs = await get(gameUrl("/api/runs", game));
+    const [runs, loaded] = await Promise.all([get(gameUrl("/api/runs", game)), loadSchema(game).catch(() => null)]);
     if (!isCurrent(game)) return;
+    kindOrder = loaded ? Object.keys(loaded.schema.model_kinds) : [];
     const names = new Set(runs.map((r) => r.name));
     checked = new Set([...checked].filter((n) => names.has(n)));
-    replace(els.list, runs.length === 0 ? h("li", { class: "empty", text: `No ${currentGame().title} runs yet.` }) : runs.map(runRow));
+    replace(
+      els.list,
+      runs.length === 0
+        ? h("p", { class: "empty", text: `No ${currentGame().title} runs yet.` })
+        : groupRuns(runs, kindOrder).map((group) => groupSection(group, checked, collapsed, onToggle)),
+    );
   } catch (error) {
     if (isCurrent(game)) message(els.status, "error", error.message);
   }
@@ -107,7 +108,7 @@ function drawChart() {
   const byTime = els.xAxis.value === "time";
   const window = Number(els.smooth.value);
   els.smoothLabel.textContent = window <= 1 ? "off" : `${window} points`;
-  const shown = data.runs.map((run, i) => {
+  const shown = groupedRuns().flatMap((group) => group.runs).map((run, i) => {
     const s = seriesFor(run.name, i);
     s.points = movingAverage(runPoints(run, metric, byTime) ?? [], window);
     return s;
@@ -137,8 +138,8 @@ function tableEvaluationMetric() {
 function summaryTable() {
   const evaluated = tableEvaluationMetric();
   const evalHead = evaluated ? [`latest evaluation: ${evaluated.label}`, `best evaluation: ${evaluated.label}`] : [];
-  const head = ["", "run", "kind", "algorithm", "parameters", "rules", "final mean score (training)", "best mean score (training)", ...evalHead, "steps / s", "description"];
-  const numeric = (t, i) => (i >= 4 && i !== 5 && i < head.length - 1 ? "num" : null);
+  const head = ["", "run", "algorithm", "parameters", "rules", "final mean score (training)", "best mean score (training)", ...evalHead, "steps / s", "description"];
+  const numeric = (t, i) => (i >= 3 && i !== 4 && i < head.length - 1 ? "num" : null);
   return h(
     "table",
     {},
@@ -146,27 +147,37 @@ function summaryTable() {
     h(
       "tbody",
       {},
-      data.runs.map((run, i) => {
-        const records = monotonic(run.metrics);
-        const scores = records.map((r) => r.mean_score).filter((v) => typeof v === "number");
-        const speeds = records.map((r) => r.steps_per_second).filter((v) => typeof v === "number");
-        return h(
-          "tr",
-          {},
-          h("td", {}, h("span", { class: "swatch", style: `background:${seriesColor(i)}` })),
-          h("td", { class: "mono", text: run.name }),
-          h("td", { text: run.kind ?? "?" }),
-          h("td", { text: run.algorithm ?? "?", title: run.config_error ?? "" }),
-          h("td", { class: "num", text: formatNumber(run.parameters) }),
-          h("td", { text: rulesSummary(run.rules) }),
-          h("td", { class: "num", text: scores.length ? formatNumber(scores[scores.length - 1], 2) : "–" }),
-          h("td", { class: "num", text: scores.length ? formatNumber(Math.max(...scores), 2) : "–" }),
-          evaluated ? evaluationCells(run, evaluated) : null,
-          h("td", { class: "num", text: formatNumber(median(speeds), 0) }),
-          h("td", { class: "small pre-wrap", text: run.description ?? "–" }),
-        );
-      }),
+      tableRows(evaluated, head.length),
     ),
+  );
+}
+
+/** One heading row per kind, then its runs; a run's swatch colour is its index in the grouped order (as in the chart). */
+function tableRows(evaluated, columns) {
+  let index = 0;
+  return groupedRuns().flatMap((group) => [
+    h("tr", { class: "group-row" }, h("th", { colspan: columns, text: `${group.kind} (${group.runs.length})` })),
+    ...group.runs.map((run) => runTableRow(run, index++, evaluated)),
+  ]);
+}
+
+function runTableRow(run, i, evaluated) {
+  const records = monotonic(run.metrics);
+  const scores = records.map((r) => r.mean_score).filter((v) => typeof v === "number");
+  const speeds = records.map((r) => r.steps_per_second).filter((v) => typeof v === "number");
+  return h(
+    "tr",
+    {},
+    h("td", {}, h("span", { class: "swatch", style: `background:${seriesColor(i)}` })),
+    h("td", { class: "mono", text: run.name }),
+    h("td", { text: run.algorithm ?? "?", title: run.config_error ?? "" }),
+    h("td", { class: "num", text: formatNumber(run.parameters) }),
+    h("td", { text: rulesSummary(run.rules) }),
+    h("td", { class: "num", text: scores.length ? formatNumber(scores[scores.length - 1], 2) : "–" }),
+    h("td", { class: "num", text: scores.length ? formatNumber(Math.max(...scores), 2) : "–" }),
+    evaluated ? evaluationCells(run, evaluated) : null,
+    h("td", { class: "num", text: formatNumber(median(speeds), 0) }),
+    h("td", { class: "small pre-wrap", text: run.description ?? "–" }),
   );
 }
 
@@ -249,7 +260,7 @@ const scheduleCompare = debounce(compare, 200);
 
 export function init(root) {
   els = {
-    list: h("ul", { class: "run-list compare-list" }),
+    list: h("div", { class: "run-list compare-list" }),
     status: h("div", { class: "message", role: "status" }),
     metric: h("select", { id: "cmp-metric" }),
     metricNote: h("p", { class: "muted small" }),
@@ -312,7 +323,7 @@ export function reset() {
   series = [];
   data = { runs: [], differences: [] };
   drawChart();
-  replace(els.list, h("li", { class: "empty", text: "Loading…" }));
+  replace(els.list, h("p", { class: "empty", text: "Loading…" }));
   replace(els.tables);
   message(els.status, "", "");
 }
