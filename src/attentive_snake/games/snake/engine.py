@@ -3,7 +3,7 @@
 import random
 from collections import deque
 
-from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.config import SnakeConfig
 from attentive_snake.games.snake.types import Action, GameState, Position, StepEvent, StepResult
 
 
@@ -14,7 +14,7 @@ class SnakeGame:
     so a step costs O(1) apart from building the immutable state snapshot.
     """
 
-    def __init__(self, config: GameConfig, seed: int | None = None) -> None:
+    def __init__(self, config: SnakeConfig, seed: int | None = None) -> None:
         self._config = config
         self._rng = random.Random(seed)
         self._snake: deque[Position] = deque()

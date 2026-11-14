@@ -1,8 +1,8 @@
-"""Watch a trained policy play Snake in a pygame window.
+"""Watch a trained policy play its game in a pygame window.
 
-    uv run python scripts/watch.py runs/8x8 [--checkpoint PATH] [--attention [--layer -1]] [--sample]
+    uv run python scripts/watch.py runs/snake/8x8 [--checkpoint PATH] [--attention [--layer -1]] [--sample]
 
-Everything (grid size, reward, model) is built from RUN_DIR/config.toml; the
+Everything (game, rules, reward, model) is built from RUN_DIR/config.toml; the
 latest checkpoint in RUN_DIR is used unless --checkpoint is given.
 ``--attention`` shades each cell by how much the class token attends to it. Models whose
 tokens are whole frames (frame_attention) show the per-frame weights in the window title
@@ -18,9 +18,12 @@ from pathlib import Path
 import numpy as np
 import pygame
 
-from attentive_snake.games.snake.renderer import PygameRenderer
 from attentive_snake.training import latest_checkpoint
+from attentive_snake.views.board_window import BoardWindow
 from attentive_snake.watch import WatchFrame, WatchSession
+
+# One pygame window per view kind (see attentive_snake.views); "image" has none yet.
+WINDOWS = {"board": BoardWindow}
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,10 +60,11 @@ def quit_requested() -> bool:
     )
 
 
-def window_title(frame: WatchFrame) -> str | None:
-    if frame.frame_weights is None:
-        return None
-    return "frame attention (oldest..newest): " + " ".join(f"{w:.2f}" for w in frame.frame_weights)
+def window_title(frame: WatchFrame) -> str:
+    if frame.frame_weights is not None:
+        return "frame attention (oldest..newest): " + " ".join(f"{w:.2f}" for w in frame.frame_weights)
+    suffix = f"  ({frame.event})" if frame.done else ""
+    return f"score {frame.score:g}, step {frame.steps}{suffix}"
 
 
 def main() -> None:
@@ -71,23 +75,22 @@ def main() -> None:
         raise SystemExit(f"--attention: {error}") from error
     print(f"loaded {session.info['checkpoint']} ({session.info['env_steps']} env steps)")
 
-    renderer = PygameRenderer(session.info["width"], session.info["height"], cell_size=args.cell_size)
+    window_type = WINDOWS.get(session.info["view_kind"])
+    if window_type is None:
+        raise SystemExit(f"no pygame window for the {session.info['view_kind']!r} view of {session.info['game']} yet")
+    window = window_type(session.info["width"], session.info["height"], cell_size=args.cell_size)
     clock = pygame.time.Clock()
     frame = session.reset()
     while True:
         heatmap = None if frame.heatmap is None else np.array(frame.heatmap, dtype=np.float32)
-        renderer.render(session.state, heatmap)
-        title = window_title(frame)
-        if title is not None:
-            pygame.display.set_caption(title)
+        window.render(frame.view, heatmap, caption=window_title(frame))
         if quit_requested():  # after render: the window is created on the first render
             break
         frame = session.step()
         if frame.done:
-            renderer.render(session.state)
-            print(f"episode over: {frame.event}, score {frame.score}")
+            print(f"episode over: {frame.event}, score {frame.score:g}")
         clock.tick(args.fps)
-    renderer.close()
+    window.close()
 
 
 if __name__ == "__main__":

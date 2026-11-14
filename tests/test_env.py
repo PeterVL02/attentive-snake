@@ -2,11 +2,21 @@ import numpy as np
 import pytest
 
 from attentive_snake.games.snake.observation import ObservationEncoder
-from attentive_snake.games.snake.reward import RewardConfig, build_reward
+from attentive_snake.games.snake.reward import SnakeRewardConfig, build_reward
+from attentive_snake.env.history_env import HistoryEnv
+from attentive_snake.env.vec_env import SyncVecEnv, env_seed
 from attentive_snake.games.snake.env import SnakeEnv
-from attentive_snake.env.vec_env import SyncVecSnakeEnv
-from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.config import SnakeConfig
 from attentive_snake.games.snake.types import Action, GameState, StepEvent, StepResult
+
+
+def SyncVecSnakeEnv(n, config, reward=None, seed=None):
+    """N Snake envs (no history) in the generic vector env, seeded like the factory does."""
+    return SyncVecEnv([HistoryEnv(SnakeEnv(config, reward, seed=env_seed(seed, i))) for i in range(n)])
+
+
+def states(venv):
+    return [env.game.state for env in venv.envs]
 
 
 def make_state(snake, food, w=6, h=5, done=False):
@@ -17,7 +27,7 @@ def result(state, event):
     return StepResult(state, event)
 
 
-CFG = RewardConfig(food=2.0, death=-3.0, win=5.0, starved=-4.0, step=-0.1,
+CFG = SnakeRewardConfig(food=2.0, death=-3.0, win=5.0, starved=-4.0, step=-0.1,
                    closer_to_food=0.3, farther_from_food=-0.2)
 
 
@@ -45,17 +55,17 @@ def test_reward_shaping():
 
 
 def test_reward_defaults_no_shaping():
-    f = build_reward(RewardConfig())
+    f = build_reward(SnakeRewardConfig())
     prev = make_state([(2, 2), (1, 2)], (5, 2))
     new = make_state([(3, 2), (2, 2)], (5, 2))
     assert f(prev, result(new, StepEvent.MOVED)) == pytest.approx(-0.01)
 
 
 def test_env_accepts_custom_reward():
-    env = SnakeEnv(GameConfig(width=8, height=6), lambda prev, res: 7.0, seed=1)
+    env = SnakeEnv(SnakeConfig(width=8, height=6), lambda prev, res: 7.0, seed=1)
     env.reset()
     assert env.step(env.state.direction).reward == 7.0
-    venv = SyncVecSnakeEnv(2, GameConfig(), RewardConfig(step=-0.5), seed=0)
+    venv = SyncVecSnakeEnv(2, SnakeConfig(), SnakeRewardConfig(step=-0.5), seed=0)
     venv.reset()
     assert venv.step(np.array([1, 1])).rewards[0] <= 1.0
 
@@ -80,34 +90,34 @@ def test_observation_no_food():
 
 
 def test_env_contract():
-    env = SnakeEnv(GameConfig(width=8, height=6), seed=1)
+    env = SnakeEnv(SnakeConfig(width=8, height=6), seed=1)
     assert env.observation_shape == (3, 6, 8) and env.num_actions == 4
     obs = env.reset()
     assert obs.shape == env.observation_shape and obs.dtype == np.float32
     s = env.step(env.state.direction)
     assert s.observation.shape == env.observation_shape
     assert isinstance(s.reward, float)
-    assert s.event in (StepEvent.MOVED, StepEvent.ATE_FOOD)
+    assert s.event in (StepEvent.MOVED.value, StepEvent.ATE_FOOD.value) and s.score == 0.0
     assert not s.terminated and not s.truncated
 
 
 def test_env_wall_terminates_and_starvation_truncates():
-    env = SnakeEnv(GameConfig(width=5, height=5), seed=0)
+    env = SnakeEnv(SnakeConfig(width=5, height=5), seed=0)
     env.reset()
     for _ in range(10):
         s = env.step(Action.UP)
         if s.terminated:
             break
-    assert s.event.is_terminal and env.state.done
-    env = SnakeEnv(GameConfig(width=20, height=20, max_steps_without_food=2), seed=0)
+    assert StepEvent(s.event).is_terminal and env.state.done
+    env = SnakeEnv(SnakeConfig(width=20, height=20, max_steps_without_food=2), seed=0)
     env.reset()
     env.step(env.state.direction)
     s = env.step(env.state.direction)
-    assert s.truncated and not s.terminated and s.event is StepEvent.STARVED
+    assert s.truncated and not s.terminated and s.event == "starved"
 
 
 def run_vec(seed, steps=300, n=8):
-    venv = SyncVecSnakeEnv(n, GameConfig(width=6, height=5, max_steps_without_food=40), seed=seed)
+    venv = SyncVecSnakeEnv(n, SnakeConfig(width=6, height=5, max_steps_without_food=40), seed=seed)
     rng = np.random.default_rng(123)
     obs = [venv.reset()]
     out = []
@@ -125,11 +135,11 @@ def test_vec_shapes_dtypes():
     assert r.observations.shape == (8, 3, 5, 6) and r.observations.dtype == np.float32
     assert r.rewards.shape == (8,) and r.rewards.dtype == np.float32
     assert r.terminated.dtype == bool and r.truncated.dtype == bool
-    assert len(venv.states()) == 8
+    assert len(states(venv)) == 8
 
 
 def test_vec_auto_reset_and_summaries():
-    venv = SyncVecSnakeEnv(4, GameConfig(width=5, height=5), seed=3)
+    venv = SyncVecSnakeEnv(4, SnakeConfig(width=5, height=5), seed=3)
     venv.reset()
     returns = np.zeros(4)
     lengths = np.zeros(4, int)
@@ -142,13 +152,13 @@ def test_vec_auto_reset_and_summaries():
         for ep in r.finished_episodes:
             i = ep.env_index
             seen += 1
-            assert r.terminated[i] and ep.final_event.is_terminal
+            assert r.terminated[i] and StepEvent(ep.outcome).is_terminal
             assert ep.total_reward == pytest.approx(returns[i], abs=1e-5)
             assert ep.length == lengths[i]
             returns[i] = 0
             lengths[i] = 0
             # obs is the fresh episode's
-            fresh = venv.states()[i]
+            fresh = states(venv)[i]
             assert not fresh.done and fresh.steps == 0
             np.testing.assert_array_equal(r.observations[i], enc.encode(fresh))
     assert seen >= 4
@@ -169,7 +179,7 @@ def test_vec_determinism_and_divergence():
 
 
 def test_vec_obs_not_aliased():
-    venv = SyncVecSnakeEnv(2, GameConfig(), seed=0)
+    venv = SyncVecSnakeEnv(2, SnakeConfig(), seed=0)
     o = venv.reset()
     r = venv.step(np.array([1, 1]))
     assert not np.shares_memory(o, r.observations)

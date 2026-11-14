@@ -1,18 +1,19 @@
-"""Train a policy on Snake with PPO: start a new run, resume one, or continue one under a new name (fork).
+"""Train a policy on a game with PPO: start a new run, resume one, or continue one under a new name (fork).
 
-Every setting lives in a TOML experiment config (see configs/default.toml).
-Each run gets a directory with its config.toml, checkpoints, model.html,
-metrics.jsonl and run.json (its start/resume/fork history with descriptions).
+Every setting lives in a TOML experiment config (see configs/<game>/default.toml);
+``[game] name`` says which game. Each run gets a directory (by convention
+runs/<game>/<name>) with its config.toml, checkpoints, model.html, metrics.jsonl and
+run.json (its start/resume/fork history with descriptions).
 
     # new run (refuses a directory that already has checkpoints)
-    uv run python scripts/train.py --run-dir runs/8x8 [--config configs/default.toml]
+    uv run python scripts/train.py [--game snake] --run-dir runs/snake/8x8 [--config configs/snake/default.toml]
         [--width W --height H --num-envs N --seed S --steps STEPS --set section.key=value ...]
 
-    # continue a run from its config.toml and latest checkpoint
-    uv run python scripts/train.py --resume runs/8x8 [--steps 10000000]
+    # continue a run from its config.toml and latest checkpoint (the game comes from the config)
+    uv run python scripts/train.py --resume runs/snake/8x8 [--steps 10000000]
 
-    # a new run that starts from a checkpoint of another run, with changed settings
-    uv run python scripts/train.py --run-dir runs/8x8-lowlr --fork runs/8x8
+    # a new run that starts from a checkpoint of another run of the same game, with changed settings
+    uv run python scripts/train.py --run-dir runs/snake/8x8-lowlr --fork runs/snake/8x8
         [--fork-checkpoint checkpoint_0000500000.pt] [--set train.learning_rate=1e-4 ...]
 
 All three take ``--description TEXT`` (saved in run.json) and
@@ -24,13 +25,17 @@ run counts its own steps from 0 with its own total and learning-rate schedule.
 
 import argparse
 import dataclasses
+import tomllib
 from pathlib import Path
 
 from attentive_snake.config import ExperimentConfig, load_experiment, save_experiment
+from attentive_snake.config.experiment_io import game_name_of
+from attentive_snake.config.layout import default_config_path
 from attentive_snake.config.fork_rules import require_forkable
 from attentive_snake.config.overrides import apply_overrides, parse_override
 from attentive_snake.factory import make_policy, make_vec_env
-from attentive_snake.run_dir import config_path, diagram_path, list_checkpoints, metrics_path
+from attentive_snake.games.registry import DEFAULT_GAME, game_names
+from attentive_snake.run_dir import config_path, diagram_path, game_runs_dir, list_checkpoints, metrics_path
 from attentive_snake.run_metadata import Lineage, RunEvent, append_event, clean_description
 from attentive_snake.training import (
     ConsoleLogger,
@@ -44,15 +49,19 @@ from attentive_snake.training import (
 from attentive_snake.training.runtime import seed_everything
 from attentive_snake.viz import diagram, save_diagram
 
-DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "configs" / "default.toml"
-DEFAULT_RUN_DIR = Path("runs/default")
-CONFIG_CHANGES = ("config", "width", "height", "num_envs", "seed", "set")  # not with --resume
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+CONFIGS_DIR = PROJECT_ROOT / "configs"
+RUNS_ROOT = Path("runs")
+DEFAULT_RUN_NAME = "default"
+CONFIG_CHANGES = ("game", "config", "width", "height", "num_envs", "seed", "set")  # not with --resume
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     target = parser.add_mutually_exclusive_group()
-    target.add_argument("--run-dir", type=Path, help=f"directory of a new run (default: {DEFAULT_RUN_DIR})")
+    target.add_argument(
+        "--run-dir", type=Path, help=f"directory of a new run (default: {RUNS_ROOT}/<game>/{DEFAULT_RUN_NAME})"
+    )
     target.add_argument("--resume", type=Path, metavar="RUN_DIR", help="continue the run in RUN_DIR")
     parser.add_argument("--steps", type=int, help="set train.total_env_steps (also extends a resumed run)")
     parser.add_argument(
@@ -66,10 +75,16 @@ def build_parser() -> argparse.ArgumentParser:
     fork.add_argument("--fork-checkpoint", type=Path, metavar="FILE", help="checkpoint of the parent (default: its latest)")
     new_run = parser.add_argument_group("new and forked runs only")
     new_run.add_argument(
-        "--config", type=Path, help=f"experiment TOML (default: {DEFAULT_CONFIG}; with --fork, the parent's config.toml)"
+        "--game",
+        choices=game_names(),
+        help=f"game of a new run (default: the --config file's [game] name, else {DEFAULT_GAME}); "
+        "picks configs/<game>/default.toml and the default run directory",
     )
-    new_run.add_argument("--width", type=int)
-    new_run.add_argument("--height", type=int)
+    new_run.add_argument(
+        "--config", type=Path, help="experiment TOML (default: configs/<game>/default.toml; with --fork, the parent's config.toml)"
+    )
+    new_run.add_argument("--width", type=int, help="shortcut for --set game.width=W (grid games)")
+    new_run.add_argument("--height", type=int, help="shortcut for --set game.height=H (grid games)")
     new_run.add_argument("--num-envs", type=int)
     new_run.add_argument("--seed", type=int)
     new_run.add_argument(
@@ -89,11 +104,24 @@ def check_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Non
         parser.error("--fork-checkpoint needs --fork.")
     if args.fork is not None and args.run_dir is None:
         parser.error("--fork needs --run-dir: the directory of the new run.")
-    args.run_dir = args.run_dir or DEFAULT_RUN_DIR
+    args.run_dir = args.run_dir or game_runs_dir(RUNS_ROOT, requested_game(args)) / DEFAULT_RUN_NAME
     if args.fork is not None and args.run_dir.resolve() == args.fork.resolve():
         parser.error("--run-dir must differ from --fork; use --resume to continue the same run.")
     if latest_checkpoint(args.run_dir) is not None:
         parser.error(f"{args.run_dir} already contains checkpoints; choose another --run-dir, or --resume {args.run_dir}.")
+
+
+def requested_game(args: argparse.Namespace) -> str:
+    """The game of a new run: --game, else the --config file's [game] name, else the default game."""
+    if args.game is not None:
+        return args.game
+    if args.config is not None:
+        try:
+            with args.config.open("rb") as file:
+                return game_name_of(tomllib.load(file))
+        except (OSError, tomllib.TOMLDecodeError, TypeError):
+            pass  # reported properly when the config is loaded
+    return DEFAULT_GAME
 
 
 def replace_some[T](obj: T, **changes) -> T:
@@ -110,18 +138,24 @@ def with_run_options(config: ExperimentConfig, args: argparse.Namespace, run_dir
 
 
 def with_config_changes(config: ExperimentConfig, args: argparse.Namespace) -> ExperimentConfig:
-    """``config`` with the --set overrides, then the --width/--height/--num-envs/--seed shortcuts."""
-    config = apply_overrides(config, [parse_override(text) for text in args.set or ()])
+    """``config`` with the --set overrides, then the --width/--height/--num-envs/--seed shortcuts.
+
+    ``ValueError`` if --game names another game than the config's.
+    """
+    if args.game is not None and args.game != config.game_name:
+        raise ValueError(f"--game {args.game} does not match the config's game {config.game_name!r}.")
+    shortcuts = [("game", key, value) for key, value in (("width", args.width), ("height", args.height)) if value is not None]
+    config = apply_overrides(config, [parse_override(text) for text in args.set or ()] + shortcuts)
     return dataclasses.replace(
         config,
-        game=replace_some(config.game, width=args.width, height=args.height),
         env=replace_some(config.env, num_envs=args.num_envs),
         train=replace_some(config.train, seed=args.seed),
     )
 
 
 def new_run_config(args: argparse.Namespace) -> ExperimentConfig:
-    config = with_config_changes(load_experiment(args.config or DEFAULT_CONFIG), args)
+    config_file = args.config or default_config_path(CONFIGS_DIR, requested_game(args))
+    config = with_config_changes(load_experiment(config_file), args)
     return with_run_options(config, args, args.run_dir)
 
 

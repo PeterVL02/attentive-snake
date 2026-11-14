@@ -1,31 +1,42 @@
-"""Static information for the UI: the config schema, the default experiment, the fork rule and the CLI cheat sheet."""
+"""Static information for the UI: the games, the config schema and default experiment of a game, the fork rule and the CLI cheat sheet."""
 
 from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 
 from attentive_snake.app.config_json import experiment_to_json
 from attentive_snake.app.errors import not_found
+from attentive_snake.app.game_lookup import DEFAULT_GAME, GameParam, game_info, known_game
 from attentive_snake.app.paths import AppPaths
 from attentive_snake.config import load_experiment
 from attentive_snake.config.fork_rules import locked_fields
+from attentive_snake.config.layout import default_config_path
 from attentive_snake.config.schema import experiment_schema
+from attentive_snake.games.registry import game_names
 
 
 def make_router(paths: AppPaths) -> APIRouter:
     router = APIRouter(prefix="/api")
 
+    @router.get("/games")
+    def games() -> list[dict]:
+        """Every game that can be trained, alphabetical."""
+        return [game_info(known_game(name)) for name in game_names()]
+
     @router.get("/schema")
-    def schema() -> dict:
-        return experiment_schema()
+    def schema(game: GameParam = DEFAULT_GAME) -> dict:
+        return experiment_schema(known_game(game).name)
 
     @router.get("/defaults")
-    def defaults() -> dict:
-        return experiment_to_json(load_experiment(paths.default_config))
+    def defaults(game: GameParam = DEFAULT_GAME) -> dict:
+        path = default_config_path(paths.configs_dir, known_game(game).name)
+        if not path.is_file():
+            raise not_found(f"{path} does not exist.")
+        return experiment_to_json(load_experiment(path))
 
     @router.get("/fork-rules")
-    def fork_rules() -> dict:
+    def fork_rules(game: GameParam = DEFAULT_GAME) -> dict:
         """The settings a run continued under a new name must keep from its parent, with the reason."""
-        return {"locked": locked_fields()}
+        return {"locked": locked_fields(known_game(game).name)}
 
     @router.get("/cheatsheet", response_class=PlainTextResponse)
     def cheat_sheet() -> str:

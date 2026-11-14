@@ -1,35 +1,27 @@
-"""Builds one observation frame: board channels, optionally followed by action planes."""
+"""Appending one-hot action channels to a frame of any rank."""
 
 import numpy as np
 
-from attentive_snake.games.snake.observation import ObservationEncoder
-from attentive_snake.games.snake.types import Action, GameState
 
-NUM_ACTION_PLANES = len(Action)
+class ActionChannels:
+    """A frame ``(F, *rest)`` -> ``(F + A, *rest)``: the frame, then one constant channel per action.
 
-
-class FrameBuilder:
-    """GameState (+ the action just taken) -> float32 array (F, height, width).
-
-    Channels: the encoder's board channels, then (if ``with_actions``) one
-    constant plane per ``Action`` value, 1.0 on the plane of the chosen action.
-    ``action=None`` (the reset frame) leaves all action planes zero.
+    The channel of the chosen action is 1.0 everywhere, the others 0; ``action=None``
+    (the first frame of an episode) leaves all of them zero. With ``num_actions = 0``
+    the frame is returned unchanged. ``rest`` is ``(H, W)`` for grids and images and
+    ``()`` for vectors, where the channels are simply ``A`` extra numbers.
     """
 
-    def __init__(self, encoder: ObservationEncoder, with_actions: bool = False):
-        self._encoder = encoder
-        self._with_actions = with_actions
-        self._board = encoder.num_channels
-        self.channels = self._board + (NUM_ACTION_PLANES if with_actions else 0)
+    def __init__(self, frame_shape: tuple[int, ...], num_actions: int) -> None:
+        self._base = frame_shape[0]
+        self._num_actions = num_actions
+        self.shape: tuple[int, ...] = (frame_shape[0] + num_actions, *frame_shape[1:])
 
-    def shape(self, width: int, height: int) -> tuple[int, int, int]:
-        return (self.channels, height, width)
-
-    def build(self, state: GameState, action: int | None = None) -> np.ndarray:
-        if not self._with_actions:
-            return self._encoder.encode(state)
-        frame = np.zeros(self.shape(state.width, state.height), dtype=np.float32)
-        self._encoder.encode_into(state, frame[: self._board])
+    def build(self, frame: np.ndarray, action: int | None = None) -> np.ndarray:
+        if not self._num_actions:
+            return frame
+        out = np.zeros(self.shape, dtype=np.float32)
+        out[: self._base] = frame
         if action is not None:
-            frame[self._board + int(action)] = 1.0
-        return frame
+            out[self._base + int(action)] = 1.0
+        return out

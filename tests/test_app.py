@@ -50,14 +50,14 @@ def tiny_tables(kind: str = "transformer", total_env_steps: int = 64, **train) -
 
 @pytest.fixture
 def paths(tmp_path: Path) -> AppPaths:
-    rewards = tmp_path / "rewards"
-    rewards.mkdir()
-    shutil.copy(PROJECT_ROOT / "configs" / "rewards" / "default.toml", rewards / "default.toml")
+    configs = tmp_path / "configs"
+    (configs / "snake" / "rewards").mkdir(parents=True)
+    shutil.copy(PROJECT_ROOT / "configs" / "snake" / "default.toml", configs / "snake" / "default.toml")
+    shutil.copy(PROJECT_ROOT / "configs" / "snake" / "rewards" / "default.toml", configs / "snake" / "rewards" / "default.toml")
     real = default_paths()
     return AppPaths(
         runs_dir=tmp_path / "runs",
-        rewards_dir=rewards,
-        default_config=real.default_config,
+        configs_dir=configs,
         train_script=real.train_script,
         cheat_sheet=real.cheat_sheet,
         working_dir=real.working_dir,
@@ -73,7 +73,7 @@ def client(paths: AppPaths):
 def make_run(paths: AppPaths, name: str, kind: str = "transformer", **train) -> Path:
     """A run directory with a config and one untrained checkpoint, built in-process (no subprocess)."""
     config: ExperimentConfig = experiment_from_tables(tiny_tables(kind, **train))
-    run_dir = paths.runs_dir / name
+    run_dir = paths.runs_dir / "snake" / name
     save_experiment(config, config_path(run_dir))
     policy = make_policy(config, make_env(config))
     save_checkpoint(checkpoint_path(run_dir, 16), policy, torch.optim.Adam(policy.parameters()), 16)
@@ -93,12 +93,30 @@ def wait_until_done(client: TestClient, name: str) -> dict:
 # --------------------------------------------------------------------------- meta
 
 
+def test_games(client: TestClient):
+    games = {game["name"]: game for game in client.get("/api/games").json()}
+    assert games["snake"] == {
+        "name": "snake", "title": "Snake", "description": games["snake"]["description"],
+        "observation_kind": "grid", "view_kind": "board", "has_reward_table": True,
+    }
+    for url in ("/api/schema", "/api/defaults", "/api/fork-rules", "/api/rewards", "/api/runs", "/api/runs/x"):
+        response = client.get(url, params={"game": "../etc"})
+        assert response.status_code == 404 and "unknown game" in response.json()["detail"], url
+    assert client.post("/api/compare", json={"game": "chess", "runs": ["a"]}).status_code == 404
+    assert client.post("/api/watch", json={"game": "chess", "run": "a"}).status_code == 404
+    unknown = tiny_tables()
+    unknown["game"]["name"] = "chess"
+    assert client.post("/api/runs", json={"name": "x", "config": unknown}).status_code == 422
+
+
 def test_schema_defaults_and_page(client: TestClient):
+    assert client.get("/api/schema", params={"game": "snake"}).json() == client.get("/api/schema").json()
     schema = client.get("/api/schema").json()
+    assert schema["game"] == "snake"
     assert set(schema["sections"]) == {"game", "reward", "model", "train", "env"}
     assert set(schema["model_kinds"]) == set(KINDS)
     defaults = client.get("/api/defaults").json()
-    assert defaults["model"]["kind"] == "transformer"
+    assert defaults["model"]["kind"] == "transformer" and defaults["game"]["name"] == "snake"
     assert defaults["train"]["target_kl"] is None  # nullable fields are present as null
     assert client.get("/").status_code == 200
     script = client.get("/static/js/main.js")
@@ -127,7 +145,7 @@ def test_start_rejects_invalid_requests(client: TestClient, paths: AppPaths):
     tables["game"]["width"] = "wide"
     assert client.post("/api/runs", json={"name": "bad-type", "config": tables}).status_code == 422
 
-    assert not paths.runs_dir.exists() or not any(paths.runs_dir.iterdir())  # nothing was created
+    assert not (paths.runs_dir / "snake").exists() or not any((paths.runs_dir / "snake").iterdir())  # nothing was created
 
     make_run(paths, "taken")
     existing = client.post("/api/runs", json={"name": "taken", "config": tiny_tables()})
@@ -144,8 +162,11 @@ def test_train_then_resume_through_the_api(client: TestClient):
     assert "mean_score" in detail["metrics"][-1] or "policy_loss" in detail["metrics"][-1]
     assert detail["log"]
     assert detail["config"]["train"]["total_env_steps"] == 64
+    assert detail["game"] == "snake" and detail["config"]["game"]["name"] == "snake"
     listed = {run["name"]: run for run in client.get("/api/runs").json()}
     assert listed["tiny"]["env_steps"] == 64 and listed["tiny"]["kind"] == "transformer"
+    assert listed["tiny"]["rules"]["width"] == listed["tiny"]["width"] == 4
+    assert client.get("/api/runs", params={"game": "snake"}).json()[0]["name"] == "tiny"
 
     resumed = client.post("/api/runs/tiny/resume", json={"total_env_steps": 128})
     assert resumed.status_code == 200, resumed.text
@@ -172,7 +193,7 @@ def test_descriptions_and_keep_checkpoints_through_the_api(client: TestClient, p
     started = client.post("/api/runs", json={"name": "noted", "config": tables, "description": "  -first try  "})
     assert started.status_code == 201, started.text
     assert wait_until_done(client, "noted")["status"]["state"] == "finished"
-    assert len(list_checkpoints(paths.runs_dir / "noted")) > 1  # keep_checkpoints defaults to true
+    assert len(list_checkpoints(paths.runs_dir / "snake" / "noted")) > 1  # keep_checkpoints defaults to true
 
     resumed = client.post(
         "/api/runs/noted/resume", json={"total_env_steps": 96, "keep_checkpoints": False, "description": "longer"}
@@ -197,6 +218,7 @@ def test_descriptions_and_keep_checkpoints_through_the_api(client: TestClient, p
 def test_fork_rules(client: TestClient):
     locked = client.get("/api/fork-rules").json()["locked"]
     assert "model.kind" in locked and "game.width" in locked and "env.history_length" in locked
+    assert "game.name" in locked and client.get("/api/fork-rules", params={"game": "snake"}).json()["locked"] == locked
     assert "train.learning_rate" not in locked and "env.num_envs" not in locked
 
 
@@ -247,10 +269,9 @@ def test_fork_validation(client: TestClient, paths: AppPaths):
     tables = tiny_tables()
     tables["train"]["learning_rate"] = -1.0
     assert fork(config=tables).status_code == 422
-    assert not (paths.runs_dir / "child").exists()
+    assert not (paths.runs_dir / "snake" / "child").exists()
 
-    (paths.runs_dir / "empty").mkdir()
-    save_experiment(experiment_from_tables(tiny_tables()), config_path(paths.runs_dir / "empty"))
+    save_experiment(experiment_from_tables(tiny_tables()), config_path(paths.runs_dir / "snake" / "empty"))
     assert fork("empty").status_code == 409  # no checkpoint to continue from
 
 
@@ -289,7 +310,8 @@ def test_reward_scheme_crud_and_preview(client: TestClient, paths: AppPaths):
     scheme = {"food": 2.0, "death": -5, "step": 0.0}
     saved = client.put("/api/rewards/mine", json=scheme)
     assert saved.status_code == 200, saved.text
-    assert (paths.rewards_dir / "mine.toml").is_file()
+    assert (paths.configs_dir / "snake" / "rewards" / "mine.toml").is_file()
+    assert client.get("/api/rewards", params={"game": "snake"}).json()["schemes"] == ["default", "mine"]
     assert client.get("/api/rewards").json()["schemes"] == ["default", "mine"]
     loaded = client.get("/api/rewards/mine").json()
     assert loaded["food"] == 2.0 and loaded["death"] == -5.0 and loaded["win"] == 1.0
@@ -319,8 +341,10 @@ def test_watch_session_lifecycle(client: TestClient, paths: AppPaths):
     body = created.json()
     session = body["id"]
     assert body["info"]["kind"] == "transformer" and body["info"]["attention_view"] == "grid"
+    assert body["info"]["game"] == "snake" and body["info"]["view_kind"] == "board"
     frame = body["frame"]
-    assert frame["width"] == 4 and len(frame["heatmap"]) == 4
+    assert frame["width"] == 4 and len(frame["heatmap"]) == 4 and frame["view_kind"] == "board"
+    assert client.post("/api/watch", json={"game": "snake", "run": "watched"}).status_code == 201
 
     steps = client.post(f"/api/watch/{session}/step", json={"count": 5}).json()["frames"]
     assert len(steps) == 5 and all("snake" in f for f in steps)
@@ -347,7 +371,7 @@ def test_watch_model_without_attention_and_bad_requests(client: TestClient, path
     assert client.post("/api/watch", json={"run": "conv", "layer": 5}).status_code == 201  # no attention: any layer
     make_run(paths, "attn")
     assert client.post("/api/watch", json={"run": "attn", "layer": 5}).status_code == 422
-    empty = paths.runs_dir / "empty"
+    empty = paths.runs_dir / "snake" / "empty"
     save_experiment(experiment_from_tables(tiny_tables()), config_path(empty))
     assert client.post("/api/watch", json={"run": "empty"}).status_code == 404  # no checkpoint yet
 
@@ -404,6 +428,7 @@ def test_compare_runs(client: TestClient, paths: AppPaths):
     body = response.json()
     assert [run["name"] for run in body["runs"]] == ["a", "b"]
     assert all(run["parameters"] > 0 and run["metrics"] == [] for run in body["runs"])
+    assert body["game"] == "snake"
     differing = {(d["section"], d["field"]): d["values"] for d in body["differences"]}
     assert differing[("model", "kind")] == {"a": "transformer", "b": "cnn"}
     assert differing[("train", "learning_rate")] == {"a": 2.5e-4, "b": 1e-3}
@@ -446,7 +471,7 @@ def test_differing_fields():
 def test_path_traversal_is_rejected(client: TestClient, paths: AppPaths, method: str, url: str, body):
     response = client.request(method.upper(), url, json=body)
     assert response.status_code in (400, 404, 405, 422), (url, response.status_code, response.text)
-    assert not (paths.rewards_dir.parent / "evil.toml").exists()
+    assert not (paths.configs_dir / "snake" / "evil.toml").exists()
 
 
 def test_watch_rejects_checkpoint_outside_the_run(client: TestClient, paths: AppPaths):

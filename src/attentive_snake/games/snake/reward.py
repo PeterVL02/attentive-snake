@@ -6,12 +6,12 @@ from attentive_snake.games.snake.reward_pipeline import RewardBuilder, RewardPip
 from attentive_snake.games.snake.reward_terms import RewardTerm
 from attentive_snake.games.snake.types import GameState, StepResult
 
-__all__ = ["RewardConfig", "build_reward", "resolve_reward", "RewardBuilder", "RewardPipeline",
+__all__ = ["SnakeRewardConfig", "build_reward", "resolve_reward", "RewardBuilder", "RewardPipeline",
            "RewardTerm"]
 
 
 @dataclass(frozen=True)
-class RewardConfig:
+class SnakeRewardConfig:
     """Reward coefficients; a term whose coefficients are all zero is not added.
 
     The food reward is ``food + food_growth * score_before_eating``; ``step`` is
@@ -28,7 +28,7 @@ class RewardConfig:
     farther_from_food: float = field(default=0.0, metadata={"help": "Shaping value for a plain move that takes the head farther from the food. Use a negative value to penalise moving away."})
 
 
-def build_reward(config: RewardConfig) -> RewardPipeline:
+def build_reward(config: SnakeRewardConfig) -> RewardPipeline:
     """Create the pipeline described by ``config``."""
     builder = RewardBuilder()
     if config.food or config.food_growth:
@@ -46,10 +46,10 @@ def build_reward(config: RewardConfig) -> RewardPipeline:
     return builder.build()
 
 
-def resolve_reward(reward: "RewardConfig | RewardTerm | None") -> RewardTerm:
+def resolve_reward(reward: "SnakeRewardConfig | RewardTerm | None") -> RewardTerm:
     """Accept a config (built), a ready pipeline/term/callable (used as is) or None (defaults)."""
     if reward is None:
-        return build_reward(RewardConfig())
-    if isinstance(reward, RewardConfig):
+        return build_reward(SnakeRewardConfig())
+    if isinstance(reward, SnakeRewardConfig):
         return build_reward(reward)
     return reward

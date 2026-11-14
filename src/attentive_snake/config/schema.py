@@ -1,7 +1,9 @@
-"""A JSON-serialisable description of every experiment setting, for UIs.
+"""A JSON-serialisable description of every setting of an experiment of one game, for UIs.
 
 Field descriptions come from the config dataclasses' ``metadata["help"]``; the
-per-kind facts from ``attentive_snake.models.registry.KIND_INFO``.
+per-kind facts from ``attentive_snake.models.registry.KIND_INFO``. ``[game]`` and
+``[reward]`` rows are the chosen game's own fields (``[game] name`` is not a row: it is
+the top-level ``"game"`` of the schema).
 """
 
 import dataclasses
@@ -10,15 +12,17 @@ import typing
 from pathlib import Path
 from typing import Any
 
-from attentive_snake.config.experiment import ExperimentConfig
+from attentive_snake.config.experiment import SECTIONS, section_types
+from attentive_snake.games.registry import DEFAULT_GAME
 from attentive_snake.models.registry import KIND_INFO, POLICY_KINDS
 
 
-def experiment_schema() -> dict[str, Any]:
+def experiment_schema(game: str = DEFAULT_GAME) -> dict[str, Any]:
+    """``{"game": name, "sections": {section: [field rows]}, "model_kinds": {kind: facts}}``; ``ValueError`` for an unknown game."""
+    section_classes = section_types(game)
     return {
-        "sections": {
-            section.name: _field_rows(section.type) for section in dataclasses.fields(ExperimentConfig)
-        },
+        "game": game,
+        "sections": {section: _field_rows(section_classes[section]) for section in SECTIONS},
         "model_kinds": {kind: _kind_row(kind) for kind in POLICY_KINDS},
     }
 

@@ -5,7 +5,7 @@ import pytest
 
 from attentive_snake.config import EnvConfig, ExperimentConfig, save_experiment
 from attentive_snake.factory import make_policy, make_vec_env
-from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.config import SnakeConfig
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.registry import KIND_INFO, POLICY_KINDS
 from attentive_snake.run_dir import config_path
@@ -16,7 +16,7 @@ from attentive_snake.watch import WatchFrame, WatchSession
 def make_run(run_dir, kind: str, history: int = 1, actions: bool = False) -> ExperimentConfig:
     """Train 2 tiny updates through the library and save config + checkpoint in ``run_dir``."""
     config = ExperimentConfig(
-        game=GameConfig(width=5, height=5, max_steps_without_food=30),
+        game=SnakeConfig(width=5, height=5, max_steps_without_food=30),
         model=ModelConfig(kind=kind, d_model=16, num_heads=2, num_layers=2, conv_channels=8, conv_layers=2),
         train=TrainConfig(total_env_steps=32, rollout_length=8, num_minibatches=2, checkpoint_dir=run_dir, device="cpu"),
         env=EnvConfig(num_envs=2, history_length=history, history_actions=actions),
@@ -47,10 +47,14 @@ def test_every_kind_yields_json_frames_with_the_declared_attention(runs, kind) -
     assert session.info["kind"] == kind
     assert session.info["attention_view"] == KIND_INFO[kind].attention_view
     assert (session.info["width"], session.info["height"]) == (5, 5)
+    assert (session.info["game"], session.info["view_kind"]) == ("snake", "board")
     assert session.info["env_steps"] == 32
     frames = [session.reset(), *run_frames(session, 40)]
     for frame in frames:
         assert json.loads(json.dumps(frame.to_dict())) == frame.to_dict()
+        board = frame.to_dict()
+        assert board["view_kind"] == "board" and (board["width"], board["height"]) == (5, 5)
+        assert board["snake"] == frame.view["snake"] and "food" in board
         live = not frame.done
         view = KIND_INFO[kind].attention_view
         if view in ("grid", "frames"):
@@ -73,7 +77,7 @@ def test_episode_flow_reset_done_and_auto_restart(runs) -> None:
     session = WatchSession(runs / "transformer", seed=1)
     first = session.reset()
     assert first.event is None and not first.done and first.steps == 0 and first.episode == 0
-    assert first.snake[0] == list(session.state.snake[0]) and len(first.snake) == 3
+    assert len(first.view["snake"]) == 3 and first.score == 0
     frames = run_frames(session, 200)
     done_indices = [i for i, f in enumerate(frames) if f.done]
     assert done_indices, "the 30-step starvation limit guarantees episodes end"
@@ -110,8 +114,8 @@ def test_explicit_checkpoint_missing_checkpoint_and_seed_determinism(runs, tmp_p
     checkpoint = sorted((runs / "cnn").glob("checkpoint_*.pt"))[0]
     session = WatchSession(runs / "cnn", checkpoint=checkpoint, seed=3)
     assert session.info["checkpoint"] == str(checkpoint)
-    a = [f.snake for f in run_frames(WatchSession(runs / "cnn", seed=7), 15)]
-    b = [f.snake for f in run_frames(WatchSession(runs / "cnn", seed=7), 15)]
+    a = [f.view["snake"] for f in run_frames(WatchSession(runs / "cnn", seed=7), 15)]
+    b = [f.view["snake"] for f in run_frames(WatchSession(runs / "cnn", seed=7), 15)]
     assert a == b
     empty = tmp_path / "empty"
     save_experiment(ExperimentConfig(), config_path(empty))

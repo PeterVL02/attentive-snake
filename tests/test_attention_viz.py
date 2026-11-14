@@ -6,8 +6,9 @@ import numpy as np
 import pytest
 import torch
 
-from attentive_snake.games.snake.renderer import PygameRenderer
 from attentive_snake.games.snake.types import Action, GameState
+from attentive_snake.games.snake.view import board_view
+from attentive_snake.views.board_window import BoardWindow
 from attentive_snake.viz import attention_rollout, cls_attention_grid
 
 H, W = 4, 5
@@ -51,12 +52,12 @@ def test_renderer_heatmap_smoke():
         width=W, height=H, snake=((1, 1), (0, 1)), direction=Action.RIGHT,
         food=(3, 2), score=0, steps=0, steps_since_food=0, done=False,
     )
-    r = PygameRenderer(W, H, cell_size=10)
+    r = BoardWindow(W, H, cell_size=10)
     try:
-        r.render(state)
-        r.render(state, np.random.rand(H, W).astype(np.float32))
+        r.render(board_view(state))
+        r.render(board_view(state), np.random.rand(H, W).astype(np.float32))
         with pytest.raises(ValueError):
-            r.render(state, np.zeros((H + 1, W)))
+            r.render(board_view(state), np.zeros((H + 1, W)))
     finally:
         r.close()
 

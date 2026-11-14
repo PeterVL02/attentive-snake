@@ -1,58 +1,57 @@
-"""Single RL environment: game + reward + observation."""
+"""Snake as a ``GameEnv``: game + reward + observation encoder, one frame per observation."""
+
+from typing import Any
 
 import numpy as np
 
-from attentive_snake.env.frame import FrameBuilder
-from attentive_snake.env.history import FrameHistory
-from attentive_snake.games.snake.observation import ObservationEncoder
-from attentive_snake.games.snake.reward import RewardConfig, RewardTerm, resolve_reward
 from attentive_snake.env.types import EnvStep
-from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.config import SnakeConfig
 from attentive_snake.games.snake.engine import SnakeGame
-from attentive_snake.games.snake.types import Action, GameState, StepEvent
+from attentive_snake.games.snake.observation import ObservationEncoder
+from attentive_snake.games.snake.reward import RewardTerm, SnakeRewardConfig, resolve_reward
+from attentive_snake.games.snake.types import Action, GameState
+from attentive_snake.games.snake.view import board_view
 
 
 class SnakeEnv:
-    """One snake environment. Does not auto-reset; call ``reset`` after an episode ends."""
+    """One snake environment with ``(3, height, width)`` observations. Does not auto-reset.
+
+    ``event`` of a step is the ``StepEvent`` value (``"moved"``, ``"ate_food"``,
+    ``"hit_wall"``, ``"hit_self"``, ``"won"``, ``"starved"``); ``score`` is the food eaten.
+    """
 
     num_actions = len(Action)
 
     def __init__(
         self,
-        game_config: GameConfig,
-        reward_config: RewardConfig | RewardTerm | None = None,
-        encoder: ObservationEncoder | None = None,
+        config: SnakeConfig,
+        reward: SnakeRewardConfig | RewardTerm | None = None,
         seed: int | None = None,
-        history_length: int = 1,
-        history_actions: bool = False,
-    ):
-        self._game = SnakeGame(game_config, seed)
-        self._reward = resolve_reward(reward_config)
+        encoder: ObservationEncoder | None = None,
+    ) -> None:
+        self._game = SnakeGame(config, seed)
+        self._reward = resolve_reward(reward)
         self._encoder = encoder or ObservationEncoder()
-        self._frames = FrameBuilder(self._encoder, history_actions)
-        self.history_length = history_length
-        self.frame_channels = self._frames.channels
-        self._history = FrameHistory(
-            history_length, self._frames.shape(game_config.width, game_config.height)
-        )
-        self.observation_shape = self._history.shape
+        self.observation_shape = self._encoder.shape(config.width, config.height)
 
     @property
     def state(self) -> GameState:
         return self._game.state
 
     def reset(self, seed: int | None = None) -> np.ndarray:
-        return self._history.reset(self._frames.build(self._game.reset(seed)))
+        return self._encoder.encode(self._game.reset(seed))
 
     def step(self, action: int) -> EnvStep:
         previous = self._game.state
-        action = Action(int(action))
-        result = self._game.step(action)
-        event: StepEvent = result.event
+        result = self._game.step(Action(int(action)))
         return EnvStep(
-            observation=self._history.push(self._frames.build(result.state, action)),
+            observation=self._encoder.encode(result.state),
             reward=self._reward(previous, result),
-            terminated=event.is_terminal,
-            truncated=event.is_truncation,
-            event=event,
+            terminated=result.event.is_terminal,
+            truncated=result.event.is_truncation,
+            event=result.event.value,
+            score=float(result.state.score),
         )
+
+    def view(self) -> dict[str, Any]:
+        return board_view(self._game.state)

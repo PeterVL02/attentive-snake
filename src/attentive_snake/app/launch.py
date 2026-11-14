@@ -9,6 +9,7 @@ from attentive_snake.app.errors import conflict, invalid_input_as_422
 from attentive_snake.app.jobs import JobConflict, TrainingJobs
 from attentive_snake.app.paths import AppPaths
 from attentive_snake.app.run_info import log_path
+from attentive_snake.app.run_lookup import run_job_key
 from attentive_snake.app.train_command import fork_command, new_run_command, resume_command
 from attentive_snake.config import ExperimentConfig, load_experiment, save_experiment
 from attentive_snake.config.experiment_io import experiment_from_tables
@@ -80,6 +81,6 @@ def _create_run(run_dir: Path, config: ExperimentConfig) -> None:
 
 def _launch(jobs: TrainingJobs, run_dir: Path, command: list[str], mode: str) -> dict:
     try:
-        return jobs.launch(run_dir.name, command, log_path(run_dir), mode)
+        return jobs.launch(run_job_key(run_dir), command, log_path(run_dir), mode)
     except JobConflict as error:
         raise conflict(str(error)) from error

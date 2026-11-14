@@ -1,81 +1,48 @@
-"""Synchronous batch of snake environments."""
+"""Synchronous batch of single environments of any game."""
+
+from collections.abc import Sequence
 
 import numpy as np
 
-from attentive_snake.games.snake.reward import RewardConfig, RewardTerm
-from attentive_snake.games.snake.env import SnakeEnv
-from attentive_snake.env.types import EpisodeSummary, VecEnvStep
-from attentive_snake.games.snake.config import GameConfig
-from attentive_snake.games.snake.types import GameState, StepEvent
+from attentive_snake.env.episodes import EpisodeTracker
+from attentive_snake.env.types import EpisodeSummary, SingleEnv, VecEnvStep
 
 
-class EpisodeTracker:
-    """Accumulates per-env return and emits an EpisodeSummary when an episode ends."""
-
-    def __init__(self, num_envs: int):
-        self._returns = [0.0] * num_envs
-
-    def reset(self) -> None:
-        self._returns = [0.0] * len(self._returns)
-
-    def update(
-        self, env_index: int, reward: float, finished: bool, state: GameState, event: StepEvent
-    ) -> EpisodeSummary | None:
-        """Add a step's reward; return a summary (and clear the return) if finished."""
-        self._returns[env_index] += reward
-        if not finished:
-            return None
-        total, self._returns[env_index] = self._returns[env_index], 0.0
-        return EpisodeSummary(
-            env_index=env_index,
-            score=state.score,
-            length=state.steps,
-            total_reward=total,
-            final_event=event,
-        )
+def env_seed(seed: int | None, index: int) -> int | None:
+    """The seed of sub-environment ``index`` derived from one experiment seed (``None`` stays ``None``)."""
+    if seed is None:
+        return None
+    return int(np.random.SeedSequence([seed, index]).generate_state(1)[0])
 
 
-class SyncVecSnakeEnv:
-    """N SnakeEnvs stepped in a Python loop; finished envs are reset automatically."""
+class SyncVecEnv:
+    """N ``SingleEnv``s stepped in a Python loop; finished envs are reset automatically.
 
-    def __init__(
-        self,
-        num_envs: int,
-        game_config: GameConfig,
-        reward_config: RewardConfig | RewardTerm | None = None,
-        seed: int | None = None,
-        history_length: int = 1,
-        history_actions: bool = False,
-    ):
-        self.num_envs = num_envs
-        self.num_actions = SnakeEnv.num_actions
-        self._envs = [
-            SnakeEnv(
-                game_config,
-                reward_config,
-                seed=self._derive(seed, i),
-                history_length=history_length,
-                history_actions=history_actions,
-            )
-            for i in range(num_envs)
-        ]
-        self.observation_shape = self._envs[0].observation_shape
-        self.history_length = history_length
-        self.frame_channels = self._envs[0].frame_channels
-        self._tracker = EpisodeTracker(num_envs)
-        shape = (num_envs, *self.observation_shape)
-        self._obs = np.zeros(shape, dtype=np.float32)
+    All envs must agree on ``observation_shape`` and ``num_actions``. ``reset(seed)``
+    gives env ``i`` the seed ``env_seed(seed, i)``.
+    """
 
-    @staticmethod
-    def _derive(seed: int | None, index: int) -> int | None:
-        if seed is None:
-            return None
-        return int(np.random.SeedSequence([seed, index]).generate_state(1)[0])
+    def __init__(self, envs: Sequence[SingleEnv]) -> None:
+        if not envs:
+            raise ValueError("a vector env needs at least one environment.")
+        first = envs[0]
+        for env in envs[1:]:
+            if tuple(env.observation_shape) != tuple(first.observation_shape) or env.num_actions != first.num_actions:
+                raise ValueError("all environments of a vector env must have the same observation shape and actions.")
+        self.envs: tuple[SingleEnv, ...] = tuple(envs)
+        self.num_envs = len(self.envs)
+        self.num_actions = first.num_actions
+        self.observation_shape: tuple[int, ...] = tuple(first.observation_shape)
+        self.history_length = first.history_length
+        self.frame_channels = first.frame_channels
+        self.action_channels = first.action_channels
+        self._tracker = EpisodeTracker(self.num_envs)
+        self._obs = np.zeros((self.num_envs, *self.observation_shape), dtype=np.float32)
 
     def reset(self, seed: int | None = None) -> np.ndarray:
         self._tracker.reset()
-        for i, env in enumerate(self._envs):
-            self._obs[i] = env.reset(self._derive(seed, i))
+        for i, env in enumerate(self.envs):
+            self._obs[i] = env.reset(env_seed(seed, i))
         return self._obs.copy()
 
     def step(self, actions: np.ndarray) -> VecEnvStep:
@@ -84,20 +51,15 @@ class SyncVecSnakeEnv:
         terminated = np.zeros(n, dtype=bool)
         truncated = np.zeros(n, dtype=bool)
         finished: list[EpisodeSummary] = []
-        for i, env in enumerate(self._envs):
+        for i, env in enumerate(self.envs):
             result = env.step(int(actions[i]))
             rewards[i] = result.reward
             terminated[i] = result.terminated
             truncated[i] = result.truncated
-            done = result.terminated or result.truncated
-            summary = self._tracker.update(i, result.reward, done, env.state, result.event)
+            summary = self._tracker.update(i, result)
             if summary is not None:
                 finished.append(summary)
                 self._obs[i] = env.reset()
             else:
                 self._obs[i] = result.observation
         return VecEnvStep(self._obs.copy(), rewards, terminated, truncated, tuple(finished))
-
-    def states(self) -> list[GameState]:
-        """Current game state of every sub-env."""
-        return [env.state for env in self._envs]

@@ -1,4 +1,4 @@
-# Default experiment for scripts/train.py.
+# Default Snake experiment for scripts/train.py (--game snake, the default).
 #
 # Every field is listed except the [reward] values (see below). A missing key
 # (or a whole missing section) takes the dataclass default; an unknown key is
@@ -6,17 +6,18 @@
 # that may be None are commented out to mean None.
 # scripts/train.py writes the full resolved config to <run-dir>/config.toml.
 
-[game]  # attentive_snake.game.config.GameConfig
+[game]  # name selects the game; the other keys are attentive_snake.games.snake.config.SnakeConfig
+name = "snake"
 width = 8
 height = 8
 initial_length = 3
 max_steps_without_food = 128  # starvation limit; comment out for no limit (None)
 
 # [reward]: not listed here. The default reward values live in one place, the
-# reward scheme configs/rewards/default.toml (= attentive_snake.env.reward.RewardConfig()),
+# reward scheme configs/snake/rewards/default.toml (= attentive_snake.games.snake.reward.SnakeRewardConfig()),
 # and a config without a [reward] section gets exactly those values. To use other
 # rewards in your own experiment config, add a [reward] section with the keys to change,
-# e.g. copied from another scheme in configs/rewards/.
+# e.g. copied from another scheme in configs/snake/rewards/.
 
 [model]  # attentive_snake.models.config.ModelConfig (input shape / actions / history come from the env)
 # kind: "transformer" (cells as tokens), "cnn" (conv baseline), "hybrid" (conv stem + transformer),

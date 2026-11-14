@@ -8,16 +8,24 @@ from attentive_snake.config import ExperimentConfig
 from attentive_snake.config.schema import experiment_schema
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.registry import KIND_INFO, POLICY_KINDS, build_policy
+from attentive_snake.observation_spec import ObservationSpec
 
 SCHEMA = experiment_schema()
 
 
 def test_sections_in_order_and_cover_every_dataclass_field() -> None:
+    assert SCHEMA["game"] == "snake"
     assert list(SCHEMA["sections"]) == ["game", "reward", "model", "train", "env"]
     experiment = ExperimentConfig()
     for section, rows in SCHEMA["sections"].items():
         fields = [f.name for f in dataclasses.fields(getattr(experiment, section))]
         assert [row["name"] for row in rows] == fields
+    assert "name" not in [row["name"] for row in SCHEMA["sections"]["game"]]  # [game] name is the top-level "game"
+
+
+def test_schema_of_an_unknown_game_fails() -> None:
+    with pytest.raises(ValueError, match="unknown game"):
+        experiment_schema("no_such_game")
 
 
 def test_every_field_has_a_description_and_the_documented_row_shape() -> None:
@@ -78,8 +86,8 @@ SIZE_CHANGES = {
 def _build(config: ModelConfig):
     """A policy for a 5x5 board; temporal kinds get 2 frames with action planes (7 channels per frame)."""
     if KIND_INFO[config.kind].uses_history:
-        return build_policy(config, (14, 5, 5), 4, 2)
-    return build_policy(config, (3, 5, 5), 4, 1)
+        return build_policy(config, ObservationSpec("grid", (14, 5, 5), 2, action_channels=4), 4)
+    return build_policy(config, ObservationSpec("grid", (3, 5, 5)), 4)
 
 
 def _parameter_count(config: ModelConfig) -> int:

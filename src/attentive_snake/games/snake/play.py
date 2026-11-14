@@ -1,13 +1,17 @@
-"""Human play: keyboard -> SnakeGame -> PygameRenderer."""
+"""Human play: keyboard -> SnakeGame -> BoardWindow.
+
+    uv run python -m attentive_snake.games.snake.play [--width 10 --height 10 --fps 8 --cell-size 30]
+"""
 
 import argparse
 
 import pygame
 
-from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.config import SnakeConfig
 from attentive_snake.games.snake.engine import SnakeGame
-from attentive_snake.games.snake.renderer import PygameRenderer
-from attentive_snake.games.snake.types import Action
+from attentive_snake.games.snake.types import Action, GameState
+from attentive_snake.games.snake.view import board_view
+from attentive_snake.views.board_window import BoardWindow
 
 _KEY_TO_ACTION: dict[int, Action] = {
     pygame.K_UP: Action.UP,
@@ -26,10 +30,10 @@ def key_to_action(key: int) -> Action | None:
     return _KEY_TO_ACTION.get(key)
 
 
-def play(config: GameConfig, fps: int = 8, cell_size: int = 30, seed: int | None = None) -> None:
+def play(config: SnakeConfig, fps: int = 8, cell_size: int = 30, seed: int | None = None) -> None:
     """Run an interactive game until the window is closed or Esc is pressed."""
     game = SnakeGame(config, seed=seed)
-    renderer = PygameRenderer(config.width, config.height, cell_size)
+    renderer = BoardWindow(config.width, config.height, cell_size)
     pygame.init()
     clock = pygame.time.Clock()
     try:
@@ -39,9 +43,9 @@ def play(config: GameConfig, fps: int = 8, cell_size: int = 30, seed: int | None
         pygame.quit()
 
 
-def _loop(game: SnakeGame, renderer: PygameRenderer, clock: pygame.time.Clock, fps: int) -> None:
+def _loop(game: SnakeGame, renderer: BoardWindow, clock: pygame.time.Clock, fps: int) -> None:
     pending = game.state.direction
-    renderer.render(game.state)
+    _render(renderer, game.state)
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -59,18 +63,23 @@ def _loop(game: SnakeGame, renderer: PygameRenderer, clock: pygame.time.Clock, f
                 pending = action
         if not game.state.done:
             game.step(pending)
-        renderer.render(game.state)
+        _render(renderer, game.state)
         clock.tick(fps)
+
+
+def _render(renderer: BoardWindow, state: GameState) -> None:
+    suffix = "  (game over)" if state.done else ""
+    renderer.render(board_view(state), caption=f"Snake - score {state.score}{suffix}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Play snake with the keyboard.")
-    parser.add_argument("--width", type=int, default=GameConfig.width)
-    parser.add_argument("--height", type=int, default=GameConfig.height)
+    parser.add_argument("--width", type=int, default=SnakeConfig.width)
+    parser.add_argument("--height", type=int, default=SnakeConfig.height)
     parser.add_argument("--fps", type=int, default=8)
     parser.add_argument("--cell-size", type=int, default=30)
     args = parser.parse_args()
-    play(GameConfig(width=args.width, height=args.height), fps=args.fps, cell_size=args.cell_size)
+    play(SnakeConfig(width=args.width, height=args.height), fps=args.fps, cell_size=args.cell_size)
 
 
 if __name__ == "__main__":

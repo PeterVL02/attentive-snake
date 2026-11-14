@@ -6,6 +6,7 @@ import torch
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.registry import POLICY_KINDS, build_policy
 from attentive_snake.models.types import PolicyOutput
+from attentive_snake.observation_spec import ObservationSpec
 from attentive_snake.viz import diagram
 
 H, W, A = 5, 6, 4
@@ -17,9 +18,13 @@ SMALL = dict(d_model=16, num_heads=2, num_layers=2, conv_channels=8, conv_layers
 VARIANTS = [(1, False), (4, False), (1, True), (4, True)]
 
 
-def make(kind, k=1, actions=False, **kw):
+def spec(k=1, actions=False):
     f = 3 + (A if actions else 0)
-    return build_policy(ModelConfig(kind=kind, **{**SMALL, **kw}), (k * f, H, W), A, k)
+    return ObservationSpec("grid", (k * f, H, W), k, A if actions else 0)
+
+
+def make(kind, k=1, actions=False, **kw):
+    return build_policy(ModelConfig(kind=kind, **{**SMALL, **kw}), spec(k, actions), A)
 
 
 def random_obs(k, actions, batch=3):
@@ -72,13 +77,27 @@ def test_diagram_renders(kind):
 @pytest.mark.parametrize("kind", POLICY_KINDS)
 def test_indivisible_history_rejected(kind):
     with pytest.raises(ValueError, match="multiple of history_length"):
-        build_policy(ModelConfig(kind=kind, **SMALL), (7, H, W), A, 2)
+        build_policy(ModelConfig(kind=kind, **SMALL), ObservationSpec("grid", (7, H, W), 2), A)
 
 
 @pytest.mark.parametrize("kind", TEMPORAL)
-def test_odd_frame_channels_rejected(kind):
-    with pytest.raises(ValueError, match="channels"):
-        build_policy(ModelConfig(kind=kind, **SMALL), (5, H, W), A, 1)
+def test_action_channels_must_be_one_per_action(kind):
+    with pytest.raises(ValueError, match="action channels"):
+        build_policy(ModelConfig(kind=kind, **SMALL), ObservationSpec("grid", (5, H, W), 1, action_channels=2), A)
+
+
+@pytest.mark.parametrize("kind", POLICY_KINDS)
+def test_unsupported_observation_kind_rejected(kind):
+    with pytest.raises(ValueError, match="cannot read vector observations"):
+        build_policy(ModelConfig(kind=kind, **SMALL), ObservationSpec("vector", (8,)), A)
+
+
+def test_base_channels_come_from_the_spec_not_the_channel_count():
+    """Five game channels plus four action planes per frame: nothing assumes Snake's three board channels."""
+    five = ObservationSpec("grid", (2 * 9, H, W), 2, action_channels=A)
+    for kind in TEMPORAL:
+        m = build_policy(ModelConfig(kind=kind, **SMALL), five, A)
+        assert m(torch.rand(2, 18, H, W)).logits.shape == (2, A)
 
 
 def test_cnn_has_no_attention():
@@ -152,7 +171,7 @@ def test_action_read_from_any_cell_and_ignores_board_for_action(kind):
 
     m = make(kind, 2, True)
     obs = random_obs(2, True, batch=2)
-    ids = action_ids(split_frames(obs, m.frame_spec), A)
+    ids = action_ids(split_frames(obs, m.observation_spec), m.observation_spec, A)
     assert ids[:, 0].tolist() == [A, A] and (ids[:, 1] < A).all()
 
 
@@ -172,7 +191,7 @@ def test_registry_rejects_unknown_kind():
     from types import SimpleNamespace
 
     with pytest.raises(ValueError, match="unknown model kind"):
-        build_policy(SimpleNamespace(kind="mlp"), (3, H, W), A)
+        build_policy(SimpleNamespace(kind="mlp"), spec(), A)
     assert set(POLICY_KINDS) == {"transformer", "cnn", "hybrid", "temporal_transformer", "frame_attention"}
 
 

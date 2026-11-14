@@ -1,11 +1,10 @@
-"""Pygame drawing of a GameState. No game logic and no input handling."""
+"""Pygame drawing of a ``"board"`` view payload (see ``views.board``). No game logic and no input handling."""
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import pygame
-
-from attentive_snake.games.snake.types import GameState
 
 Color = tuple[int, int, int]
 
@@ -22,35 +21,32 @@ class RenderConfig:
     heatmap_max_alpha: int = 170
 
 
-class PygameRenderer:
-    """Draws game states in a window; the window is created on first render."""
+class BoardWindow:
+    """Draws board payloads in a window; the window is created on first render."""
 
-    def __init__(
-        self,
-        width: int,
-        height: int,
-        cell_size: int = 30,
-        config: RenderConfig = RenderConfig(),
-    ) -> None:
+    def __init__(self, width: int, height: int, cell_size: int = 30, config: RenderConfig = RenderConfig()) -> None:
         self._width = width
         self._height = height
         self._cell_size = cell_size
         self._config = config
         self._screen: pygame.Surface | None = None
 
-    def render(self, state: GameState, heatmap: np.ndarray | None = None) -> None:
-        """Draw ``state``; an optional (height, width) heatmap in [0, 1] tints the cells."""
+    def render(self, board: dict[str, Any], heatmap: np.ndarray | None = None, caption: str | None = None) -> None:
+        """Draw ``board``; an optional (height, width) heatmap in [0, 1] tints the cells."""
         screen = self._ensure_window()
         screen.fill(self._config.background)
         if heatmap is not None:
             self._draw_heatmap(screen, heatmap)
         self._draw_grid(screen)
-        if state.food is not None:
-            self._draw_cell(screen, state.food, self._config.food)
-        for cell in state.snake[1:]:
+        if board["food"] is not None:
+            self._draw_cell(screen, board["food"], self._config.food)
+        body = board["snake"]
+        for cell in body[1:]:
             self._draw_cell(screen, cell, self._config.snake_body)
-        self._draw_cell(screen, state.head, self._config.snake_head)
-        pygame.display.set_caption(self._caption(state))
+        if body:
+            self._draw_cell(screen, body[0], self._config.snake_head)
+        if caption is not None:
+            pygame.display.set_caption(caption)
         pygame.display.flip()
 
     def close(self) -> None:
@@ -85,13 +81,8 @@ class PygameRenderer:
                 overlay.fill((*self._config.heatmap, round(value * self._config.heatmap_max_alpha)))
                 screen.blit(overlay, (x * size, y * size))
 
-    def _draw_cell(self, screen: pygame.Surface, cell: tuple[int, int], color: Color) -> None:
+    def _draw_cell(self, screen: pygame.Surface, cell: Any, color: Color) -> None:
         pad = self._config.cell_padding
         size = self._cell_size
         rect = pygame.Rect(cell[0] * size + pad, cell[1] * size + pad, size - 2 * pad, size - 2 * pad)
         pygame.draw.rect(screen, color, rect)
-
-    @staticmethod
-    def _caption(state: GameState) -> str:
-        suffix = "  (game over)" if state.done else ""
-        return f"Snake - score {state.score}{suffix}"

@@ -1,6 +1,6 @@
 # The default reward: +1 per food, -1 for dying or starving, a small living cost.
-# The single source of the default reward values (tests check it equals RewardConfig()).
-# A flat RewardConfig table (no section header); all terms are added together.
+# The single source of the default reward values (tests check it equals SnakeRewardConfig()).
+# A flat SnakeRewardConfig table (no section header); all terms are added together.
 food = 1.0
 food_growth = 0.0             # extra food reward per point of score before eating
 death = -1.0                  # hit a wall or itself

@@ -11,6 +11,7 @@ from attentive_snake.models.policies.frame_attention import FrameAttentionPolicy
 from attentive_snake.models.policies.hybrid import HybridPolicy
 from attentive_snake.models.policies.temporal_transformer import TemporalTransformerPolicy
 from attentive_snake.models.policies.transformer import SnakeTransformerPolicy
+from attentive_snake.observation_spec import ObservationSpec
 
 _BUILDERS: dict[str, Callable[..., nn.Module]] = {
     "transformer": SnakeTransformerPolicy,
@@ -61,12 +62,8 @@ KIND_INFO: dict[str, KindInfo] = {
 }
 
 
-def build_policy(
-    config: ModelConfig,
-    observation_shape: tuple[int, int, int],
-    num_actions: int,
-    history_length: int = 1,
-) -> nn.Module:
+def build_policy(config: ModelConfig, observation_spec: ObservationSpec, num_actions: int) -> nn.Module:
+    """The policy of ``config.kind`` for observations laid out as ``observation_spec``."""
     if config.kind not in _BUILDERS:
         raise ValueError(f"unknown model kind {config.kind!r}; valid kinds: {', '.join(POLICY_KINDS)}")
-    return _BUILDERS[config.kind](config, observation_shape, num_actions, history_length)
+    return _BUILDERS[config.kind](config, observation_spec, num_actions)

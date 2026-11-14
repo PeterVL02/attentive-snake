@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
-class GameConfig:
+class SnakeConfig:
     """Rules of one snake game.
 
     Field descriptions live in each field's ``metadata["help"]``. ``None`` for

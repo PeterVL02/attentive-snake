@@ -2,15 +2,31 @@ import numpy as np
 import pytest
 
 from attentive_snake.config.experiment import EnvConfig
-from attentive_snake.env.frame import FrameBuilder
+from attentive_snake.env.frame import ActionChannels
 from attentive_snake.env.history import FrameHistory
-from attentive_snake.games.snake.observation import ObservationEncoder
+from attentive_snake.env.history_env import HistoryEnv
+from attentive_snake.env.vec_env import SyncVecEnv, env_seed
 from attentive_snake.games.snake.env import SnakeEnv
-from attentive_snake.env.vec_env import SyncVecSnakeEnv
-from attentive_snake.games.snake.config import GameConfig
+from attentive_snake.games.snake.observation import ObservationEncoder
+from attentive_snake.games.snake.config import SnakeConfig
 from attentive_snake.games.snake.types import Action
 
-CFG = GameConfig(width=7, height=6)
+CFG = SnakeConfig(width=7, height=6)
+
+
+class Env(HistoryEnv):
+    """A Snake env with history; ``state`` is the wrapped game's state."""
+
+    def __init__(self, config, seed=None, history_length=1, history_actions=False):
+        super().__init__(SnakeEnv(config, seed=seed), history_length, history_actions)
+
+    @property
+    def state(self):
+        return self.game.state
+
+
+def VecEnv(n, config, seed=None, history_length=1, history_actions=False):
+    return SyncVecEnv([Env(config, env_seed(seed, i), history_length, history_actions) for i in range(n)])
 
 
 def frames(obs, k, f):
@@ -21,21 +37,22 @@ def frames(obs, k, f):
 @pytest.mark.parametrize("actions", [False, True])
 def test_shapes(k, actions):
     f = 3 + 4 * actions
-    env = SnakeEnv(CFG, seed=0, history_length=k, history_actions=actions)
+    env = Env(CFG, seed=0, history_length=k, history_actions=actions)
     assert env.observation_shape == (k * f, 6, 7)
     assert env.history_length == k and env.frame_channels == f
     assert env.reset().shape == env.observation_shape
     step = env.step(env.state.direction)
     assert step.observation.shape == env.observation_shape
     assert step.observation.dtype == np.float32
-    venv = SyncVecSnakeEnv(3, CFG, seed=0, history_length=k, history_actions=actions)
+    venv = VecEnv(3, CFG, seed=0, history_length=k, history_actions=actions)
     assert venv.observation_shape == (k * f, 6, 7)
     assert venv.history_length == k and venv.frame_channels == f
+    assert venv.action_channels == (4 if actions else 0)
     assert venv.reset().shape == (3, k * f, 6, 7)
 
 
 def test_default_is_plain_encoding():
-    env = SnakeEnv(CFG, seed=5)
+    env = Env(CFG, seed=5)
     enc = ObservationEncoder()
     np.testing.assert_array_equal(env.reset(), enc.encode(env.state))
     for _ in range(5):
@@ -46,7 +63,7 @@ def test_default_is_plain_encoding():
 
 
 def test_oldest_first_and_zero_padding():
-    env = SnakeEnv(CFG, seed=1, history_length=3)
+    env = Env(CFG, seed=1, history_length=3)
     enc = ObservationEncoder()
     obs = env.reset()
     s0 = enc.encode(env.state)
@@ -74,7 +91,7 @@ def planes(frame):
 
 
 def test_action_planes_record_chosen_action():
-    env = SnakeEnv(CFG, seed=1, history_length=2, history_actions=True)
+    env = Env(CFG, seed=1, history_length=2, history_actions=True)
     obs = env.reset()
     assert not planes(frames(obs, 2, 7)[1]).any()  # reset frame: no action
     direction = env.state.direction
@@ -95,7 +112,7 @@ def test_action_planes_record_chosen_action():
 
 
 def test_history_cleared_on_reset():
-    env = SnakeEnv(CFG, seed=2, history_length=3, history_actions=True)
+    env = Env(CFG, seed=2, history_length=3, history_actions=True)
     env.reset()
     for _ in range(3):
         env.step(env.state.direction)
@@ -105,8 +122,8 @@ def test_history_cleared_on_reset():
 
 
 def test_vec_auto_reset_starts_clean_history():
-    cfg = GameConfig(width=5, height=5)
-    venv = SyncVecSnakeEnv(2, cfg, seed=0, history_length=3, history_actions=True)
+    cfg = SnakeConfig(width=5, height=5)
+    venv = VecEnv(2, cfg, seed=0, history_length=3, history_actions=True)
     venv.reset()
     for _ in range(200):
         step = venv.step(np.array([0, 1]))
@@ -120,7 +137,7 @@ def test_vec_auto_reset_starts_clean_history():
 
 
 def test_no_aliasing():
-    env = SnakeEnv(CFG, seed=3, history_length=3, history_actions=True)
+    env = Env(CFG, seed=3, history_length=3, history_actions=True)
     first = env.reset()
     snap = first.copy()
     s1 = env.step(env.state.direction).observation
@@ -128,7 +145,7 @@ def test_no_aliasing():
     env.step(env.state.direction)
     np.testing.assert_array_equal(first, snap)
     np.testing.assert_array_equal(s1, snap1)
-    venv = SyncVecSnakeEnv(2, CFG, seed=0, history_length=3)
+    venv = VecEnv(2, CFG, seed=0, history_length=3)
     o0 = venv.reset()
     keep = o0.copy()
     venv.step(np.array([0, 0]))
@@ -136,11 +153,17 @@ def test_no_aliasing():
 
 
 def test_frame_builder_and_history_units():
-    env = SnakeEnv(CFG, seed=0)
-    builder = FrameBuilder(ObservationEncoder(), with_actions=True)
-    f = builder.build(env.state, Action.LEFT)
-    assert f.shape == builder.shape(7, 6) == (7, 6, 7)
+    env = Env(CFG, seed=0)
+    builder = ActionChannels((3, 6, 7), 4)
+    f = builder.build(ObservationEncoder().encode(env.state), Action.LEFT)
+    assert f.shape == builder.shape == (7, 6, 7)
     assert f[3 + int(Action.LEFT)].all() and f[3:].sum() == 42
+    vector = ActionChannels((8,), 4).build(np.ones(8, np.float32), 2)
+    assert vector.tolist() == [1.0] * 8 + [0.0, 0.0, 1.0, 0.0]
+    assert ActionChannels((3, 2, 2), 0).build(np.ones((3, 2, 2), np.float32), 1).shape == (3, 2, 2)
+    vectors = FrameHistory(3, (2,))
+    vectors.reset(np.array([1, 2], np.float32))
+    assert vectors.push(np.array([3, 4], np.float32)).tolist() == [0, 0, 1, 2, 3, 4]
     h = FrameHistory(2, (1, 2, 2))
     h.push(np.ones((1, 2, 2), np.float32))
     out = h.push(np.full((1, 2, 2), 2, np.float32))

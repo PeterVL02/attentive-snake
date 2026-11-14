@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from attentive_snake.app.errors import invalid_input_as_422, not_found
+from attentive_snake.app.game_lookup import DEFAULT_GAME
 from attentive_snake.app.paths import AppPaths
 from attentive_snake.app.run_lookup import checkpoint_in_run, existing_run_dir
 from attentive_snake.app.watch_sessions import UnknownSession, WatchSessions
@@ -24,6 +25,7 @@ class Options(BaseModel):
 
 
 class NewSession(BaseModel):
+    game: str = Field(default=DEFAULT_GAME, description="the game of the run")
     run: str
     checkpoint: str | None = Field(default=None, description="checkpoint file name; default: the latest")
     sample: bool = False
@@ -50,7 +52,7 @@ def make_router(paths: AppPaths, sessions: WatchSessions) -> APIRouter:
 
     @router.post("", status_code=201)
     def create(request: NewSession) -> dict:
-        run_dir = existing_run_dir(paths.runs_dir, request.run)
+        run_dir = existing_run_dir(paths.runs_dir, request.game, request.run)
         checkpoint = None if request.checkpoint is None else checkpoint_in_run(run_dir, request.checkpoint)
         try:
             with invalid_input_as_422():

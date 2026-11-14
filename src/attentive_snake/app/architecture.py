@@ -10,6 +10,7 @@ def describe_architecture(config: ExperimentConfig) -> dict:
     env = make_env(config)
     policy = make_policy(config, env)
     return {
+        "game": config.game_name,
         "kind": config.model.kind,
         "observation_shape": list(env.observation_shape),
         "text": diagram(policy, fmt="text"),

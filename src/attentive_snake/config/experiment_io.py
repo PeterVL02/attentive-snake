@@ -1,38 +1,57 @@
 """Reading and writing an ``ExperimentConfig`` as a TOML file.
 
-One TOML table per ``ExperimentConfig`` field: ``[game] [reward] [model]
-[train] [env]``. Missing sections and keys take the dataclass defaults;
-unknown sections or keys are errors.
+One TOML table per section: ``[game] [reward] [model] [train] [env]``. ``[game] name``
+selects the game (missing: ``"snake"``, so configs written before there were several
+games still load); the other ``[game]`` keys and all of ``[reward]`` are read with that
+game's dataclasses. Missing sections and keys take the dataclass defaults; unknown
+sections or keys are errors.
 """
 
-import dataclasses
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from attentive_snake.config.dataclass_table import dataclass_from_table, dataclass_to_table
-from attentive_snake.config.experiment import ExperimentConfig
+from attentive_snake.config.experiment import GAME_NAME_KEY, SECTIONS, ExperimentConfig, section_types
 from attentive_snake.config.toml_writer import Scalar, format_tables
+from attentive_snake.games.registry import DEFAULT_GAME
 
-_SECTIONS = {field.name: field for field in dataclasses.fields(ExperimentConfig)}
+
+def game_name_of(tables: Mapping[str, Any]) -> str:
+    """The game an experiment's tables are for (``[game] name``, default ``"snake"``)."""
+    game_table = tables.get("game", {})
+    name = game_table.get(GAME_NAME_KEY, DEFAULT_GAME) if isinstance(game_table, Mapping) else DEFAULT_GAME
+    if not isinstance(name, str):
+        raise TypeError(f"[game] {GAME_NAME_KEY} must be str, got {type(name).__name__} {name!r}.")
+    return name
 
 
 def experiment_from_tables(tables: Mapping[str, Any]) -> ExperimentConfig:
     """Build an ``ExperimentConfig`` from parsed TOML (``{section: {key: value}}``)."""
-    sections = {}
     for name, table in tables.items():
-        if name not in _SECTIONS:
-            raise ValueError(f"unknown section [{name}]; valid sections: {', '.join(_SECTIONS)}.")
+        if name not in SECTIONS:
+            raise ValueError(f"unknown section [{name}]; valid sections: {', '.join(SECTIONS)}.")
         if not isinstance(table, Mapping):
             raise TypeError(f"[{name}] must be a table, got {type(table).__name__}.")
-        sections[name] = dataclass_from_table(_SECTIONS[name].type, table, section=name)
-    return ExperimentConfig(**sections)
+    game_name = game_name_of(tables)
+    try:
+        types = section_types(game_name)
+    except ValueError as error:
+        raise ValueError(f"[game] {GAME_NAME_KEY}: {error}") from error
+    sections = {}
+    for name, table in tables.items():
+        if name == "game":
+            table = {key: value for key, value in table.items() if key != GAME_NAME_KEY}
+        sections[name] = dataclass_from_table(types[name], table, section=name)
+    return ExperimentConfig(game_name=game_name, **sections)
 
 
 def experiment_to_tables(config: ExperimentConfig) -> dict[str, dict[str, Scalar]]:
-    """``{section: {key: value}}`` for every section, ``None`` values omitted."""
-    return {name: dataclass_to_table(getattr(config, name)) for name in _SECTIONS}
+    """``{section: {key: value}}`` for every section, ``None`` values omitted; ``[game]`` starts with ``name``."""
+    tables = {name: dataclass_to_table(getattr(config, name)) for name in SECTIONS}
+    tables["game"] = {GAME_NAME_KEY: config.game_name, **tables["game"]}
+    return tables
 
 
 def load_experiment(path: Path) -> ExperimentConfig:

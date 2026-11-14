@@ -48,7 +48,7 @@ class StepEvent(Enum):
     HIT_WALL = "hit_wall"
     HIT_SELF = "hit_self"
     WON = "won"  # the snake fills the whole grid
-    STARVED = "starved"  # GameConfig.max_steps_without_food exceeded
+    STARVED = "starved"  # SnakeConfig.max_steps_without_food exceeded
 
     @property
     def is_terminal(self) -> bool:

@@ -13,8 +13,9 @@ def changed(config: ExperimentConfig, section: str, **values) -> ExperimentConfi
     return dataclasses.replace(config, **{section: dataclasses.replace(getattr(config, section), **values)})
 
 
-def test_locked_fields_cover_the_model_board_and_observation_layout() -> None:
-    locked = locked_fields()
+def test_locked_fields_cover_the_game_model_board_and_observation_layout() -> None:
+    locked = locked_fields("snake")
+    assert locked == locked_fields() and "game.name" in locked
     assert {f"model.{field.name}" for field in dataclasses.fields(ModelConfig)} <= set(locked)
     assert {"game.width", "game.height", "game.initial_length", "env.history_length", "env.history_actions"} <= set(locked)
     assert not {key for key in locked if key.startswith(("reward.", "train."))}
@@ -56,6 +57,15 @@ def test_locked_settings_are_named_in_the_error(section: str, values: dict, key:
     child = changed(parent, section, **values)
     assert locked_field_changes(parent, child) == [key]
     with pytest.raises(ValueError, match=key.replace(".", r"\.")):
+        require_forkable(parent, child)
+
+
+def test_another_game_is_reported_alone() -> None:
+    parent = ExperimentConfig()
+    child = dataclasses.replace(parent)
+    object.__setattr__(child, "game_name", "other")  # not a real game: only the name may be compared
+    assert locked_field_changes(parent, child) == ["game.name"]
+    with pytest.raises(ValueError, match=r"game\.name \(snake -> other\)"):
         require_forkable(parent, child)
 
 

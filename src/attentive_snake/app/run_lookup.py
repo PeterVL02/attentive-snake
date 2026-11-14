@@ -1,9 +1,13 @@
-"""Resolving user-supplied run and checkpoint names to paths, rejecting anything outside the runs directory."""
+"""Resolving user-supplied game, run and checkpoint names to paths, rejecting anything outside the runs directory.
+
+Runs live in ``<runs root>/<game>/<run>/``. A training job is known by ``job_key(game, run)``.
+"""
 
 from pathlib import Path
 
 from attentive_snake.app.errors import conflict, invalid_input_as_422, not_found
-from attentive_snake.run_dir import config_path, list_checkpoints, validate_run_name
+from attentive_snake.app.game_lookup import known_game
+from attentive_snake.run_dir import config_path, game_runs_dir, list_checkpoints, validate_run_name
 
 
 def run_name(name: str) -> str:
@@ -12,11 +16,31 @@ def run_name(name: str) -> str:
         return validate_run_name(name)
 
 
-def existing_run_dir(runs_dir: Path, name: str) -> Path:
-    """The directory of an existing run (one with a config.toml); 422 for bad names, 404 for missing runs."""
-    run_dir = runs_dir / run_name(name)
+def job_key(game: str, name: str) -> str:
+    """How ``TrainingJobs`` knows the job of run ``name`` of ``game`` (run names are unique per game only)."""
+    return f"{game}/{name}"
+
+
+def run_job_key(run_dir: Path) -> str:
+    """``job_key`` of a run directory ``<runs root>/<game>/<run>``."""
+    return job_key(run_dir.parent.name, run_dir.name)
+
+
+def game_runs(runs_dir: Path, game: str) -> Path:
+    """The directory of ``game``'s runs; 404 for an unknown game."""
+    return game_runs_dir(runs_dir, known_game(game).name)
+
+
+def new_run_dir(runs_dir: Path, game: str, name: str) -> Path:
+    """Where run ``name`` of ``game`` goes (not checked to be free); 404 unknown game, 422 bad name."""
+    return game_runs(runs_dir, game) / run_name(name)
+
+
+def existing_run_dir(runs_dir: Path, game: str, name: str) -> Path:
+    """The directory of an existing run (one with a config.toml); 422 for bad names, 404 for missing games or runs."""
+    run_dir = new_run_dir(runs_dir, game, name)
     if not config_path(run_dir).is_file():
-        raise not_found(f"no run named {name!r}.")
+        raise not_found(f"no {game} run named {name!r}.")
     return run_dir
 
 

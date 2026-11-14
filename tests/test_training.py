@@ -6,7 +6,6 @@ import torch
 from torch import nn
 
 from attentive_snake.env.types import EpisodeSummary, VecEnvStep
-from attentive_snake.games.snake.types import StepEvent
 from attentive_snake.models.types import PolicyOutput
 from attentive_snake.training import (
     NullLogger,
@@ -77,7 +76,7 @@ class CorridorVecEnv:
         rewards = terminated.astype(np.float32)
         finished = []
         for i in np.flatnonzero(terminated | truncated):
-            event = StepEvent.WON if terminated[i] else StepEvent.STARVED
+            event = "won" if terminated[i] else "starved"
             finished.append(EpisodeSummary(int(i), int(terminated[i]), int(self.steps[i]), float(rewards[i]), event))
             self.positions[i] = 0
             self.steps[i] = 0
@@ -289,7 +288,7 @@ def test_collector_returns_finished_episodes() -> None:
 def test_episode_stats_window() -> None:
     window = EpisodeStatsWindow(window=2)
     assert window.summary() == {}
-    window.add(EpisodeSummary(0, s, 10 * s, float(s), StepEvent.HIT_WALL) for s in (1, 2, 3))
+    window.add(EpisodeSummary(0, s, 10 * s, float(s), "hit_wall") for s in (1, 2, 3))
     assert window.summary() == {"episodes": 3.0, "mean_score": 2.5, "mean_length": 25.0, "mean_return": 2.5}
 
 

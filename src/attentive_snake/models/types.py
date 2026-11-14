@@ -1,7 +1,7 @@
 """Contract between policy networks and the trainer.
 
 Any ``nn.Module`` whose ``forward`` maps a batch of observations
-``(batch, channels, height, width)`` to a ``PolicyOutput`` can be trained.
+``(batch, *observation_spec.shape)`` to a ``PolicyOutput`` can be trained.
 """
 
 from typing import NamedTuple
