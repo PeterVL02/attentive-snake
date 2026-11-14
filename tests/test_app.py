@@ -3,6 +3,7 @@
 import base64
 import shutil
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -12,15 +13,18 @@ from fastapi.testclient import TestClient
 
 import attentive_snake.games as games_package
 from attentive_snake.app import create_app
+from attentive_snake.app.background import BackgroundJobs, JobBusy
 from attentive_snake.app.config_diff import differing_fields
 from attentive_snake.app.config_json import experiment_to_json
 from attentive_snake.app.jobs import JobConflict, TrainingJobs
 from attentive_snake.app.paths import PROJECT_ROOT, AppPaths, default_paths
+from attentive_snake.app.train_command import resume_command
 from attentive_snake.app.watch_sessions import UnknownSession, WatchSessions
 from attentive_snake.config import ExperimentConfig, save_experiment
 from attentive_snake.config.experiment_io import experiment_from_tables
 from attentive_snake.config.layout import default_config_path, rewards_dir
 from attentive_snake.config.reward_schemes import save_scheme
+from attentive_snake.evaluation.generic_statistics import GENERIC_METRICS
 from attentive_snake.factory import make_env, make_policy
 from attentive_snake.games.registry import get_game, reload_games
 from attentive_snake.run_dir import config_path, list_checkpoints
@@ -143,10 +147,14 @@ def wait_until_done(client: TestClient, name: str, game: str = "snake") -> dict:
 
 def test_games(client: TestClient):
     games = {game["name"]: game for game in client.get("/api/games").json()}
+    metrics = games["snake"].pop("evaluation_metrics")
     assert games["snake"] == {
         "name": "snake", "title": "Snake", "description": games["snake"]["description"],
         "observation_kind": "grid", "view_kind": "board", "has_reward_table": True,
     }
+    keys = [metric["key"] for metric in metrics]
+    assert keys[:2] == ["win_rate", "mean_steps_to_win"] and "mean_score" in keys and "games" in keys
+    assert set(metrics[0]) == {"key", "label", "description", "higher_is_better", "format", "unit"}
     for url in ("/api/schema", "/api/defaults", "/api/fork-rules", "/api/rewards", "/api/runs", "/api/runs/x"):
         response = client.get(url, params={"game": "../etc"})
         assert response.status_code == 404 and "unknown game" in response.json()["detail"], url
@@ -161,7 +169,7 @@ def test_schema_defaults_and_page(client: TestClient):
     assert client.get("/api/schema", params={"game": "snake"}).json() == client.get("/api/schema").json()
     schema = client.get("/api/schema").json()
     assert schema["game"] == "snake"
-    assert set(schema["sections"]) == {"game", "reward", "model", "train", "env"}
+    assert set(schema["sections"]) == {"game", "reward", "model", "train", "env", "evaluation"}
     assert set(schema["model_kinds"]) >= set(KINDS)  # more kinds may exist (e.g. for vector observations)
     defaults = client.get("/api/defaults").json()
     assert defaults["model"]["kind"] == "transformer" and defaults["game"]["name"] == "snake"
@@ -539,6 +547,10 @@ def test_watch_rejects_checkpoint_outside_the_run(client: TestClient, paths: App
 def test_games_lists_every_registered_game(multi_client: TestClient):
     games = {game["name"]: game for game in multi_client.get("/api/games").json()}
     assert {"snake", "walk", "beacon"} <= set(games)
+    beacon_metrics = [metric["key"] for metric in games["beacon"].pop("evaluation_metrics")]
+    assert beacon_metrics == [definition.key for definition in GENERIC_METRICS]  # no metrics of its own
+    walk_metrics = [metric["key"] for metric in games["walk"]["evaluation_metrics"]]
+    assert walk_metrics[0] == "reach_rate"  # a dropped-in game's own metrics come first
     assert games["beacon"] == {
         "name": "beacon", "title": "Beacon", "description": "Drift right until you reach the beacon.",
         "observation_kind": "grid", "view_kind": "image", "has_reward_table": False,
@@ -671,3 +683,106 @@ def test_watch_lunar_lander_with_attention_over_its_numbers(client: TestClient, 
     assert (body["frame"]["width"], body["frame"]["height"]) == (600, 400) and body["frame"]["heatmap"] is None
     steps = client.post(f"/api/watch/{body['id']}/step", json={"count": 3, "frames": "last"}).json()["frames"]
     assert "png" in steps[-1] and len(steps[-1]["element_weights"]) == 8
+
+
+# --------------------------------------------------------------------------- evaluation
+
+
+def wait_for_evaluation(client: TestClient, name: str, game: str = "snake") -> dict:
+    deadline = time.monotonic() + JOB_TIMEOUT
+    while time.monotonic() < deadline:
+        status = client.get(f"/api/runs/{name}/evaluate", params={"game": game}).json()
+        if status["state"] != "running":
+            return status
+        time.sleep(0.1)
+    raise AssertionError(f"evaluation of {name} still running after {JOB_TIMEOUT}s")
+
+
+def test_training_evaluations_are_listed_and_reproduced_through_the_api(client: TestClient):
+    tables = tiny_tables(total_env_steps=64, keep_checkpoints=False)  # 16 env steps per update
+    tables["evaluation"] = {"interval": 32, "games": 4}
+    assert client.post("/api/runs", json={"name": "graded", "config": tables}).status_code == 201
+    detail = wait_until_done(client, "graded")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    recorded = detail["evaluations"]
+    assert [(e["env_steps"], e["source"], e["checkpoint_available"]) for e in recorded] == [
+        (32, "training", False),  # pruned by keep_checkpoints = false: can no longer be reproduced
+        (64, "training", True),
+    ]
+    assert recorded[1]["settings"]["games"] == 4 and "win_rate" in recorded[1]["statistics"]
+    assert "evaluation steps=32" in detail["log"]
+
+    gone = client.post("/api/runs/graded/evaluate", json={"checkpoint": recorded[0]["checkpoint"]})
+    assert gone.status_code == 404
+    started = client.post("/api/runs/graded/evaluate", json={"checkpoint": recorded[1]["checkpoint"], "games": 4, "seed": 1000, "save": True})
+    assert started.status_code == 202, started.text
+    status = wait_for_evaluation(client, "graded")
+    assert status["state"] == "finished", status
+    result = status["result"]
+    assert result["reproduces"] == {"timestamp": recorded[1]["timestamp"], "source": "training", "identical": True, "same_device": True}
+    assert result["evaluation"]["statistics"] == recorded[1]["statistics"] and result["saved"] is True
+    assert status["progress"] == {"done": 4, "total": 4} and status["request"]["checkpoint"] == recorded[1]["checkpoint"]
+    detail = client.get("/api/runs/graded").json()
+    assert [e["source"] for e in detail["evaluations"]] == ["training", "training", "manual"]
+    compared = client.post("/api/compare", json={"runs": ["graded"]}).json()
+    assert len(compared["runs"][0]["evaluations"]) == 3
+
+    resumed = client.post("/api/runs/graded/resume", json={"total_env_steps": 80, "evaluation_interval": 16, "evaluation_games": 2})
+    assert resumed.status_code == 200, resumed.text
+    detail = wait_until_done(client, "graded")
+    assert detail["config"]["evaluation"]["interval"] == 16 and detail["config"]["evaluation"]["games"] == 2
+    assert [(e["env_steps"], e["settings"]["games"]) for e in detail["evaluations"][3:]] == [(80, 2)]
+    assert client.post("/api/runs/graded/resume", json={"evaluation_interval": -1}).status_code == 422
+
+
+def test_evaluation_requests_are_validated_and_one_runs_at_a_time(client: TestClient, paths: AppPaths):
+    make_run(paths, "solo")
+    assert client.get("/api/runs/solo/evaluate").json() == {"state": "idle"}
+    assert client.get("/api/runs/solo").json()["evaluations"] == []
+    assert client.post("/api/runs/missing/evaluate", json={}).status_code == 404
+    assert client.post("/api/runs/solo/evaluate", params={"game": "chess"}, json={}).status_code == 404
+    assert client.get("/api/runs/solo/evaluate", params={"game": "../x"}).status_code == 404
+    assert client.post("/api/runs/solo/evaluate", json={"checkpoint": "checkpoint_9.pt"}).status_code == 404
+    assert client.post("/api/runs/solo/evaluate", json={"games": 0}).status_code == 422
+    assert client.post("/api/runs/..%2Fx/evaluate", json={}).status_code in (404, 422)
+
+    first = client.post("/api/runs/solo/evaluate", json={"games": 10_000})
+    assert first.status_code == 202 and first.json()["state"] == "running"
+    second = client.post("/api/runs/solo/evaluate", json={"games": 1})
+    assert second.status_code == 409 and "already running" in second.json()["detail"]
+    status = wait_for_evaluation(client, "solo")
+    assert status["state"] == "finished" and status["result"]["evaluation"]["statistics"]["games"] == 10_000
+    assert status["result"]["reproduces"] is None and status["result"]["saved"] is False
+    assert client.get("/api/runs/solo").json()["evaluations"] == []  # not saved
+
+    empty = paths.runs_dir / "snake" / "empty"
+    save_experiment(experiment_from_tables(tiny_tables()), config_path(empty))
+    assert client.post("/api/runs/empty/evaluate", json={}).status_code == 409  # no checkpoint yet
+
+
+def test_background_jobs_report_failures_and_refuse_a_second_job():
+    jobs = BackgroundJobs()
+    release = threading.Event()
+
+    def blocked(progress):
+        progress(1, 2)
+        release.wait(10)
+        return {"ok": True}
+
+    assert jobs.start("a", blocked, {"n": 1}, 2)["state"] == "running"
+    with pytest.raises(JobBusy):
+        jobs.start("a", blocked, {}, 1)
+    assert jobs.start("b", lambda progress: 1 / 0, {}, 1)  # other keys are independent
+    release.set()
+    deadline = time.monotonic() + 10
+    while jobs.status("a")["state"] == "running" or jobs.status("b")["state"] == "running":
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+    assert jobs.status("a")["result"] == {"ok": True} and jobs.status("a")["progress"]["done"] == 1
+    assert jobs.status("b")["state"] == "failed" and "ZeroDivisionError" in jobs.status("b")["error"]
+    assert jobs.status("c") is None
+
+
+def test_resume_command_passes_evaluation_changes():
+    command = resume_command(Path("train.py"), Path("runs/snake/x"), evaluation={"interval": 0, "games": 5})
+    assert command[-4:] == ["--eval-interval", "0", "--eval-games", "5"]

@@ -1,7 +1,10 @@
 """Command lines of ``scripts/train.py`` for a new run, a resumed run and a forked run."""
 
 import sys
+from collections.abc import Mapping
 from pathlib import Path
+
+EVALUATION_FLAGS = {"interval": "--eval-interval", "games": "--eval-games", "seed": "--eval-seed"}
 
 
 def _python(script: Path) -> list[str]:
@@ -24,10 +27,13 @@ def resume_command(
     total_steps: int | None = None,
     keep_checkpoints: bool | None = None,
     description: str | None = None,
+    evaluation: Mapping[str, int] | None = None,
 ) -> list[str]:
+    """``evaluation``: changed ``[evaluation]`` settings among ``EVALUATION_FLAGS`` (``interval``, ``games``, ``seed``)."""
     steps = [] if total_steps is None else ["--steps", str(total_steps)]
     keep = [] if keep_checkpoints is None else ["--keep-checkpoints" if keep_checkpoints else "--no-keep-checkpoints"]
-    return [*_python(script), "--resume", str(run_dir), *steps, *keep, *_description(description)]
+    changes = [part for key, value in (evaluation or {}).items() for part in (EVALUATION_FLAGS[key], str(value))]
+    return [*_python(script), "--resume", str(run_dir), *steps, *keep, *changes, *_description(description)]
 
 
 def fork_command(
