@@ -108,18 +108,18 @@ KIND_INFO: dict[str, KindInfo] = {
         },
     ),
     "hybrid": KindInfo(
-        (*TRANSFORMER_FIELDS, *CONV_FIELDS),
+        (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual"),
         False,
         "grid",
         {
             "grid": InputReading(
                 "A convolutional stem summarises each cell's neighbourhood, then a transformer attends over the cells. "
-                "Combines local pattern detection with global attention.",
+                "Combines local pattern detection with global attention. With residual = true the stem is built from residual blocks (two layers and a skip connection each, as in resnet).",
                 True,
             ),
             "vector": InputReading(
                 "A small MLP turns every number of the observation into a token (conv_channels wide, conv_layers deep, "
-                "shared by all numbers), then a transformer attends over these tokens.",
+                "shared by all numbers), then a transformer attends over these tokens. With residual = true the stem is built from residual blocks (two layers and a skip connection each, as in resnet).",
                 False,
                 NO_KERNEL,
             ),
@@ -143,39 +143,39 @@ KIND_INFO: dict[str, KindInfo] = {
         },
     ),
     "frame_attention": KindInfo(
-        (*TRANSFORMER_FIELDS, *CONV_FIELDS),
+        (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual"),
         True,
         "weights",
         {
             "grid": InputReading(
                 "A convolutional network encodes each past frame into one vector, and attention decides which frames matter. "
-                "The attention shown is one weight per frame.",
+                "The attention shown is one weight per frame. With residual = true the frame encoder is built from residual blocks (two layers and a skip connection each, as in resnet).",
                 True,
             ),
             "vector": InputReading(
                 "An MLP (conv_channels wide, conv_layers deep) encodes each past frame's numbers into one vector, "
-                "and attention decides which frames matter. The attention shown is one weight per frame.",
+                "and attention decides which frames matter. The attention shown is one weight per frame. With residual = true the frame encoder is built from residual blocks (two layers and a skip connection each, as in resnet).",
                 False,
                 NO_KERNEL,
             ),
         },
     ),
     "lstm": KindInfo(
-        ("d_model", "num_layers", *CONV_FIELDS),
+        ("d_model", "num_layers", *CONV_FIELDS, "residual"),
         True,
         None,
         {
             "grid": InputReading(
                 "A convolutional network encodes each of the last K frames into one vector (plus the past action, if enabled) and an LSTM "
                 "(num_layers layers, d_model hidden) reads them oldest to newest. A DRQN-style agent with a fixed unroll length: the memory "
-                "is exactly the history window, since the hidden state is not carried from one step to the next or stored in the replay buffer.",
+                "is exactly the history window, since the hidden state is not carried from one step to the next or stored in the replay buffer. With residual = true the frame encoder is built from residual blocks (two layers and a skip connection each, as in resnet).",
                 False,
             ),
             "vector": InputReading(
                 "An MLP (conv_channels wide, conv_layers deep) encodes each of the last K frames into one vector (plus the past action, "
                 "if enabled) and an LSTM (num_layers layers, d_model hidden) reads them oldest to newest. A DRQN-style agent with a fixed "
                 "unroll length: the memory is exactly the history window, since the hidden state is not carried from one step to the "
-                "next or stored in the replay buffer. Useful when part of the observation is hidden (Lunar Lander's hide_velocities).",
+                "next or stored in the replay buffer. Useful when part of the observation is hidden (Lunar Lander's hide_velocities). With residual = true the frame encoder is built from residual blocks (two layers and a skip connection each, as in resnet).",
                 False,
                 NO_KERNEL,
             ),

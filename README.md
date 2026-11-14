@@ -94,6 +94,28 @@ step to the next and never stored in the DQN replay buffer. Its memory is exactl
 are already single-convolution residual layers) in using the standard two-convolution residual block
 (`conv_layers` of them; on vectors, layer-normalised residual MLP blocks as in SimBa).
 
+`hybrid`, `frame_attention` and `lstm` have a convolutional stem (an MLP on numbers) in front of
+their attention or recurrent part. `[model] residual = true` builds that stem (for the other two:
+the encoder of each frame) from the same residual blocks as `resnet` instead of plain layers, so
+you get the kind you chose with a deeper-trainable stem rather than a new kind. The other kinds
+ignore it, and it is part of the network, so a continued run cannot change it. Off by default:
+a network built with `residual = false` is exactly the one before the switch existed.
+
+Single-seed check, not a benchmark: Snake 8x8 (the repo's defaults, PPO, device as in the
+config, four runs sharing one machine), greedy evaluation of 100 games every 250k env steps,
+stopped by a time cap at about 1.5M of the planned 2M steps (so the learning-rate decay was
+not finished). Mean score (apples):
+
+| run | 250k | 500k | 750k | 1M | 1.25M | 1.5M | env steps/s |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `hybrid` | 9.4 | 16.6 | 19.4 | 22.2 | 24.2 | 29.5 | 2160 |
+| `hybrid`, `residual = true` | 0.1 | 3.2 | 11.7 | 16.6 | 21.6 | 23.4 | 2020 |
+| `frame_attention` (`history_length = 4`) | 3.9 | 11.4 | 17.8 | 23.1 | 25.4 | 24.3 | 2130 |
+| `frame_attention`, `residual = true` | 1.4 | 7.0 | 13.8 | 21.3 | 23.6 | 25.2 | 1970 |
+
+Here the residual stem started slower and had not caught up after 1.5M steps (`frame_attention`
+nearly had), at about 5-8% lower speed; one seed cannot say whether it ever helps.
+
 `jepa` is a JEPA-like world model, trained from scratch on the game like every other kind
 (no pretrained weights, nothing downloaded). An encoder turns the observation into an
 embedding (the `cnn` encoder: convolutions on a board, an MLP on numbers); a predictor takes

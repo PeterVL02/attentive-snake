@@ -999,3 +999,26 @@ def test_a_run_whose_config_cannot_be_read_is_listed_and_shown_not_a_server_erro
     assert client.get("/api/runs/old/architecture").status_code == 422
     assert client.post("/api/watch", json={"run": "old"}).status_code == 422
     assert client.post("/api/runs/old/evaluate", json={}).status_code == 422
+
+
+@pytest.mark.parametrize("game", ["snake", "lunar_lander"])
+def test_residual_is_offered_for_the_three_kinds_with_a_stem_and_locked_on_fork(client: TestClient, game: str):
+    schema = client.get("/api/schema", params={"game": game}).json()
+    assert {kind for kind, info in schema["model_kinds"].items() if "residual" in info["fields"]} == {"hybrid", "frame_attention", "lstm"}
+    field = next(row for row in schema["sections"]["model"] if row["name"] == "residual")
+    assert field["type"] == "bool" and field["default"] is False and field["description"]
+    assert "model.residual" in client.get("/api/fork-rules", params={"game": game}).json()["locked"]
+
+
+def test_a_residual_hybrid_trains_is_drawn_and_cannot_change_on_fork(client: TestClient):
+    tables = tiny_tables("hybrid")
+    tables["model"]["residual"] = True
+    drawn = client.post("/api/architecture", json=tables).json()
+    assert "ResidualConvBlock" in drawn["text"]
+    assert client.post("/api/runs", json={"name": "res", "config": tables}).status_code == 201
+    detail = wait_until_done(client, "res")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert detail["config"]["model"]["residual"] is True
+    tables["model"]["residual"] = False
+    refused = client.post("/api/runs/res/fork", json={"name": "res-v2", "config": tables})
+    assert refused.status_code == 422 and "model.residual" in refused.text

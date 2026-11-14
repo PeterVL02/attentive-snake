@@ -8,6 +8,8 @@ two linear layers with a LayerNorm in front of the block's body, as in SimBa
 
 from torch import Tensor, nn
 
+from attentive_snake.models.blocks.vector import ElementEmbedding, ElementPositionalEmbedding
+
 
 class ResidualConvBlock(nn.Module):
     """``GELU(x + conv2(GELU(conv1(x))))``: two same-padded convolutions and a skip. (B, C, H, W) -> same."""
@@ -59,3 +61,21 @@ class ResidualMlpEncoder(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.norm(self.blocks(self.stem(x.flatten(1))))
+
+
+class ResidualElementStem(nn.Module):
+    """Per-element residual MLP: (N, V*E) -> (N, E, width) tokens, one per element.
+
+    The vector counterpart of ``ElementMlpStem`` with ``ResidualMlpBlock``s (shared by all elements)
+    after the value + element embedding, then a LayerNorm; token ``e`` still describes element ``e``.
+    """
+
+    def __init__(self, values: int, elements: int, width: int, blocks: int) -> None:
+        super().__init__()
+        self.embed = ElementEmbedding(values, width)
+        self.positional = ElementPositionalEmbedding(elements, width)
+        self.blocks = nn.Sequential(*[ResidualMlpBlock(width) for _ in range(blocks)])
+        self.norm = nn.LayerNorm(width)
+
+    def forward(self, numbers: Tensor) -> Tensor:
+        return self.norm(self.blocks(self.positional(self.embed(numbers))))

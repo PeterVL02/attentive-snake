@@ -319,6 +319,10 @@ from one env step to the next and is not stored in the DQN replay buffer. `kind 
 attention, so Watch shows no attention panel for them. `resnet` uses `d_model`, `conv_channels`, `conv_layers` (the number of
 residual blocks) and, on boards, `kernel_size`; `lstm` uses those plus `num_layers` (LSTM layers) with `conv_*` building its per-frame encoder.
 
+`model.residual = true` (`hybrid`, `frame_attention`, `lstm`; off by default, locked when forking) builds their convolutional
+stem (an MLP on numbers; for the other two the per-frame encoder) from `resnet`'s residual blocks instead of plain layers, e.g.
+`--set model.kind=hybrid --set model.residual=true`. Other kinds ignore it.
+
 Memory only matters when the observation hides something. Lunar Lander's `game.hide_velocities = true` shows the model zeros
 instead of its three velocity numbers (the physics, score and reward still use the true state), so it has to infer them from
 how position and angle change over several frames:
