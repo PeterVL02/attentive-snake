@@ -49,7 +49,7 @@ as solved; the default does not get there (see Caveats).
 | **New training** | Pick a model, fill in its settings (each with a description), choose the board, reward scheme and training settings, add an optional description, and start a run. The state representation (history length, past actions) is pre-set from the chosen model. |
 | **Runs** | Live status, score chart, log, config and history (descriptions, where a run was continued from) of a run. Stop it, resume it with an optional new step total and description, or **continue with changes**: a new run under a new name that starts from a chosen checkpoint with edited rewards and training settings. Open any checkpoint in the watch tab. |
 | **Architecture** | Diagram, text tree and parameter count for the config in the form or for an existing run. |
-| **Watch & attention** | Watch a checkpoint play, with the attention heatmap drawn over the board. |
+| **Watch & attention** | Watch a checkpoint play. Board games show the attention heatmap over the board; picture games such as Lunar Lander show the frame with attention bars per input number. |
 | **Rewards** | Create and edit named reward schemes, with a live table of what a scheme pays in each situation. |
 | **CLI cheat sheet** | The contents of [docs/CLI.md](docs/CLI.md). |
 | **Compare** | Plot the score curves of several runs on one chart, with their descriptions, and list the config fields that differ. |
