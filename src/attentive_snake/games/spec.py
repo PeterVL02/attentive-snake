@@ -44,6 +44,10 @@ class GameSpec:
         reward_table: Optional ``(reward config, example_score) -> rows``: what a reward
             scheme pays in typical situations, rows ``{"situation", "reward",
             "breakdown": {term: value}}``. ``None``: the app shows no preview.
+        observation_labels: Optional names of the numbers of one frame of a vector game, in
+            order (Lunar Lander: ``"x"``, ``"y"``, ...), one per element of
+            ``GameEnv.observation_shape``; shown next to the attention over them. ``None``:
+            no names (displays number them). Only for ``observation_kind == "vector"``.
         episode_metrics: Extension point for per-game evaluation statistics (issue #4,
             e.g. steps to win, steps between apples): ``(finished episodes) -> {metric:
             value}``. Nothing calls it yet; leave ``None``.
@@ -59,4 +63,5 @@ class GameSpec:
     make_env: MakeEnv
     locked_rules: Mapping[str, str] = field(default_factory=dict)
     reward_table: RewardTable | None = None
+    observation_labels: tuple[str, ...] | None = None
     episode_metrics: EpisodeMetrics | None = None

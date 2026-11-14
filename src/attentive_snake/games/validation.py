@@ -30,7 +30,25 @@ def spec_problems(spec: GameSpec, package_name: str) -> list[str]:
         rule_fields = {f.name for f in dataclasses.fields(spec.rules_type)}
         problems += [f"rules_type may not have a field {name!r} (reserved)" for name in RESERVED_RULE_FIELDS & rule_fields]
         problems += [f"locked_rules names {name!r}, which is not a rules field" for name in spec.locked_rules if name not in rule_fields]
+    if spec.observation_labels is not None and not problems:
+        problems += _label_problems(spec)
     return problems
+
+
+def _label_problems(spec: GameSpec) -> list[str]:
+    """``observation_labels``: distinct non-empty names, one per number of a default env's frame (vector games only)."""
+    labels = spec.observation_labels
+    if spec.observation_kind != "vector":
+        return [f"observation_labels are only for vector games, not {spec.observation_kind} ones"]
+    if not all(isinstance(label, str) and label.strip() for label in labels) or len(set(labels)) != len(labels):
+        return ["observation_labels must be distinct, non-empty strings"]
+    try:
+        shape = tuple(spec.make_env(spec.rules_type(), spec.reward_type(), 0).observation_shape)
+    except Exception as error:
+        return [f"cannot build a default env to check observation_labels: {error!r}"]
+    if shape != (len(labels),):
+        return [f"observation_labels has {len(labels)} names but a frame has shape {shape}"]
+    return []
 
 
 def _dataclass_problems(cls: type, label: str) -> list[str]:
