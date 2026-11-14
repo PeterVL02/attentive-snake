@@ -75,8 +75,8 @@ Every kind reads both grids and vectors; only the input stage changes. On a
 vector observation (Lunar Lander) every number becomes a token where a board cell
 would, the convolutions become fully connected layers (a convolution over an
 arbitrary order of numbers means nothing), and the attention view is one weight per
-input number instead of a board heatmap. `mlp` and `cnn` (which is then an MLP)
-are the recommended kinds for vector games; the app marks the recommended kinds
+input number instead of a board heatmap. `mlp`
+is the recommended kind for vector games; the app marks the recommended kinds
 for the chosen game.
 
 The two temporal kinds need history: set `history_length` (for example 4) and

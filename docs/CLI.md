@@ -184,7 +184,7 @@ Set `kind` in `[model]` and `history_length` / `history_actions` in `[env]`.
 | `model.kind` | idea on a board (Snake) | on numbers (Lunar Lander) | suggested `[env]` |
 | --- | --- | --- | --- |
 | `transformer` | each board cell is a token | each number is a token | `history_length = 1` |
-| `cnn` | convolutional baseline, no attention | an MLP (nothing to convolve); recommended | `history_length = 1` |
+| `cnn` | convolutional baseline, no attention | an MLP (nothing to convolve); use `mlp` instead | `history_length = 1` |
 | `hybrid` | conv stem, then transformer over cells | per-number MLP stem, then transformer over numbers | `history_length = 1` |
 | `temporal_transformer` | attention over the cells of several frames (plus action tokens) | attention over every number of several frames (plus action tokens) | `history_length = 4`, `history_actions = true` |
 | `frame_attention` | CNN per frame, attention across frames | MLP per frame, attention across frames | `history_length = 4`, `history_actions = true` |
