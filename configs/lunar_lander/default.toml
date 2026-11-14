@@ -11,7 +11,7 @@ gravity = -10.0               # between -12 and 0
 enable_wind = false           # random wind and turbulence (much harder)
 wind_power = 15.0             # 0..20, only with enable_wind
 turbulence_power = 1.5        # 0..2, only with enable_wind
-max_episode_steps = 1000      # time limit (Gymnasium's); the cut counts as the end of the episode
+max_episode_steps = 1000      # time limit (Gymnasium's): ends the episode as "timeout" (see train.bootstrap_truncated)
 
 # [reward]: not listed here. The default reward values live in one place, the
 # reward scheme configs/lunar_lander/rewards/default.toml

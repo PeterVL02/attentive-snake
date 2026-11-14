@@ -81,7 +81,10 @@ class GameEnv(Protocol):
 
 - `observation`: float32 array of `observation_shape`.
 - `terminated`: the game's rules ended the episode (death, win). `truncated`: a limit
-  cut it short (starvation, time limit). The trainer treats both as the end.
+  cut it short (starvation, time limit). Both end the episode; with
+  `train.bootstrap_truncated = true` the trainer values a truncated episode's last state
+  as if play had gone on (`VecEnvStep.final_observations` holds it), so report a limit as
+  `truncated` and an ending of your game's rules as `terminated`.
 - `event`: what happened in this step in the game's words (`"moved"`, `"crashed"`, ...).
   On the last step of an episode it is the episode's outcome and ends up in
   `EpisodeSummary.outcome`.
