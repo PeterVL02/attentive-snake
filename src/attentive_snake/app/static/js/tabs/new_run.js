@@ -3,7 +3,7 @@
 import { ApiError, get, post } from "../api.js";
 import { navigate, provide } from "../bus.js";
 import { debounce, formatSteps, h, message, replace } from "../dom.js";
-import { attachServerError, fieldControl, readFields } from "../fields.js";
+import { attachServerError, descriptionField, fieldControl, readFields } from "../fields.js";
 import { rewardTable } from "../reward_table.js";
 import { loadSchema } from "../schema.js";
 
@@ -15,6 +15,7 @@ const COMMON_TRAIN = [
   ["train", "entropy_coef"],
   ["train", "seed"],
   ["train", "device"],
+  ["train", "keep_checkpoints"],
 ];
 const HIDDEN = new Set(["train.checkpoint_dir", "model.kind"]); // set by the app / by the kind dropdown
 const STATE_FIELDS = ["history_length", "history_actions"];
@@ -31,6 +32,7 @@ let modelFields;
 let explain;
 let nameWidget;
 let nameEdited = false;
+let description;
 let rewardSelect;
 let rewardPreview;
 let rewardValues = null;
@@ -181,8 +183,9 @@ async function start() {
   startButton.disabled = true;
   startButton.textContent = "Starting…";
   try {
-    const result = await post("/api/runs", { name: nameResult.value, config: tables });
+    const result = await post("/api/runs", { name: nameResult.value, config: tables, description: description.get() });
     nameEdited = false;
+    description.set("");
     navigate("runs", { run: result.name });
   } catch (error) {
     const text = error.message;
@@ -203,6 +206,7 @@ function build() {
   const nameSpec = { name: "run name", type: "str", nullable: false, description: "Directory under runs/: letters, digits, '.', '_' and '-'." };
   nameWidget = fieldControl(nameSpec, "");
   nameWidget.onChange(() => (nameEdited = true));
+  description = descriptionField();
 
   const kindSpec = schema.sections.model.find((f) => f.name === "kind");
   kindSelect = h("select", { id: "kind-select" }, kindSpec.choices.map((k) => h("option", { value: k, text: k })));
@@ -236,7 +240,7 @@ function build() {
   const left = h(
     "div",
     {},
-    panel("Run", h("div", { class: "fields" }, nameWidget.el)),
+    panel("Run", h("div", { class: "fields" }, nameWidget.el), description.el),
     panel(
       "Model",
       h("div", { class: "field" }, h("label", { for: "kind-select", text: "kind" }), kindSelect),

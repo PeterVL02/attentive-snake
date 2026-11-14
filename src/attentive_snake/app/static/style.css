@@ -358,3 +358,34 @@ input[type="range"] { accent-color: var(--accent); }
 .compare-item input { width: 16px; height: 16px; }
 .compare-item label { display: flex; flex-direction: column; min-width: 0; cursor: pointer; }
 .compare-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 13px; }
+
+/* ---------- descriptions, history and lineage ---------- */
+
+textarea { width: 100%; resize: vertical; line-height: 1.4; }
+.description-field { margin-top: 14px; }
+.pre-wrap { white-space: pre-wrap; }
+.run-label { display: flex; flex-direction: column; min-width: 0; }
+.run-description { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lineage { color: var(--muted); font-size: 13.5px; margin: 2px 0 12px; }
+.lineage button.link { color: var(--accent); font-family: var(--mono); font-size: 13px; }
+.inline-check { gap: 6px; cursor: pointer; }
+.inline-check input { width: 16px; height: 16px; margin: 0; }
+.field.locked .description { color: var(--warn); }
+
+/* ---------- fork dialog ---------- */
+
+dialog.fork-dialog {
+  width: min(960px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+}
+dialog.fork-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+.dialog-body { padding: 20px 22px; }
+.dialog-body > .message { margin-bottom: 12px; }
+.dialog-actions { margin: 4px 0 12px; }
+details.panel > summary { cursor: pointer; font-weight: 650; }
+details.panel[open] > summary { margin-bottom: 12px; }

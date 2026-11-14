@@ -1,8 +1,10 @@
-// Tab 2: the runs, their progress and metrics; stop, resume, and jump to watching a checkpoint.
+// Tab 2: the runs, their progress, metrics and history; stop, resume, continue with changes, and jump to watching a checkpoint.
 
 import { get, post } from "../api.js";
 import { navigate } from "../bus.js";
 import { badge, formatNumber, formatSteps, h, message, replace } from "../dom.js";
+import { descriptionField } from "../fields.js";
+import { openForkForm } from "../fork_form.js";
 import { LineChart, renderLegend, seriesColor } from "../chart.js";
 import { monotonic, points } from "../metric_series.js";
 
@@ -43,7 +45,12 @@ function renderList(runs) {
         h(
           "button",
           { type: "button", "aria-current": String(run.name === selected), onclick: () => select(run.name) },
-          h("span", { class: "name", text: run.name, title: run.name }),
+          h(
+            "span",
+            { class: "run-label" },
+            h("span", { class: "name", text: run.name, title: run.name }),
+            run.description ? h("span", { class: "run-description", text: run.description, title: run.description }) : null,
+          ),
           badge(run.status.state),
         ),
       ),
@@ -60,6 +67,12 @@ function buildDetail() {
     progressText: h("div", { class: "muted small" }),
     resumeSteps: h("input", { type: "number", min: "1", step: "1", id: "resume-steps", placeholder: "keep current target", style: "width: 180px" }),
     resume: h("button", { type: "button", class: "primary", text: "Resume", onclick: resume }),
+    keep: h("input", { type: "checkbox", id: "resume-keep" }),
+    keepNote: h("div", { class: "muted small" }),
+    resumeDescription: descriptionField("Optional. Saved in the run's history (run.json) with this resume."),
+    fork: h("button", { type: "button", text: "Continue with changes…", onclick: fork }),
+    lineage: h("div", { class: "lineage" }),
+    history: h("div", {}),
     actionMessage: h("div", { class: "message", role: "alert" }),
     legend: h("div", { class: "legend" }),
     chartWrap: h("div", { class: "chart-wrap" }),
@@ -71,6 +84,7 @@ function buildDetail() {
   replace(
     detailEl,
     h("div", { class: "row spread" }, h("div", { class: "row" }, els.title, els.badge), els.stop),
+    els.lineage,
     h(
       "div",
       { class: "panel" },
@@ -81,7 +95,16 @@ function buildDetail() {
         { class: "row", style: "margin-top:14px" },
         h("label", { for: "resume-steps", class: "label", text: "train until (total env steps)" }),
         els.resumeSteps,
+        h("label", { class: "row inline-check", for: "resume-keep" }, els.keep, h("span", { class: "label", text: "keep older checkpoints" })),
+      ),
+      els.keepNote,
+      h("div", { style: "margin-top:10px" }, els.resumeDescription.el),
+      h(
+        "div",
+        { class: "row", style: "margin-top:10px" },
         els.resume,
+        els.fork,
+        h("span", { class: "muted small", text: "Resume continues this run with its settings. Continue with changes starts a new run from the checkpoint selected under Checkpoints." }),
       ),
       h("div", { style: "margin-top:10px" }, els.actionMessage),
     ),
@@ -99,12 +122,54 @@ function buildDetail() {
         h("button", { type: "button", text: "Architecture", onclick: () => navigate("architecture", { source: "run", run: selected }) }),
       ),
     ),
+    h("div", { class: "panel" }, h("h3", { text: "History" }), els.history),
     h("div", { class: "panel" }, h("h3", { text: "Log (tail of train.log)" }), els.log),
     h("details", { class: "panel" }, h("summary", { text: "Config (read-only)" }), els.config),
   );
   chart = new LineChart(els.chartWrap, { xFormat: formatSteps, empty: "No metrics logged yet." });
   series.forEach((s) => (s.color = seriesColor(s.index)));
   renderLegend(els.legend, series, () => chart.draw());
+  els.keep.addEventListener("change", updateKeepNote);
+}
+
+function updateKeepNote() {
+  els.keepNote.textContent = els.keep.checked
+    ? ""
+    : "Older checkpoints will be deleted each time a new one is saved; only the latest can then be watched or continued from.";
+}
+
+function renderLineage(parent) {
+  if (!parent) return null;
+  return [
+    "Continued from ",
+    h("button", { type: "button", class: "link", text: parent.run, onclick: () => select(parent.run) }),
+    ` at ${formatNumber(parent.env_steps)} steps (${parent.checkpoint}).`,
+  ];
+}
+
+const ACTION_LABELS = { start: "started", resume: "resumed", fork: "continued from another run" };
+
+function renderHistory(events) {
+  if (!events.length) return h("p", { class: "muted small", text: "No recorded history (runs started before run.json existed have none)." });
+  return h(
+    "table",
+    {},
+    h("thead", {}, h("tr", {}, h("th", { text: "when" }), h("th", { text: "what" }), h("th", { class: "num", text: "at env steps" }), h("th", { text: "description" }))),
+    h(
+      "tbody",
+      {},
+      [...events].reverse().map((e) =>
+        h(
+          "tr",
+          {},
+          h("td", { class: "small", text: new Date(e.timestamp).toLocaleString() }),
+          h("td", { text: e.parent ? `${ACTION_LABELS[e.action]} (${e.parent.run} @ ${formatSteps(e.parent.env_steps)})` : ACTION_LABELS[e.action] ?? e.action }),
+          h("td", { class: "num", text: formatNumber(e.env_steps_at_action) }),
+          h("td", { class: "pre-wrap", text: e.description ?? "–" }),
+        ),
+      ),
+    ),
+  );
 }
 
 function renderConfig(config) {
@@ -125,6 +190,15 @@ function renderDetail(d) {
   if (state === "failed") els.badge.append(h("span", { class: "muted small", text: ` exit code ${d.status.exit_code}` }));
   els.stop.hidden = state !== "running";
   els.resume.disabled = state === "running";
+  els.fork.disabled = d.checkpoints.length === 0;
+  if (!els.keepLoaded) {
+    els.keep.checked = d.config.train.keep_checkpoints !== false;
+    els.keepLoaded = true;
+    updateKeepNote();
+  }
+  replace(els.lineage, renderLineage(d.parent));
+  els.lineage.hidden = !d.parent;
+  replace(els.history, renderHistory(d.history));
   const total = d.total_env_steps || 0;
   const pct = total ? Math.min(100, (100 * d.env_steps) / total) : 0;
   els.progress.style.width = `${pct}%`;
@@ -218,13 +292,30 @@ async function resume() {
     return;
   }
   try {
-    await post(`/api/runs/${encodeURIComponent(selected)}/resume`, { total_env_steps: steps });
+    const body = { total_env_steps: steps, keep_checkpoints: els.keep.checked, description: els.resumeDescription.get() };
+    await post(`/api/runs/${encodeURIComponent(selected)}/resume`, body);
     message(els.actionMessage, "info", "Resumed.");
     els.resumeSteps.value = "";
+    els.resumeDescription.set("");
   } catch (error) {
     message(els.actionMessage, "error", error.message);
   }
   refresh();
+}
+
+async function fork() {
+  if (!detail) return;
+  const name = els.checkpoint.value;
+  const checkpoint = detail.checkpoints.find((c) => c.name === name) ?? detail.checkpoints[detail.checkpoints.length - 1];
+  if (!checkpoint) {
+    message(els.actionMessage, "error", "This run has no checkpoint to continue from yet.");
+    return;
+  }
+  try {
+    await openForkForm(detail, checkpoint, (newRun) => select(newRun));
+  } catch (error) {
+    message(els.actionMessage, "error", `Could not open the form: ${error.message}`);
+  }
 }
 
 export function init(element) {

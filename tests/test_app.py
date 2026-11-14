@@ -103,6 +103,7 @@ def test_schema_defaults_and_page(client: TestClient):
     assert client.get("/").status_code == 200
     script = client.get("/static/js/main.js")
     assert script.status_code == 200 and "javascript" in script.headers["content-type"]
+    assert client.get("/static/js/fork_form.js").status_code == 200
     assert "# " in client.get("/api/cheatsheet").text
 
 

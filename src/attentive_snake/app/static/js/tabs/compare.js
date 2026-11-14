@@ -33,6 +33,7 @@ function runRow(run) {
       { for: id },
       h("span", { class: "name", text: run.name }),
       h("span", { class: "muted small", text: `${run.kind ?? "?"} · ${run.width ?? "?"}×${run.height ?? "?"} · ${formatSteps(run.env_steps)} / ${formatSteps(run.total_env_steps)}` }),
+      run.description ? h("span", { class: "run-description", text: run.description, title: run.description }) : null,
     ),
     badge(run.status.state),
   );
@@ -86,11 +87,11 @@ function drawChart() {
 }
 
 function summaryTable() {
-  const head = ["", "run", "kind", "parameters", "grid", "final mean score", "best mean score", "steps / s"];
+  const head = ["", "run", "kind", "parameters", "grid", "final mean score", "best mean score", "steps / s", "description"];
   return h(
     "table",
     {},
-    h("thead", {}, h("tr", {}, head.map((t, i) => h("th", { class: i >= 3 && i !== 4 ? "num" : null, text: t })))),
+    h("thead", {}, h("tr", {}, head.map((t, i) => h("th", { class: i >= 3 && i !== 4 && i < 8 ? "num" : null, text: t })))),
     h(
       "tbody",
       {},
@@ -109,6 +110,7 @@ function summaryTable() {
           h("td", { class: "num", text: scores.length ? formatNumber(scores[scores.length - 1], 2) : "–" }),
           h("td", { class: "num", text: scores.length ? formatNumber(Math.max(...scores), 2) : "–" }),
           h("td", { class: "num", text: formatNumber(median(speeds), 0) }),
+          h("td", { class: "small pre-wrap", text: run.description ?? "–" }),
         );
       }),
     ),
