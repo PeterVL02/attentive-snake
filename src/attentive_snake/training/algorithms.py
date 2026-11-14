@@ -1,9 +1,10 @@
 """The selectable training algorithms, by ``[train] algorithm`` (the contract is ``training.algorithm.Algorithm``)."""
 
 from attentive_snake.training.algorithm import Algorithm
+from attentive_snake.training.dqn import ALGORITHM as DQN
 from attentive_snake.training.ppo import ALGORITHM as PPO
 
-_ALGORITHMS: dict[str, Algorithm] = {algorithm.name: algorithm for algorithm in (PPO,)}
+_ALGORITHMS: dict[str, Algorithm] = {algorithm.name: algorithm for algorithm in (PPO, DQN)}
 
 
 def algorithm_names() -> tuple[str, ...]:
