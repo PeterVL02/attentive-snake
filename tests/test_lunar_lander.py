@@ -136,7 +136,7 @@ def test_labels_are_checked():
 
 def test_schema_recommends_the_mlp_kinds_and_describes_vector_reading():
     kinds = experiment_schema("lunar_lander")["model_kinds"]
-    assert {kind for kind, row in kinds.items() if row["recommended"]} == {"mlp", "cnn"}
+    assert {kind for kind, row in kinds.items() if row["recommended"]} == {"mlp"}
     for kind, row in kinds.items():
         assert row["description"] == KIND_INFO[kind].inputs["vector"].description
         assert "vector" in row["observation_kinds"]
