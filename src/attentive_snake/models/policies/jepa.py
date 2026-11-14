@@ -59,7 +59,16 @@ class JepaPolicy(BasePolicy):
             return None
         encoder = nn.Sequential(*(self.net[name] for name in self._stage_names))  # shares the policy's modules
         c = self.config
-        return PredictionObjective(encoder, self.predictor, c.prediction_coef, c.target_ema, DISTANCES[c.value_training])
+        return PredictionObjective(
+            encoder,
+            self.predictor,
+            c.prediction_coef,
+            c.target_ema,
+            DISTANCES[c.value_training],
+            trains_encoder=c.prediction_trains_encoder,
+            value_decoder=self.net["value_decoder"],
+            consistent_values=c.value_training == "actual",
+        )
 
     def trained_values(self, observations: Tensor, actions: Tensor, next_observations: Tensor) -> Tensor | None:
         """What DQN's TD loss trains (``models.value_training``): ``None`` = Q(s, a) as acted on (``"predicted"``),

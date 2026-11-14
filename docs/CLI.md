@@ -139,7 +139,7 @@ uv run python scripts/train.py --run-dir runs/snake/8x8-variant --fork runs/snak
   `--keep-checkpoints`. Everything under `[reward]`, `[train]` (but `train.algorithm`) and the algorithm's section
   (`[ppo]` / `[dqn]`), `env.num_envs` and the game rules the game does not lock (Snake:
   `game.max_steps_without_food`) may change. The game (`game.name`), the algorithm (`train.algorithm`: the weights
-  end in its head), all of `[model]` except jepa's `prediction_coef`, `value_training` and `target_ema` (they
+  end in its head), all of `[model]` except jepa's `prediction_coef`, `value_training`, `prediction_trains_encoder` and `target_ema` (they
   change how it is trained, not the network), `env.history_length`, `env.history_actions` and the rules the game locks (Snake: `game.width`, `game.height`,
   `game.initial_length`) must equal the parent's (the weights would not fit, or the input would change meaning);
   a change is rejected naming the field, before anything is written.
@@ -339,29 +339,39 @@ embedding into a value. With DQN, Q(s, a) = value of the embedding action a is p
 the action whose predicted next state is worth most. With PPO the policy scores the predicted embeddings (its own
 decoder) and the value decoder values the current embedding.
 
-Three `[model]` settings belong to it, and unlike the rest of `[model]` they may change when forking a run:
+Four `[model]` settings belong to it, and unlike the rest of `[model]` they may change when forking a run:
 
 - `prediction_coef` (default 1.0): weight of the prediction loss, which makes the embedding predicted for the action
   taken match a slowly updated (EMA) copy of the encoder's embedding of the real next state. `0` switches it off
-  (the ablation). The run then logs no `prediction_loss` / `embedding_std`.
+  (the ablation). The run then logs no `prediction_loss` / `embedding_std` / `value_gap`.
+- `prediction_trains_encoder` (default false): whether that loss also trains the encoder. Off, it trains the predictor
+  only and the encoder learns from the reinforcement-learning loss alone. On was the old default; in a single-seed DQN
+  test on Lunar Lander it made the agent end up flying off (README, Caveats).
 - `target_ema` (default 0.99): how slowly that target encoder follows the trained one (per gradient step).
 - `value_training` (DQN only, default `predicted`): `predicted` trains the decoded predicted embedding of the action
-  taken with the TD loss (gradients reach decoder, predictor and encoder); `actual` trains the decoded embedding of the
-  next state that really happened (the value of arriving there, its reward included) and leaves the predictor to the
-  prediction loss alone, which then matches whole embeddings (mean squared distance instead of cosine distance).
-  `actual` needs `prediction_coef > 0`.
+  taken with the TD loss; `actual` trains the decoded embedding of the next state that really happened (the value of
+  arriving there, its reward included) and leaves the predictor to the prediction loss, which then matches whole
+  embeddings (mean squared distance instead of cosine distance) and also the decoded values of prediction and real
+  next state. `actual` needs `prediction_coef > 0` and did not learn in our tests: the predictor's error in the value
+  is as large as the value differences between actions (README explains it).
 
 ```bash
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa --set train.algorithm=dqn --set model.kind=jepa
-uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa-actual --set train.algorithm=dqn \
-    --set model.kind=jepa --set model.value_training=actual
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa-off --set train.algorithm=dqn \
     --set model.kind=jepa --set model.prediction_coef=0
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa-actual --set train.algorithm=dqn \
+    --set model.kind=jepa --set model.value_training=actual
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa-per --set train.algorithm=dqn \
+    --set model.kind=jepa --set dqn.prioritized=true
 ```
 
 The target encoder is saved with the checkpoint's training state (not with the policy weights), so resuming and forking
-keep it; watching and evaluating do not need it. The Runs chart offers `prediction loss` and `embedding spread` (near 0
-would mean every state gets the same embedding) for jepa runs with `prediction_coef > 0`.
+keep it; watching and evaluating do not need it. The Runs chart offers `prediction loss`, `embedding spread` (near 0
+would mean every state gets the same embedding) and `value gap` (how far the value of the predicted next state is from
+that of the real one; it matters for `actual`, which acts on it) for jepa runs with `prediction_coef > 0`. Prioritized
+replay (`dqn.prioritized = true`) works with every `value_training`: the priorities are the TD errors of the values the
+TD loss trains (Q(s, a) for `predicted`, the real next state's value for `actual`); the prediction loss is not
+importance-weighted and does not change the priorities.
 
 ## Choosing an algorithm
 
