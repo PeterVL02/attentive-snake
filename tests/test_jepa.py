@@ -250,3 +250,73 @@ def test_ppo_trains_the_prediction_loss_from_the_rollout_only_when_it_is_on(coef
     else:
         assert not {"prediction_loss", "embedding_std"} & set().union(*records) and trainer.learner.extra_state() == {}
         assert buffer.next_observations is None
+
+
+def test_value_gaps_train_the_prediction_only():
+    from attentive_snake.models.jepa.value_consistency import value_gaps
+
+    policy = make(value_training="actual")
+    data = batch(policy, size=8)
+    encoder = torch.nn.Sequential(policy.net["encoder"], policy.net["readout"])
+    predictions = policy.predictor.step(policy.encode(data.observations), data.actions)
+    gaps = value_gaps(policy.net["value_decoder"], predictions, encoder, data.next_observations)
+    decoder = policy.net["value_decoder"]
+    expected = decoder(predictions) - decoder(policy.encode(data.next_observations))
+    assert torch.allclose(gaps, expected, atol=1e-6)
+    gaps.pow(2).mean().backward()
+    assert decoder.linear.weight.grad is None  # the decoder learns from the TD loss alone
+    assert policy.predictor.body[0].weight.grad.abs().sum() > 0
+
+
+@pytest.mark.parametrize("value_training", ["predicted", "actual"])
+def test_the_value_gap_is_reported_and_only_actual_trains_it(value_training):
+    policy = make(value_training=value_training)
+    objective = auxiliary_objective(policy)
+    data = batch(policy, size=8)
+    terms = objective.loss(data)
+    assert terms.metrics["value_gap"] >= 0
+    # the loss is the coefficient x (distance + squared value gap for actual)
+    with torch.no_grad():
+        predictions = policy.predictor.step(policy.encode(data.observations), data.actions)
+        targets = objective.target(data.next_observations)
+        distance = (squared_distance if value_training == "actual" else cosine_distance)(predictions, targets).mean()
+        gap = policy.net["value_decoder"](predictions) - policy.net["value_decoder"](policy.encode(data.next_observations))
+    expected = distance + (gap.pow(2).mean() if value_training == "actual" else 0.0)
+    assert torch.allclose(terms.loss, CONFIG.prediction_coef * expected, atol=1e-6)
+
+
+def test_without_training_the_encoder_the_prediction_loss_reaches_the_predictor_only():
+    for trains_encoder in (True, False):
+        policy = make(prediction_trains_encoder=trains_encoder)
+        auxiliary_objective(policy).loss(batch(policy)).loss.backward()
+        encoder_grad = sum(float(p.grad.abs().sum()) for name in ("encoder", "readout") for p in policy.net[name].parameters() if p.grad is not None)
+        assert (encoder_grad > 0) == trains_encoder
+        assert policy.predictor.body[0].weight.grad.abs().sum() > 0
+
+
+@pytest.mark.parametrize("value_training", ["predicted", "actual"])
+def test_the_td_errors_for_the_priorities_are_those_of_the_trained_values(value_training):
+    from attentive_snake.training.dqn.loss import dqn_targets
+
+    policy = make(value_training=value_training)
+    target = TargetNetwork(policy)
+    sample = _sample(policy)
+    with torch.no_grad():
+        targets = dqn_targets(sample.rewards, sample.dones, target(sample.next_observations).q_values, policy(sample.next_observations).q_values, 0.9)
+        if value_training == "actual":  # the value of the real next state
+            trained = policy.net["value_decoder"](policy.encode(sample.next_observations))
+        else:  # Q(s, a) as acted on
+            trained = policy(sample.observations).q_values.gather(1, sample.actions[:, None]).squeeze(1)
+    stats = dqn_gradient_step(policy, target, torch.optim.SGD(policy.parameters(), lr=0.0), sample, 0.9, True, 10.0)
+    assert torch.allclose(stats.td_errors, trained - targets, atol=1e-6)
+
+
+@pytest.mark.parametrize("value_training", ["predicted", "actual"])
+def test_prioritized_replay_trains_jepa_and_logs_priorities_with_the_prediction_metrics(value_training):
+    config = tiny_dqn({"value_training": value_training, "prediction_trains_encoder": value_training == "predicted"})
+    config = dataclasses.replace(config, algorithm_settings=dataclasses.replace(config.algorithm_settings, prioritized=True))
+    env = make_vec_env(config)
+    trainer = make_trainer(config, make_policy(config, env), env, NullLogger())
+    records = trainer.train()
+    assert {"priority_beta", "priority_mean", "priority_max", "prediction_loss", "embedding_std", "value_gap", "td_error"} <= set(records[-1])
+    assert records[-1]["priority_max"] > 0

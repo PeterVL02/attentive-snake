@@ -7,14 +7,14 @@ fields to every kind with a convolutional part (cnn, resnet, hybrid, frame_atten
 observations these parts are fully connected layers of the same width and depth and
 ``kernel_size`` is unused); the ``mlp`` kind uses ``d_model`` and ``num_layers`` only; the ``lstm`` kind also uses ``num_layers`` (LSTM layers).
 The ``jepa`` kind uses the ``conv_*`` fields for its encoder, ``num_layers`` for its predictor, and
-``prediction_coef`` / ``target_ema`` for its prediction loss and ``value_training`` for what DQN's
-TD loss trains. Those three do not shape the network,
+``prediction_coef`` / ``target_ema`` / ``prediction_trains_encoder`` for its prediction loss and
+``value_training`` for what DQN's TD loss trains. Those four do not shape the network,
 only how it is trained (``OBJECTIVE_FIELDS``), so a run continued from a checkpoint may change them.
 """
 
 from dataclasses import dataclass, field
 
-OBJECTIVE_FIELDS = ("prediction_coef", "target_ema", "value_training")  # shape the training objective, not the network
+OBJECTIVE_FIELDS = ("prediction_coef", "target_ema", "value_training", "prediction_trains_encoder")  # shape the training objective, not the network
 VALUE_TRAINING = ("predicted", "actual")  # choices of ModelConfig.value_training
 
 
@@ -32,7 +32,8 @@ class ModelConfig:
     conv_layers: int = field(default=3, metadata={"help": "Number of convolutional layers; each one widens the area of the board a cell can 'see' (for vector observations: number of fully connected layers that replace them; for the resnet kind: number of residual blocks)."})
     kernel_size: int = field(default=3, metadata={"help": "Width of the square window of each convolution. Must be odd; 3 looks at a cell and its neighbours. Unused for vector observations."})
     prediction_coef: float = field(default=1.0, metadata={"help": "jepa only: weight of the prediction loss, which trains the encoder and predictor so that the embedding predicted for the action taken matches the target encoder's embedding of the state that really followed. It is added to the algorithm's own loss. 0 switches it off (the same network, trained by the reinforcement-learning loss alone: the ablation)."})
-    value_training: str = field(default="predicted", metadata={"help": "jepa with DQN only: which embedding the value decoder learns from. Either way the model acts the same, by decoding the predicted next-state embedding of every action and picking the best. 'predicted': the TD loss is applied to the value of the embedding predicted for the action taken, so it also trains the predictor and the encoder (the prediction loss is a helper). 'actual': the TD loss is applied to the value of the embedding of the next state that really happened (the value of arriving there, the reward for getting there included); the predictor learns only from the prediction loss, which then matches the whole embedding, not just its direction, so prediction_coef must be above 0. PPO ignores it: its value is always that of the actual current state."})
+    value_training: str = field(default="predicted", metadata={"help": "jepa with DQN only: which embedding the value decoder learns from. Either way the model acts the same, by decoding the predicted next-state embedding of every action and picking the best. 'predicted' (recommended): the TD loss is applied to the value of the embedding predicted for the action taken, so it trains the decoder exactly where it is used when acting. 'actual' (experimental, did not learn in our tests): the TD loss is applied to the value of the embedding of the next state that really happened (the value of arriving there, the reward for getting there included); the predictor learns only from the prediction loss, which then matches the whole embedding and also the value the decoder gives it, so prediction_coef must be above 0. Its weakness: one step changes a state so little that the values of different actions differ by less than the predictor's error, so the choice of action is close to a coin toss between the best few. PPO ignores the TD part: its value is always that of the actual current state."})
+    prediction_trains_encoder: bool = field(default=False, metadata={"help": "jepa only: whether the prediction loss also trains the encoder. Off (the default): the prediction loss trains the predictor only and the encoder learns from the reinforcement-learning loss alone, as with prediction_coef = 0, so the prediction loss cannot pull the embeddings away from what the values need. On: the encoder also learns to make the next state predictable; in single-seed DQN tests on Lunar Lander that made the agent unstable (it ended up flying off)."})
     target_ema: float = field(default=0.99, metadata={"help": "jepa only: how slowly the target encoder (which embeds the real next states the predictor must match) follows the trained encoder. After every gradient step each target weight becomes target_ema x itself + (1 - target_ema) x the trained weight. Closer to 1 is a steadier but staler target; 0 copies the encoder every step."})
 
     def __post_init__(self) -> None:

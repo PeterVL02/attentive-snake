@@ -904,15 +904,19 @@ def test_prioritized_replay_settings_are_in_the_schema_and_a_prioritized_run_log
 def test_jepa_is_offered_drawn_trained_watched_and_forked_through_the_api(client: TestClient):
     schema = client.get("/api/schema").json()
     kind = schema["model_kinds"]["jepa"]
-    assert {"prediction_coef", "value_training", "target_ema", "conv_channels", "num_layers"} <= set(kind["fields"])
+    assert {"prediction_coef", "value_training", "prediction_trains_encoder", "target_ema", "conv_channels", "num_layers"} <= set(kind["fields"])
     assert kind["attention_view"] is None and not kind["recommended"]
-    assert [m["key"] for m in kind["metrics"]] == ["prediction_loss", "embedding_std"]
+    assert [m["key"] for m in kind["metrics"]] == ["prediction_loss", "embedding_std", "value_gap"]
+    assert all(m["label"] and m["description"] for m in kind["metrics"])
     assert all(m["setting"] == "model.prediction_coef" for m in kind["metrics"])
     assert all(not row["metrics"] for name, row in schema["model_kinds"].items() if name != "jepa")
     fields = {row["name"]: row for row in schema["sections"]["model"]}
     assert fields["value_training"]["choices"] == ["predicted", "actual"] and fields["value_training"]["description"]
+    assert fields["prediction_trains_encoder"]["description"] and fields["prediction_trains_encoder"]["default"] is not None
+    assert client.get("/api/defaults").json()["model"]["prediction_trains_encoder"] is False  # the New-training form's start value
     locked = client.get("/api/fork-rules").json()["locked"]
-    assert "model.num_layers" in locked and not {"model.prediction_coef", "model.value_training", "model.target_ema"} & set(locked)
+    objective = {"model.prediction_coef", "model.value_training", "model.target_ema", "model.prediction_trains_encoder"}
+    assert "model.num_layers" in locked and not objective & set(locked)
 
     drawn = {algorithm: client.post("/api/architecture", json=tiny_tables("jepa", algorithm=algorithm)).json() for algorithm in ("ppo", "dqn")}
     assert all(word in drawn["ppo"]["text"] for word in ("predictor", "policy_decoder", "value_decoder"))
@@ -929,10 +933,11 @@ def test_jepa_is_offered_drawn_trained_watched_and_forked_through_the_api(client
     assert watch["info"]["attention_view"] is None and watch["frame"]["action_values"]["kind"] == "q_values"
     assert client.post(f"/api/watch/{watch['id']}/step", json={"count": 2}).status_code == 200
 
-    tables["model"] |= {"prediction_coef": 0.5, "value_training": "predicted"}  # the training objective may change on fork
+    tables["model"] |= {"prediction_coef": 0.5, "value_training": "predicted", "prediction_trains_encoder": False}  # the training objective may change on fork
     forked = client.post("/api/runs/jepa/fork", json={"name": "jepa-v2", "config": tables})
     assert forked.status_code == 201, forked.text
-    assert wait_until_done(client, "jepa-v2")["config"]["model"]["prediction_coef"] == 0.5
+    forked_model = wait_until_done(client, "jepa-v2")["config"]["model"]
+    assert forked_model["prediction_coef"] == 0.5 and forked_model["prediction_trains_encoder"] is False
     tables["model"]["num_layers"] = 2
     assert client.post("/api/runs/jepa/fork", json={"name": "jepa-v3", "config": tables}).status_code == 422
 

@@ -37,8 +37,9 @@ NO_KERNEL = ("kernel_size",)  # nothing to convolve in a list of numbers
 
 _JEPA_SWITCH = "model.prediction_coef"
 JEPA_METRICS = (
-    TrainingMetric("prediction_loss", "prediction loss", "jepa: mean cosine distance (0 = same direction, 1 = unrelated, 2 = opposite) between the embedding predicted for the action taken and the target encoder's embedding of the state that followed, over the gradient steps since the previous record.", _JEPA_SWITCH),
+    TrainingMetric("prediction_loss", "prediction loss", "jepa: how far the embedding predicted for the action taken is from the target encoder's embedding of the state that followed, averaged over the gradient steps since the previous record. With value_training 'predicted' it is the cosine distance (0 = same direction, 1 = unrelated, 2 = opposite); with 'actual' the mean squared difference of the numbers plus the squared value gap.", _JEPA_SWITCH),
     TrainingMetric("embedding_std", "embedding spread", "jepa: how different the encoder's embeddings of a batch of states are (mean per-dimension standard deviation of the unit-length embeddings). Near 0 means collapse: every state looks the same to the model; about 1/sqrt(d_model) means unrelated directions.", _JEPA_SWITCH),
+    TrainingMetric("value_gap", "value gap", "jepa: mean absolute difference between the value of the embedding predicted for the action taken and the value of the real next state's embedding (both read by the value decoder). With value_training 'actual' the decoder is trained on real next states and the model acts on the values of its predictions, so this error must stay small next to the differences between actions; the prediction loss trains it down there. With 'predicted' the decoder is trained on predictions only, so a large gap is expected and does no harm.", _JEPA_SWITCH),
 )
 _JEPA_HOW = (
     "trained from scratch, no pretrained weights. The predictor then takes the embedding and each action and predicts the embedding of the next state "
@@ -46,7 +47,8 @@ _JEPA_HOW = (
     "so it plays the action whose predicted next state is worth most; with PPO the policy scores the predicted embeddings and the value decoder values the current one. "
     "With prediction_coef > 0 a prediction loss makes the embedding predicted for the action taken match a slowly updated (EMA) copy of the encoder's embedding "
     "of the state that really followed (JEPA-style; prediction_coef = 0 is the same network without it). "
-    "value_training (DQN) chooses whether the value decoder learns from the predicted next embedding or from the real one. Experimental."
+    "By default that loss trains the predictor only (prediction_trains_encoder). "
+    "value_training (DQN) chooses whether the value decoder learns from the predicted next embedding (recommended) or from the real one (did not learn in our tests). Experimental."
 )
 
 KIND_INFO: dict[str, KindInfo] = {
@@ -180,7 +182,7 @@ KIND_INFO: dict[str, KindInfo] = {
         },
     ),
     "jepa": KindInfo(
-        ("d_model", "num_layers", *CONV_FIELDS, "prediction_coef", "value_training", "target_ema"),
+        ("d_model", "num_layers", *CONV_FIELDS, "prediction_coef", "value_training", "prediction_trains_encoder", "target_ema"),
         False,
         None,
         {
