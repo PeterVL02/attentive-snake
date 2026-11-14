@@ -6,9 +6,11 @@ A run directory holds everything about one training run::
         config.toml                    the full ExperimentConfig (written at start)
         model.html                     interactive model diagram
         metrics.jsonl                  one JSON line per logged training update
+        run.json                       history: start / resume / fork events with descriptions
         checkpoint_<env_steps>.pt      policy + optimizer + env-step counter
 
-Checkpoints are found with ``attentive_snake.training.latest_checkpoint``.
+Checkpoints are found with ``attentive_snake.training.latest_checkpoint``; ``run.json``
+is read and written by ``attentive_snake.run_metadata``.
 """
 
 import re
@@ -19,6 +21,7 @@ from attentive_snake.training.checkpoint import checkpoint_steps, list_checkpoin
 CONFIG_FILENAME = "config.toml"
 DIAGRAM_FILENAME = "model.html"
 METRICS_FILENAME = "metrics.jsonl"
+METADATA_FILENAME = "run.json"
 
 _RUN_NAME = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9._-]*")
 
@@ -28,6 +31,7 @@ __all__ = [
     "diagram_path",
     "list_checkpoints",
     "list_runs",
+    "metadata_path",
     "metrics_path",
     "validate_run_name",
 ]
@@ -43,6 +47,10 @@ def diagram_path(run_dir: Path) -> Path:
 
 def metrics_path(run_dir: Path) -> Path:
     return Path(run_dir) / METRICS_FILENAME
+
+
+def metadata_path(run_dir: Path) -> Path:
+    return Path(run_dir) / METADATA_FILENAME
 
 
 def list_runs(root: Path) -> list[str]:
