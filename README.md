@@ -39,8 +39,12 @@ uv run python scripts/watch.py runs/lunar_lander/mlp
 ```
 
 The default (`configs/lunar_lander/default.toml`: `mlp`, 32 envs, 2M steps)
-went from a mean score of about -170 to about +145 in one test run. 200 counts
-as solved; the default does not get there (see Caveats).
+went from a mean training score of about -170 to about +150 in one test run. 200
+counts as solved. The greedy evaluation at 2M steps of that run (seed 0, 50 games)
+landed every game with a mean score of 256; the same run with
+`train.bootstrap_truncated = false` (how the time limit was treated before)
+hovered until the time limit in 49 of 50 games (mean score 1). One seed each, not a
+benchmark (see Caveats).
 
 ## The app
 
@@ -151,14 +155,19 @@ A statistic that cannot be computed (steps to win when no game was won) is N/A.
 - **Extending a run raises the learning rate.** The linear decay is re-stretched
   over the new total, so the rate jumps up at the resume point. A resumed run is
   not bit-identical to an uninterrupted one.
-- **Starvation (Snake) and the time limit (Lunar Lander) are treated as terminal
-  states** when estimating values, which introduces a small bias: the value of a
-  state just before the cut does not include what would have come after.
-- **Lunar Lander's default stalls below "solved".** The default mlp learns to
-  hover and land slowly, and many episodes end by the 1000-step time limit (mean
-  length about 900). A negative `reward.timeout` or a longer run are the
-  first things to try. "landed" means the lander came to rest anywhere, not
-  necessarily between the flags.
+- **Starvation (Snake) is treated as a terminal state; the time limit (Lunar
+  Lander) is not, by default.** `train.bootstrap_truncated = true` (Lunar Lander's
+  default) credits the step that hit a limit with the value of the state it was cut
+  at; `false` (Snake's default, and every run made before the setting existed)
+  counts nothing after the cut, so the values of states near the limit are
+  underestimated. Snake's starvation limit stays a real ending: it has its own
+  reward and the steps since the last apple are not in the observation.
+- **Lunar Lander's training scores stay below "solved".** Training episodes play
+  sampled actions; with the default mlp they average about 900 steps and many end
+  by the 1000-step time limit rather than coming to rest, so the training curve
+  flattens near 150 even when the greedy evaluation lands every game. Without
+  `train.bootstrap_truncated` the greedy policy itself hovered until the time limit.
+  "landed" means the lander came to rest anywhere, not necessarily between the flags.
 - **Attention kinds on Lunar Lander are for looking, not for scores.** With 8
   input numbers, `mlp` and `cnn` learn faster; the transformer kinds are there to
   show which inputs the decision draws on.
