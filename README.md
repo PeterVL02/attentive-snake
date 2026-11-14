@@ -70,9 +70,11 @@ Chosen with `kind` in the `[model]` section of a config (or the dropdown in the 
 |---|---|---|
 | `transformer` | One token per board cell; attention over the board. | Board heatmap |
 | `cnn` | Residual convolutions with a linear readout. Baseline. | None |
+| `resnet` | A conv stem, then residual blocks (two convolutions and a skip each) and a linear readout; residual MLP blocks on vectors. | None |
 | `hybrid` | A conv stem embeds each cell with its neighbourhood, then transformer blocks. | Board heatmap |
 | `temporal_transformer` | Attention over the cells of the last K frames plus one token per past action. | Board heatmap per frame |
 | `frame_attention` | A CNN turns each of the last K frames into one vector; attention runs across frames. | Weight per frame |
+| `lstm` | A CNN (or MLP) turns each of the last K frames into one vector and an LSTM reads them oldest to newest. | None |
 | `mlp` | A plain multilayer perceptron on the flattened observation. Baseline for vector games. | None |
 
 Every kind reads both grids and vectors; only the input stage changes. On a
@@ -83,7 +85,20 @@ input number instead of a board heatmap. `mlp`
 is the recommended kind for vector games; the app marks the recommended kinds
 for the chosen game.
 
-The two temporal kinds need history: set `history_length` (for example 4) and
+`lstm` is a DRQN-style policy with a fixed unroll length, not a recurrent agent that
+remembers a whole episode: the last K frames are encoded one by one and an LSTM reads them
+oldest to newest, but its hidden state is reset at every step, never carried from one env
+step to the next and never stored in the DQN replay buffer. Its memory is exactly
+`history_length`, like the temporal kinds. `resnet` differs from `cnn` (whose layers after the first
+are already single-convolution residual layers) in using the standard two-convolution residual block
+(`conv_layers` of them; on vectors, layer-normalised residual MLP blocks as in SimBa).
+
+Lunar Lander can hide part of what the model sees: `game.hide_velocities = true` replaces
+the three velocity numbers by zeros (the physics, score and reward still use the true
+state), so a model has to infer them from several frames and memory can matter. The rule
+is locked when forking a run.
+
+The temporal kinds (`temporal_transformer`, `frame_attention`, `lstm`) need history: set `history_length` (for example 4) and
 `history_actions = true` under `[env]`. The app does this for you.
 
 ## Training algorithms
