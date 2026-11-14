@@ -40,3 +40,23 @@ def test_frame_merges_the_payload_and_rejects_clashes() -> None:
     assert merged["width"] == 1 and merged["score"] == 1.0 and merged["view_kind"] == "board"
     with pytest.raises(ValueError, match="score"):
         frame({"width": 1, "score": 3}).to_dict()
+
+
+def test_image_window_shows_a_payload_scaled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
+    import pygame
+
+    from attentive_snake.views.image_window import ImageWindow
+
+    window = ImageWindow(3, 2, scale=10)
+    window.render(image_payload(np.full((2, 3, 3), 200, dtype=np.uint8)), caption="hi")
+    assert pygame.display.get_surface().get_size() == (30, 20)
+    assert pygame.display.get_surface().get_at((15, 10))[:3] == (200, 200, 200)
+    window.close()
+
+
+def test_element_weights_are_a_generic_frame_key() -> None:
+    frame = WatchFrame("image", {"width": 1, "height": 1, "png": ""}, 0.0, 0, None, False, None, None, "", 0, [0.5, 1.0])
+    assert frame.to_dict()["element_weights"] == [0.5, 1.0]
+    with pytest.raises(ValueError, match="clash"):
+        WatchFrame("image", {"width": 1, "height": 1, "element_weights": 1}, 0.0, 0, None, False, None, None, "", 0).to_dict()

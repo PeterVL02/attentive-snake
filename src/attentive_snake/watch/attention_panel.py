@@ -1,8 +1,10 @@
 """Which attention picture to show for a policy, decided from what the policy exposes.
 
-A policy with ``attention_maps`` and ``token_layout`` has attention; whether its tokens are
-cells (a board heatmap of one frame) or whole frames (one weight per frame) follows from
-``token_layout.tokens_per_frame``. Nothing here looks at class names.
+A policy with ``attention_maps`` and ``token_layout`` has attention. Whole frames as tokens
+(``token_layout.tokens_per_frame == 1``) give one weight per frame; otherwise the tokens
+of a frame are its positions: the cells of a grid observation (a heatmap of one frame) or
+the numbers of a vector observation (one weight per number of one frame), told apart by
+the observation's spatial shape. Nothing here looks at class names.
 """
 
 from dataclasses import dataclass
@@ -10,13 +12,14 @@ from dataclasses import dataclass
 import numpy as np
 from torch import Tensor, nn
 
-from attentive_snake.viz.attention import cls_attention_frames, cls_attention_over_frames
+from attentive_snake.viz.attention import cls_attention_elements, cls_attention_frames, cls_attention_over_frames
 
 
 @dataclass(frozen=True)
 class AttentionPanel:
     heatmap: np.ndarray | None = None  # (H, W) in [0, 1]
     frame_weights: np.ndarray | None = None  # (K,), oldest first
+    element_weights: np.ndarray | None = None  # (base elements,) of one frame, in [0, 1]
     caption: str = ""
 
 
@@ -44,7 +47,7 @@ def check_attention_options(policy: nn.Module, layer: int, frame: int) -> None:
 
 
 def attention_panel(policy: nn.Module, observation: Tensor, layer: int, frame: int) -> AttentionPanel:
-    """Attention for one observation (1, C, H, W): a cell heatmap of one frame, or one weight per frame."""
+    """Attention for one observation (batch of 1): one weight per frame, per number of one frame, or a cell heatmap of one frame."""
     if not has_attention(policy):
         return AttentionPanel(caption="model has no attention")
     layout = policy.token_layout
@@ -52,6 +55,11 @@ def attention_panel(policy: nn.Module, observation: Tensor, layer: int, frame: i
     if layout.tokens_per_frame == 1:
         weights = cls_attention_over_frames(maps, layout.num_frames, layer=layer)
         return AttentionPanel(frame_weights=weights, caption=f"layer {layer}, attention per frame")
+    spec = policy.observation_spec
+    if not spec.spatial_shape:  # a vector: the tokens of a frame are its numbers, game numbers first
+        start = layout.frame_slice(frame % layout.num_frames).start
+        weights = cls_attention_elements(maps, start, spec.base_channels, layer=layer)
+        return AttentionPanel(element_weights=weights, caption=f"layer {layer}, frame {frame}, attention per input")
     _, height, width = policy.observation_shape
     frames = cls_attention_frames(maps, layout.num_frames, height, width, layer=layer)
     return AttentionPanel(heatmap=frames[frame], caption=f"layer {layer}, frame {frame}")

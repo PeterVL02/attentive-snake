@@ -9,7 +9,8 @@ A browser shows it with ``<img src="data:image/png;base64,{png}">``. Build it wi
 ``image_payload(rgb)`` from an ``(H, W, 3)`` uint8 array (Gymnasium's
 ``render_mode="rgb_array"``). An attention heatmap in the watch frame keeps the
 observation's own grid shape; how to place it over the picture is up to the display.
-No display draws this kind yet.
+``views.image_window`` shows these payloads in a pygame window (``scripts/watch.py``);
+``png_bytes`` turns a payload back into the PNG file's bytes.
 """
 
 import base64
@@ -27,6 +28,11 @@ def image_payload(rgb: np.ndarray) -> dict[str, Any]:
         raise ValueError(f"expected an (H, W, 3) uint8 RGB array, got {rgb.shape} {rgb.dtype}.")
     height, width, _ = rgb.shape
     return {"width": width, "height": height, "png": base64.b64encode(encode_png(rgb)).decode("ascii")}
+
+
+def png_bytes(payload: dict[str, Any]) -> bytes:
+    """The PNG file of an image payload."""
+    return base64.b64decode(payload["png"])
 
 
 def encode_png(rgb: np.ndarray) -> bytes:

@@ -1,7 +1,9 @@
-"""Turn per-layer attention maps into (height, width) grids for display.
+"""Turn per-layer attention maps into what is displayed: grids, per-frame or per-element weights.
 
 Token layout: index 0 is the class token, 1.. are grid cells in row-major order
-(``cls_attention_frames`` / ``cls_attention_over_frames`` take the layout explicitly).
+(``cls_attention_frames`` / ``cls_attention_over_frames`` / ``cls_attention_elements``
+take the layout explicitly). The grid functions are for grid observations only; vector
+observations use ``cls_attention_elements`` (one weight per number).
 """
 
 from collections.abc import Sequence
@@ -79,3 +81,17 @@ def cls_attention_over_frames(
     weights = _cls_row(maps, layer, batch_index)[offset : offset + num_frames]
     total = weights.sum()
     return (weights / total if total > 0 else weights).astype(np.float32)
+
+
+def cls_attention_elements(
+    maps: Sequence[Tensor],
+    start: int,
+    count: int,
+    layer: int = -1,
+    batch_index: int = 0,
+) -> np.ndarray:
+    """Class-token attention to ``count`` element tokens starting at token ``start``: (count,), scaled to max 1.
+
+    For vector observations, whose tokens are the numbers of a frame in order.
+    """
+    return _normalise(_cls_row(maps, layer, batch_index)[start : start + count])

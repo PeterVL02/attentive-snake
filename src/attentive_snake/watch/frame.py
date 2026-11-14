@@ -13,8 +13,11 @@ class WatchFrame:
     ``score`` is the game's headline number for the episode so far, ``steps`` the steps
     taken in it. ``event`` is the game's word for what the step that produced the frame
     did (``None`` right after a reset); ``done`` means that step ended the episode.
-    ``heatmap`` (values in [0, 1], the observation's (height, width)) and
-    ``frame_weights`` belong to the observation the *next* action is chosen from, and are
+    ``heatmap`` (values in [0, 1], the observation's (height, width); grid observations
+    only), ``frame_weights`` (one per history frame, summing to 1) and ``element_weights``
+    (vector observations: class-token attention to each game number of the selected
+    history frame, in the order of ``WatchSession.info["element_names"]``, scaled to [0, 1]
+    by its maximum) belong to the observation the *next* action is chosen from, and are
     ``None`` when not requested, not available or the episode is over.
     """
 
@@ -28,6 +31,7 @@ class WatchFrame:
     frame_weights: list[float] | None  # oldest frame first
     caption: str
     episode: int  # episodes completed so far
+    element_weights: list[float] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         generic = {
@@ -38,6 +42,7 @@ class WatchFrame:
             "done": self.done,
             "heatmap": self.heatmap,
             "frame_weights": self.frame_weights,
+            "element_weights": self.element_weights,
             "caption": self.caption,
             "episode": self.episode,
         }

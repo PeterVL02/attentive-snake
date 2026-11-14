@@ -3,7 +3,7 @@
 A game declares one ``view_kind`` in its ``GameSpec`` and its ``GameEnv.view()``
 returns the matching payload for the current state. Both payloads have ``width`` and
 ``height``; their other keys must not collide with the generic watch-frame keys
-(``score steps event done heatmap frame_weights caption episode view_kind``), because
+(``score steps event done heatmap frame_weights element_weights caption episode view_kind``), because
 ``WatchFrame.to_dict`` merges the payload into the top level of the frame.
 
 * ``"board"`` (``views.board``): a small grid with a player body and one target cell,
@@ -12,7 +12,8 @@ returns the matching payload for the current state. Both payloads have ``width``
   ``env.render()`` of a Gymnasium game).
 
 Displays: the browser draws payloads itself; ``views.board_window`` draws a board in a
-pygame window (``scripts/watch.py`` and Snake's human play). Importing this package does
+pygame window (``scripts/watch.py`` and Snake's human play), ``views.image_window`` shows
+an image payload in one (``scripts/watch.py``). Importing this package does
 not import pygame.
 """
 

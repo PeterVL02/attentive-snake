@@ -2,11 +2,10 @@
 
 from pathlib import Path
 
-import numpy as np
 import torch
 
 from attentive_snake.config import load_experiment
-from attentive_snake.factory import make_env, make_policy
+from attentive_snake.factory import make_env, make_policy, observation_spec
 from attentive_snake.games.registry import get_game
 from attentive_snake.models.registry import KIND_INFO
 from attentive_snake.run_dir import config_path
@@ -18,6 +17,7 @@ from attentive_snake.watch.attention_panel import (
     check_attention_options,
     num_attention_layers,
 )
+from attentive_snake.watch.element_names import element_names
 from attentive_snake.watch.frame import WatchFrame
 
 
@@ -43,10 +43,12 @@ class WatchSession:
         if checkpoint is None:
             raise FileNotFoundError(f"no checkpoint found in {run_dir}")
         self._env = make_env(config, seed=seed)
-        self._view_kind = get_game(config.game_name).view_kind
+        game = get_game(config.game_name)
+        self._view_kind = game.view_kind
         self._policy = make_policy(config, self._env)
         env_steps = load_checkpoint(checkpoint, self._policy)
         self._policy.eval()
+        self._observation = self._env.reset()  # GameEnv contract: view() only after a reset
         view = self._env.view()
         self.info = {
             "game": config.game_name,
@@ -56,6 +58,7 @@ class WatchSession:
             "num_layers": num_attention_layers(self._policy),
             "history_length": config.env.history_length,
             "attention_view": KIND_INFO[config.model.kind].attention_view,
+            "element_names": element_names(game, observation_spec(config, self._env)),  # vector games only
             "checkpoint": str(checkpoint),
             "env_steps": env_steps,
             "width": view["width"],  # of the view: cells for "board", pixels for "image"
@@ -64,7 +67,6 @@ class WatchSession:
         self._sample, self._attention, self._layer, self._frame = sample, attention, layer, frame
         check_attention_options(self._policy, layer, frame)
         self._episode = 0
-        self._observation = np.zeros(0)
         self._event: str | None = None
         self._done = False
         self._score = 0.0
@@ -121,6 +123,7 @@ class WatchSession:
             frame_weights=None if panel.frame_weights is None else panel.frame_weights.tolist(),
             caption=panel.caption,
             episode=self._episode,
+            element_weights=None if panel.element_weights is None else panel.element_weights.tolist(),
         )
 
     def _panel(self) -> AttentionPanel:

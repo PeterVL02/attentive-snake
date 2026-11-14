@@ -659,3 +659,15 @@ def test_unknown_or_malicious_games_in_bodies_are_rejected(client: TestClient, p
     tables["game"]["name"] = game
     assert client.post("/api/runs", json={"name": "new", "config": tables}).status_code == 422
     assert sorted(path.name for path in paths.runs_dir.iterdir()) == ["snake"]
+
+
+def test_watch_lunar_lander_with_attention_over_its_numbers(client: TestClient, paths: AppPaths):
+    """A real Gymnasium game: the session resets before its first view (Gymnasium cannot render before a reset)."""
+    make_run(paths, "lander", game={"name": "lunar_lander"})
+    created = client.post("/api/watch", json={"game": "lunar_lander", "run": "lander", "seed": 0})
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["info"]["element_names"][:2] == ["x", "y"] and len(body["info"]["element_names"]) == 8
+    assert (body["frame"]["width"], body["frame"]["height"]) == (600, 400) and body["frame"]["heatmap"] is None
+    steps = client.post(f"/api/watch/{body['id']}/step", json={"count": 3, "frames": "last"}).json()["frames"]
+    assert "png" in steps[-1] and len(steps[-1]["element_weights"]) == 8
