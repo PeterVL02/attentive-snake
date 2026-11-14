@@ -176,7 +176,7 @@ The window shows the run's game (it reads the game from the run's `config.toml`)
 | `transformer`, `hybrid` | heatmap of what the class token attends to on the board (`--layer` applies, `--frame` must stay -1/0) | one weight per input number in the window title, e.g. `x 0.12, y 1.00, ...` |
 | `temporal_transformer` | heatmap for one of the history frames (`--layer`, `--frame`) | one weight per number of one history frame (`--frame`) |
 | `frame_attention` | one weight per history frame, printed in the window title (`--layer`) | the same |
-| `cnn`, `mlp` | nothing: there is no attention, so `--attention` is refused | the same |
+| `cnn`, `resnet`, `lstm`, `mlp` | nothing: there is no attention, so `--attention` is refused | the same |
 
 ## Evaluate a trained agent
 
@@ -299,15 +299,35 @@ Set `kind` in `[model]` and `history_length` / `history_actions` in `[env]`.
 | --- | --- | --- | --- |
 | `transformer` | each board cell is a token | each number is a token | `history_length = 1` |
 | `cnn` | convolutional baseline, no attention | an MLP (nothing to convolve); use `mlp` instead | `history_length = 1` |
+| `resnet` | residual conv blocks (two convs and a skip each; `conv_layers` blocks), no attention | residual MLP blocks with layer norm (as in SimBa), `conv_layers` blocks | `history_length = 1` |
 | `hybrid` | conv stem, then transformer over cells | per-number MLP stem, then transformer over numbers | `history_length = 1` |
 | `temporal_transformer` | attention over the cells of several frames (plus action tokens) | attention over every number of several frames (plus action tokens) | `history_length = 4`, `history_actions = true` |
 | `frame_attention` | CNN per frame, attention across frames | MLP per frame, attention across frames | `history_length = 4`, `history_actions = true` |
+| `lstm` | CNN per frame, an LSTM over the frames | MLP per frame, an LSTM over the frames | `history_length = 4` or more, `history_actions = true` |
 | `mlp` | flattened board, weak baseline | plain MLP; recommended | `history_length = 1` |
 
 The non-temporal kinds see stacked frames only as extra input channels (extra values per number). Which `[model]` fields each kind uses
 (for example `cnn` ignores `num_heads`) is listed by the app's config page. Every kind works with both
 algorithms: the trunk is the same, only the head differs (PPO: a policy head and a value head; DQN: one Q-value
 per action), and attention is shown the same way.
+
+`lstm` is a DRQN-style policy with a fixed unroll length. The `history_length` frames (and the past actions, with
+`history_actions = true`) are encoded one by one and an LSTM reads them oldest to newest; its output after the newest
+frame feeds the head. Its memory is exactly that window: the hidden state starts at zero at every step, is not carried
+from one env step to the next and is not stored in the DQN replay buffer. `kind = "resnet"` and `"lstm"` have no
+attention, so Watch shows no attention panel for them. `resnet` uses `d_model`, `conv_channels`, `conv_layers` (the number of
+residual blocks) and, on boards, `kernel_size`; `lstm` uses those plus `num_layers` (LSTM layers) with `conv_*` building its per-frame encoder.
+
+Memory only matters when the observation hides something. Lunar Lander's `game.hide_velocities = true` shows the model zeros
+instead of its three velocity numbers (the physics, score and reward still use the true state), so it has to infer them from
+how position and angle change over several frames:
+
+```bash
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/blind-lstm --set game.hide_velocities=true \
+    --set model.kind=lstm --set env.history_length=8
+```
+
+`hide_velocities` is locked when forking a run (it changes what the observation means).
 
 ## Choosing an algorithm
 
