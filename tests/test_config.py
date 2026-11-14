@@ -6,7 +6,7 @@ import pytest
 
 from attentive_snake.config import EnvConfig, ExperimentConfig, load_experiment, save_experiment
 from attentive_snake.config.dataclass_table import dataclass_from_table, dataclass_to_table
-from attentive_snake.config.experiment import SECTIONS, section_types
+from attentive_snake.config.experiment import section_names, section_types
 from attentive_snake.config.experiment_io import experiment_from_tables, experiment_to_tables
 from attentive_snake.config.layout import default_config_path, rewards_dir
 from attentive_snake.config.reward_schemes import load_scheme
@@ -15,6 +15,7 @@ from attentive_snake.config.toml_writer import format_tables, format_value
 from attentive_snake.games.snake.reward import SnakeRewardConfig
 from attentive_snake.games.snake.config import SnakeConfig
 from attentive_snake.training import TrainConfig
+from attentive_snake.training.ppo.config import PpoConfig
 
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
 DEFAULT_TOML = CONFIGS / "snake" / "default.toml"
@@ -94,8 +95,9 @@ def test_none_in_field_with_non_none_default_cannot_be_written() -> None:
 def test_experiment_save_load_round_trip(tmp_path) -> None:
     config = ExperimentConfig(
         game=SnakeConfig(width=6, height=5, max_steps_without_food=40),
-        train=TrainConfig(total_env_steps=1000, target_kl=0.03, checkpoint_dir=Path("runs/x")),
+        train=TrainConfig(total_env_steps=1000, checkpoint_dir=Path("runs/x")),
         env=EnvConfig(num_envs=3),
+        algorithm_settings=PpoConfig(target_kl=0.03),
     )
     path = tmp_path / "nested" / "config.toml"
     save_experiment(config, path)
@@ -135,8 +137,9 @@ def test_every_game_has_a_default_config_listing_every_field_and_a_default_schem
     tables = tomllib.loads(path.read_text())
     assert tables["game"]["name"] == game
     assert "reward" not in tables  # the default reward values live only in the default scheme
-    types = section_types(game)
-    for section in SECTIONS:
+    algorithm = config.train.algorithm
+    types = section_types(game, algorithm)
+    for section in section_names(algorithm):
         if section == "reward":
             continue
         for field in dataclasses.fields(types[section]):

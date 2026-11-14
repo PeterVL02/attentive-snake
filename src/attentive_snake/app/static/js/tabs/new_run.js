@@ -15,12 +15,11 @@ const COMMON_TRAIN = [
   ["env", "num_envs"],
   ["train", "learning_rate"],
   ["train", "anneal_lr"],
-  ["train", "entropy_coef"],
   ["train", "seed"],
   ["train", "device"],
   ["train", "keep_checkpoints"],
 ];
-const HIDDEN = new Set(["train.checkpoint_dir", "model.kind"]); // set by the app / by the kind dropdown
+const HIDDEN = new Set(["train.checkpoint_dir", "model.kind", "train.algorithm"]); // set by the app / by the kind dropdown
 const STATE_FIELDS = ["history_length", "history_actions"];
 const DEFAULT_SCHEME = "default"; // configs/<game>/rewards/default.toml: the single source of the default reward values
 const BUILT_IN = ""; // option value used only when no scheme can be listed: the code defaults (same values)
@@ -135,7 +134,8 @@ function updateSummary() {
 /** The form as experiment tables: {tables, errors}; field errors are shown inline. Null while loading. */
 function currentTables() {
   if (!game) return null;
-  const tables = { game: { name: game.name }, model: { kind: picker.value() }, train: {}, env: {}, evaluation: {} };
+  const algorithm = defaults.train.algorithm;
+  const tables = { game: { name: game.name }, model: { kind: picker.value() }, train: { algorithm }, [algorithm]: {}, env: {}, evaluation: {} };
   let errors = 0;
   for (const [key, widget] of Object.entries(widgets)) {
     const [section, name] = key.split(".");
@@ -251,6 +251,7 @@ function build() {
   const advanced = [
     ...sectionWidgets("train", schema.sections.train.map((f) => f.name).filter((n) => !commonKeys.has(`train.${n}`) && !HIDDEN.has(`train.${n}`))),
     ...sectionWidgets("env", schema.sections.env.map((f) => f.name).filter((n) => !commonKeys.has(`env.${n}`) && !STATE_FIELDS.includes(n))),
+    ...sectionWidgets(defaults.train.algorithm, schema.sections[defaults.train.algorithm].map((f) => f.name)),
   ];
 
   const evaluationWidgets = sectionWidgets("evaluation", schema.sections.evaluation.map((f) => f.name));

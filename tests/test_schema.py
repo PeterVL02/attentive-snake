@@ -5,7 +5,9 @@ import pytest
 import torch
 
 from attentive_snake.config import ExperimentConfig
+from attentive_snake.config.experiment import section_types
 from attentive_snake.config.schema import experiment_schema
+from attentive_snake.training.algorithms import algorithm_names
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.registry import KIND_INFO, POLICY_KINDS, build_policy
 from attentive_snake.observation_spec import ObservationSpec
@@ -15,10 +17,9 @@ SCHEMA = experiment_schema()
 
 def test_sections_in_order_and_cover_every_dataclass_field() -> None:
     assert SCHEMA["game"] == "snake"
-    assert list(SCHEMA["sections"]) == ["game", "reward", "model", "train", "env", "evaluation"]
-    experiment = ExperimentConfig()
+    assert list(SCHEMA["sections"]) == ["game", "reward", "model", "train", "env", "evaluation", *algorithm_names()]
     for section, rows in SCHEMA["sections"].items():
-        fields = [f.name for f in dataclasses.fields(getattr(experiment, section))]
+        fields = [f.name for f in dataclasses.fields(section_types("snake", section if section in algorithm_names() else "ppo")[section])]
         assert [row["name"] for row in rows] == fields
     assert "name" not in [row["name"] for row in SCHEMA["sections"]["game"]]  # [game] name is the top-level "game"
 
@@ -44,7 +45,7 @@ def test_nullable_and_choices_and_defaults() -> None:
     rows = {(s, r["name"]): r for s, rs in SCHEMA["sections"].items() for r in rs}
     assert rows["game", "max_steps_without_food"]["nullable"] and rows["game", "max_steps_without_food"]["default"] is None
     assert rows["train", "checkpoint_dir"]["type"] == "path"
-    assert rows["train", "target_kl"]["type"] == "float"
+    assert rows["ppo", "target_kl"]["type"] == "float"
     assert not rows["train", "gamma"]["nullable"] and rows["train", "gamma"]["default"] == 0.99
     assert rows["model", "kind"]["choices"] == list(POLICY_KINDS)
     assert rows["model", "d_model"]["choices"] is None

@@ -4,12 +4,13 @@ import sys
 import pytest
 
 from attentive_snake.config import EnvConfig, ExperimentConfig, save_experiment
-from attentive_snake.factory import make_policy, make_vec_env
+from attentive_snake.factory import make_policy, make_vec_env, make_trainer
 from attentive_snake.games.snake.config import SnakeConfig
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.registry import KIND_INFO, POLICY_KINDS
 from attentive_snake.run_dir import config_path
-from attentive_snake.training import NullLogger, TrainConfig, Trainer
+from attentive_snake.training import NullLogger, TrainConfig
+from attentive_snake.training.ppo.config import PpoConfig
 from attentive_snake.watch import WatchFrame, WatchSession
 
 
@@ -18,12 +19,13 @@ def make_run(run_dir, kind: str, history: int = 1, actions: bool = False) -> Exp
     config = ExperimentConfig(
         game=SnakeConfig(width=5, height=5, max_steps_without_food=30),
         model=ModelConfig(kind=kind, d_model=16, num_heads=2, num_layers=2, conv_channels=8, conv_layers=2),
-        train=TrainConfig(total_env_steps=32, rollout_length=8, num_minibatches=2, checkpoint_dir=run_dir, device="cpu"),
+        train=TrainConfig(total_env_steps=32, checkpoint_dir=run_dir, device="cpu"),
+        algorithm_settings=PpoConfig(rollout_length=8, num_minibatches=2),
         env=EnvConfig(num_envs=2, history_length=history, history_actions=actions),
     )
     save_experiment(config, config_path(run_dir))
     env = make_vec_env(config)
-    Trainer(make_policy(config, env), env, config.train, NullLogger()).train()
+    make_trainer(config, make_policy(config, env), env, NullLogger()).train()
     return config
 
 

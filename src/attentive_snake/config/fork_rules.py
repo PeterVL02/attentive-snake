@@ -1,10 +1,11 @@
 """Which settings a run continued from another run's checkpoint (a fork) must share with its parent.
 
 The parent's weights must fit the new network and keep their meaning, so the game itself,
-the whole ``[model]``, the observation layout (``env.history_length``,
+the training algorithm (its head and optimizer state), the whole ``[model]``, the observation layout (``env.history_length``,
 ``env.history_actions``) and the game rules its ``GameSpec.locked_rules`` names (for
 Snake: the board size and the start length) are locked. Everything else (rewards,
-training settings, the number of parallel games, the other rules) may change.
+training settings including the algorithm's own section, the number of parallel games,
+the other rules) may change.
 """
 
 import dataclasses
@@ -14,7 +15,9 @@ from attentive_snake.games.registry import DEFAULT_GAME, get_game
 from attentive_snake.models.config import ModelConfig
 
 GAME_KEY = f"game.{GAME_NAME_KEY}"
+ALGORITHM_FIELD = "train.algorithm"
 _GAME_REASON = "the parent's weights were trained on that game"
+_ALGORITHM_REASON = "the parent's network ends in the head of its algorithm (policy and value, or Q-values) and its optimizer state belongs to it"
 _MODEL_REASON = "the parent's weights only fit the same network"
 _INPUT_REASON = "it changes the observation the parent's weights were trained on"
 _LOCKED_ENV = {"history_length": _INPUT_REASON, "history_actions": _INPUT_REASON}
@@ -25,7 +28,7 @@ def locked_fields(game: str = DEFAULT_GAME) -> dict[str, str]:
     model = {f"model.{field.name}": _MODEL_REASON for field in dataclasses.fields(ModelConfig)}
     rules = {f"game.{name}": reason for name, reason in get_game(game).locked_rules.items()}
     env = {f"env.{name}": reason for name, reason in _LOCKED_ENV.items()}
-    return {GAME_KEY: _GAME_REASON} | model | rules | env
+    return {GAME_KEY: _GAME_REASON, ALGORITHM_FIELD: _ALGORITHM_REASON} | model | rules | env
 
 
 def locked_field_changes(parent: ExperimentConfig, child: ExperimentConfig) -> list[str]:

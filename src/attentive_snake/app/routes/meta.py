@@ -1,4 +1,4 @@
-"""Static information for the UI: the games, the config schema and default experiment of a game, the fork rule and the CLI cheat sheet."""
+"""Static information for the UI: the games, the config schema and default experiment of a game (per algorithm), the fork rule and the CLI cheat sheet."""
 
 from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
@@ -7,10 +7,11 @@ from attentive_snake.app.config_json import experiment_to_json
 from attentive_snake.app.errors import not_found
 from attentive_snake.app.game_lookup import DEFAULT_GAME, GameParam, game_info, known_game
 from attentive_snake.app.paths import AppPaths
-from attentive_snake.config import load_experiment
+from attentive_snake.config.defaults import default_experiment
 from attentive_snake.config.fork_rules import locked_fields
 from attentive_snake.config.layout import default_config_path
 from attentive_snake.config.schema import experiment_schema
+from attentive_snake.training.algorithms import get_algorithm
 from attentive_snake.games.registry import game_names
 
 
@@ -27,11 +28,18 @@ def make_router(paths: AppPaths) -> APIRouter:
         return experiment_schema(known_game(game).name)
 
     @router.get("/defaults")
-    def defaults(game: GameParam = DEFAULT_GAME) -> dict:
-        path = default_config_path(paths.configs_dir, known_game(game).name)
+    def defaults(game: GameParam = DEFAULT_GAME, algorithm: str | None = None) -> dict:
+        """The game's default experiment; with ``algorithm``, its defaults for that algorithm (404 if unknown)."""
+        name = known_game(game).name
+        path = default_config_path(paths.configs_dir, name)
         if not path.is_file():
             raise not_found(f"{path} does not exist.")
-        return experiment_to_json(load_experiment(path))
+        if algorithm is not None:
+            try:
+                get_algorithm(algorithm)
+            except ValueError as error:
+                raise not_found(str(error)) from error
+        return experiment_to_json(default_experiment(paths.configs_dir, name, algorithm))
 
     @router.get("/fork-rules")
     def fork_rules(game: GameParam = DEFAULT_GAME) -> dict:

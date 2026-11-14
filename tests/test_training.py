@@ -11,6 +11,7 @@ from attentive_snake.training import (
     NullLogger,
     TrainConfig,
     Trainer,
+    build_trainer,
     fork_from_checkpoint,
     latest_checkpoint,
     list_checkpoints,
@@ -19,11 +20,12 @@ from attentive_snake.training import (
     resume_from_checkpoint,
     save_checkpoint,
 )
-from attentive_snake.training.collector import RolloutCollector
 from attentive_snake.training.metrics import EpisodeStatsWindow
-from attentive_snake.training.ppo import explained_variance, normalize, ppo_loss
-from attentive_snake.training.rollout import RolloutBuffer, compute_gae, flatten_rollout
-from attentive_snake.training.schedule import linear_decay
+from attentive_snake.training.ppo.collector import RolloutCollector
+from attentive_snake.training.ppo.config import PpoConfig
+from attentive_snake.training.ppo.loss import explained_variance, normalize, ppo_loss
+from attentive_snake.training.ppo.rollout import RolloutBuffer, compute_gae, flatten_rollout
+from attentive_snake.training.schedule import crossed_multiple, linear_decay
 
 # --------------------------------------------------------------------------- fakes
 
@@ -326,9 +328,9 @@ def _corridor_trainer(seed: int, total_env_steps: int, **overrides) -> Trainer:
     env = CorridorVecEnv(num_envs=8, length=5, max_steps=20)
     torch.manual_seed(seed)
     policy = MLPPolicy(env.observation_shape, env.num_actions)
-    settings = dict(rollout_length=32, num_epochs=4, num_minibatches=4, learning_rate=3e-3, gamma=0.9, device="cpu")
+    settings = dict(learning_rate=3e-3, gamma=0.9, device="cpu", log_interval=1)
     config = TrainConfig(total_env_steps=total_env_steps, seed=seed, **(settings | overrides))
-    return Trainer(policy, env, config, logger=NullLogger())
+    return build_trainer(policy, env, config, PpoConfig(rollout_length=32, num_epochs=4, num_minibatches=4), NullLogger())
 
 
 def test_end_to_end_learning_on_corridor() -> None:
@@ -356,7 +358,7 @@ def test_training_is_deterministic_on_cpu() -> None:
 
 
 def test_trainer_writes_checkpoints(tmp_path) -> None:
-    trainer = _corridor_trainer(seed=0, total_env_steps=3 * 256, checkpoint_dir=tmp_path, checkpoint_interval=2)
+    trainer = _corridor_trainer(seed=0, total_env_steps=3 * 256, checkpoint_dir=tmp_path, checkpoint_interval=512)
     trainer.train()
     assert sorted(p.name for p in tmp_path.iterdir()) == ["checkpoint_0000000512.pt", "checkpoint_0000000768.pt"]
 
@@ -371,21 +373,21 @@ def test_resume_continues_counters_schedule_and_optimizer_state(tmp_path) -> Non
     # A fresh trainer with a different initialisation and a doubled budget.
     second = _corridor_trainer(seed=5, total_env_steps=8 * steps_per_update, checkpoint_dir=tmp_path)
     assert resume_from_checkpoint(second, checkpoint) == 4 * steps_per_update
-    assert second.env_steps == 4 * steps_per_update and second.completed_updates == 4
+    assert second.env_steps == 4 * steps_per_update and second.completed_iterations == 4
     for a, b in zip(first.policy.state_dict().values(), second.policy.state_dict().values()):
         torch.testing.assert_close(a, b, rtol=0, atol=0)
-    first_state = first.optimizer.state_dict()["state"]
-    second_state = second.optimizer.state_dict()["state"]
+    first_state = first.learner.optimizer.state_dict()["state"]
+    second_state = second.learner.optimizer.state_dict()["state"]
     assert second_state[0]["step"] == first_state[0]["step"] == 4 * 4 * 4  # updates * epochs * minibatches
     torch.testing.assert_close(second_state[0]["exp_avg"], first_state[0]["exp_avg"], rtol=0, atol=0)
 
     history = second.train()
-    assert [record["update"] for record in history] == [5.0, 6.0, 7.0, 8.0]
+    assert [record["iteration"] for record in history] == [5.0, 6.0, 7.0, 8.0]
     assert [record["env_steps"] for record in history] == [k * steps_per_update for k in (5, 6, 7, 8)]
     # LR follows the schedule over the new total: update index 4 of 8.
     assert history[0]["learning_rate"] == pytest.approx(linear_decay(3e-3, 4, 8))
     assert second.env_steps == 8 * steps_per_update
-    assert second.optimizer.state_dict()["state"][0]["step"] == 8 * 4 * 4
+    assert second.learner.optimizer.state_dict()["state"][0]["step"] == 8 * 4 * 4
     assert latest_checkpoint(tmp_path) == tmp_path / "checkpoint_0000002048.pt"
 
 
@@ -415,7 +417,7 @@ def test_prune_checkpoints_keeps_the_given_one_and_ignores_other_files(tmp_path)
 def test_trainer_without_keep_checkpoints_leaves_only_the_latest(tmp_path) -> None:
     (tmp_path / "notes.txt").touch()
     trainer = _corridor_trainer(
-        seed=0, total_env_steps=4 * 256, checkpoint_dir=tmp_path, checkpoint_interval=1, keep_checkpoints=False
+        seed=0, total_env_steps=4 * 256, checkpoint_dir=tmp_path, checkpoint_interval=256, keep_checkpoints=False
     )
     trainer.train()
     assert [path.name for path in list_checkpoints(tmp_path)] == ["checkpoint_0000001024.pt"]
@@ -434,14 +436,26 @@ def test_fork_loads_parent_weights_and_optimizer_but_starts_its_own_counter(tmp_
 
     child = _corridor_trainer(seed=7, total_env_steps=3 * 256, checkpoint_dir=child_dir, learning_rate=1e-3)
     assert fork_from_checkpoint(child, checkpoint) == 512
-    assert child.env_steps == 0 and child.completed_updates == 0
+    assert child.env_steps == 0 and child.completed_iterations == 0
     for a, b in zip(parent.policy.state_dict().values(), child.policy.state_dict().values()):
         torch.testing.assert_close(a, b, rtol=0, atol=0)
-    parent_state = parent.optimizer.state_dict()["state"][0]
-    torch.testing.assert_close(child.optimizer.state_dict()["state"][0]["exp_avg"], parent_state["exp_avg"], rtol=0, atol=0)
+    parent_state = parent.learner.optimizer.state_dict()["state"][0]
+    torch.testing.assert_close(child.learner.optimizer.state_dict()["state"][0]["exp_avg"], parent_state["exp_avg"], rtol=0, atol=0)
 
     history = child.train()
-    assert [record["update"] for record in history] == [1.0, 2.0, 3.0]
+    assert [record["iteration"] for record in history] == [1.0, 2.0, 3.0]
     assert history[0]["learning_rate"] == pytest.approx(1e-3)  # the child's own LR schedule, from its start
     assert [path.name for path in list_checkpoints(child_dir)] == ["checkpoint_0000000768.pt"]
     assert sorted(path.name for path in parent_dir.iterdir()) == parent_files  # the parent is untouched
+
+
+def test_crossed_multiple_fires_once_per_passed_multiple() -> None:
+    assert crossed_multiple(0, 10, 10) and crossed_multiple(9, 25, 10)
+    assert not crossed_multiple(10, 19, 10) and not crossed_multiple(0, 9, 10)
+
+
+def test_logging_and_checkpoints_follow_env_step_intervals(tmp_path) -> None:
+    trainer = _corridor_trainer(seed=0, total_env_steps=5 * 256, checkpoint_dir=tmp_path, log_interval=600, checkpoint_interval=700)
+    history = trainer.train()
+    assert [record["env_steps"] for record in history] == [768, 1280]  # passing 600, then the end
+    assert [p.name for p in list_checkpoints(tmp_path)] == ["checkpoint_0000000768.pt", "checkpoint_0000001280.pt"]

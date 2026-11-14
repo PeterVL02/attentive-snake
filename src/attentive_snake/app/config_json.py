@@ -4,7 +4,7 @@ import dataclasses
 from pathlib import Path
 from typing import Any
 
-from attentive_snake.config.experiment import GAME_NAME_KEY, SECTIONS, ExperimentConfig
+from attentive_snake.config.experiment import GAME_NAME_KEY, ExperimentConfig
 
 
 def dataclass_to_json(obj: Any) -> dict[str, Any]:
@@ -16,7 +16,7 @@ def dataclass_to_json(obj: Any) -> dict[str, Any]:
 
 def experiment_to_json(config: ExperimentConfig) -> dict[str, dict[str, Any]]:
     """``{section: {field: value}}`` for an ``ExperimentConfig``; ``game`` starts with ``name`` (the game)."""
-    tables = {section: dataclass_to_json(getattr(config, section)) for section in SECTIONS}
+    tables = {section: dataclass_to_json(value) for section, value in config.sections().items()}
     tables["game"] = {GAME_NAME_KEY: config.game_name, **tables["game"]}
     return tables
 

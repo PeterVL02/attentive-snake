@@ -63,7 +63,7 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
 
   const usedModelFields = new Set(["kind", ...(schema.model_kinds[config.model.kind]?.fields ?? [])]);
   const rewardWidgets = fieldsOf("reward");
-  const trainWidgets = fieldsOf("train");
+  const trainWidgets = [...fieldsOf("train"), ...fieldsOf(config.train.algorithm)];
   const evaluationWidgets = fieldsOf("evaluation");
   const runWidgets = [...fieldsOf("env", (s) => !(`env.${s.name}` in locked)), ...fieldsOf("game", (s) => !(`game.${s.name}` in locked))];
   const lockedShown = [

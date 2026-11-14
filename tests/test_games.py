@@ -13,7 +13,7 @@ from attentive_snake.config import load_experiment, save_experiment
 from attentive_snake.config.experiment_io import experiment_from_tables
 from attentive_snake.config.fork_rules import locked_fields, require_forkable
 from attentive_snake.config.schema import experiment_schema
-from attentive_snake.factory import make_env, make_policy, make_vec_env, observation_spec
+from attentive_snake.factory import make_env, make_policy, make_vec_env, observation_spec, make_trainer
 from attentive_snake.games.registry import GameRegistryError, game_names, get_game, reload_games
 from attentive_snake.games.snake import GAME as SNAKE
 from attentive_snake.games.validation import spec_problems
@@ -81,7 +81,8 @@ def test_a_dropped_in_game_trains_and_is_watched_through_the_generic_code(extra_
         "game": {"name": "walk", "length": 4},
         "reward": {"goal": 2.0},
         "model": {"kind": "temporal_transformer", "d_model": 16, "num_heads": 2, "num_layers": 1, "mlp_ratio": 1},
-        "train": {"total_env_steps": 64, "rollout_length": 8, "num_epochs": 1, "num_minibatches": 2, "device": "cpu", "checkpoint_dir": str(tmp_path / "run")},
+        "train": {"total_env_steps": 64, "device": "cpu", "log_interval": 1, "checkpoint_dir": str(tmp_path / "run")},
+        "ppo": {"rollout_length": 8, "num_epochs": 1, "num_minibatches": 2},
         "env": {"num_envs": 4, "history_length": 2, "history_actions": True},
     }
     config = experiment_from_tables(tables)
@@ -91,7 +92,7 @@ def test_a_dropped_in_game_trains_and_is_watched_through_the_generic_code(extra_
     spec = observation_spec(config, env)
     assert (spec.kind, spec.shape, spec.base_channels, spec.action_channels) == ("grid", (8, 1, 4), 2, 2)
     policy = make_policy(config, env)
-    history = Trainer(policy, env, config.train, NullLogger()).train()
+    history = make_trainer(config, policy, env, NullLogger()).train()
     assert len(history) == 2 and "mean_score" in history[-1]  # the walker reaches the goal in 12 steps or is cut off
 
     schema = experiment_schema("walk")

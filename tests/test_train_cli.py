@@ -24,12 +24,13 @@ num_layers = 1
 mlp_ratio = 2
 [train]
 total_env_steps = 64
+log_interval = 1
+checkpoint_interval = 16
+device = "cpu"
+[ppo]
 rollout_length = 8
 num_epochs = 1
 num_minibatches = 2
-log_interval = 1
-checkpoint_interval = 1
-device = "cpu"
 [env]
 num_envs = 2
 """

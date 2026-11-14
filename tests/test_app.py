@@ -47,14 +47,12 @@ def tiny_tables(kind: str = "transformer", total_env_steps: int = 64, **train) -
         "model": {"kind": kind, "d_model": 16, "num_heads": 2, "num_layers": 1, "mlp_ratio": 2, "conv_channels": 8, "conv_layers": 1},
         "train": {
             "total_env_steps": total_env_steps,
-            "rollout_length": 8,
-            "num_epochs": 1,
-            "num_minibatches": 2,
             "log_interval": 1,
-            "checkpoint_interval": 2,
+            "checkpoint_interval": 32,  # every second update of 16 env steps
             "device": "cpu",
             **train,
         },
+        "ppo": {"rollout_length": 8, "num_epochs": 1, "num_minibatches": 2},
         "env": {"num_envs": 2, "history_length": history, "history_actions": False},
     }
 
@@ -169,11 +167,12 @@ def test_schema_defaults_and_page(client: TestClient):
     assert client.get("/api/schema", params={"game": "snake"}).json() == client.get("/api/schema").json()
     schema = client.get("/api/schema").json()
     assert schema["game"] == "snake"
-    assert set(schema["sections"]) == {"game", "reward", "model", "train", "env", "evaluation"}
+    assert set(schema["sections"]) == {"game", "reward", "model", "train", "env", "evaluation", *schema["algorithms"]}
+    assert schema["algorithms"]["ppo"]["section"] == "ppo" and "ppo" in schema["sections"]
     assert set(schema["model_kinds"]) >= set(KINDS)  # more kinds may exist (e.g. for vector observations)
     defaults = client.get("/api/defaults").json()
     assert defaults["model"]["kind"] == "transformer" and defaults["game"]["name"] == "snake"
-    assert defaults["train"]["target_kl"] is None  # nullable fields are present as null
+    assert defaults["ppo"]["target_kl"] is None  # nullable fields are present as null
     # The forms are built from the schema: bootstrap_truncated shows up with its help text (off for Snake).
     bootstrap = next(row for row in schema["sections"]["train"] if row["name"] == "bootstrap_truncated")
     assert bootstrap["type"] == "bool" and "cut short by a limit" in bootstrap["description"]
@@ -505,9 +504,9 @@ def test_compare_runs(client: TestClient, paths: AppPaths):
 
 def test_differing_fields():
     base = experiment_to_json(ExperimentConfig())
-    other = experiment_to_json(experiment_from_tables({"game": {"width": 6}, "train": {"target_kl": 0.02}}))
+    other = experiment_to_json(experiment_from_tables({"game": {"width": 6}, "ppo": {"target_kl": 0.02}}))
     diff = differing_fields({"x": base, "y": other})
-    assert [(d["section"], d["field"]) for d in diff] == [("game", "width"), ("train", "target_kl")]
+    assert [(d["section"], d["field"]) for d in diff] == [("game", "width"), ("ppo", "target_kl")]
     assert diff[1]["values"] == {"x": None, "y": 0.02}
     assert differing_fields({"x": base}) == []
     assert differing_fields({"x": {"s": {"v": 1}}, "y": {"s": {"v": 1.0}}}) == []  # int vs float is equal
@@ -799,7 +798,7 @@ def test_the_forms_config_with_evaluation_trains_and_a_config_without_it_still_r
     form = client.get("/api/defaults").json()
     assert "evaluation" in form
     small = tiny_tables(total_env_steps=32)
-    for section in ("game", "model", "train", "env"):
+    for section in ("game", "model", "train", "ppo", "env"):
         form[section].update(small[section])
     form["train"]["checkpoint_dir"] = None
     form["evaluation"].update({"interval": 16, "games": 2})

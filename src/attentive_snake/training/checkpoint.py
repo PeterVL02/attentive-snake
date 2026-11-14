@@ -1,7 +1,9 @@
-"""Saving and restoring training state (model, optimizer, environment-step counter)."""
+"""Saving and restoring training state (model, optimizer, environment-step counter, the learner's extra state)."""
 
 import re
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import torch
 from torch import nn
@@ -50,15 +52,28 @@ def prune_checkpoints(directory: Path, keep: Path) -> list[Path]:
     return deleted
 
 
-def save_checkpoint(path: Path, policy: nn.Module, optimizer: torch.optim.Optimizer, env_steps: int) -> None:
+def save_checkpoint(
+    path: Path,
+    policy: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    env_steps: int,
+    learner_state: Mapping[str, Any] | None = None,
+) -> None:
+    """``learner_state``: what the algorithm keeps besides policy and optimizer (``Learner.extra_state``), saved under ``"learner"``."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     state = {
         "policy": policy.state_dict(),
         "optimizer": optimizer.state_dict(),
         "env_steps": env_steps,
+        "learner": dict(learner_state or {}),
     }
     torch.save(state, path)
+
+
+def read_checkpoint(path: Path, map_location: str | torch.device = "cpu") -> dict[str, Any]:
+    """The whole saved state: ``{"policy", "optimizer", "env_steps", "learner"}`` (tensors only, no code is loaded)."""
+    return torch.load(Path(path), map_location=map_location, weights_only=True)
 
 
 def load_checkpoint(
@@ -68,7 +83,7 @@ def load_checkpoint(
     map_location: str | torch.device = "cpu",
 ) -> int:
     """Load state into ``policy`` (and ``optimizer`` if given); returns the saved env-step count."""
-    state = torch.load(Path(path), map_location=map_location, weights_only=True)
+    state = read_checkpoint(path, map_location)
     policy.load_state_dict(state["policy"])
     if optimizer is not None:
         optimizer.load_state_dict(state["optimizer"])

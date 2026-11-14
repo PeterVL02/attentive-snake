@@ -27,12 +27,13 @@ conv_channels = 8
 conv_layers = 1
 [train]
 total_env_steps = 192
+log_interval = 1
+checkpoint_interval = 100000
+device = "cpu"
+[ppo]
 rollout_length = 16
 num_epochs = 1
 num_minibatches = 2
-log_interval = 1
-checkpoint_interval = 100
-device = "cpu"
 [env]
 num_envs = 4
 """  # no [evaluation]: like configs written before it existed
