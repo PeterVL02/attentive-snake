@@ -886,7 +886,7 @@ def test_prioritized_replay_settings_are_in_the_schema_and_a_prioritized_run_log
     fields = {row["name"]: row for row in schema["sections"]["dqn"]}
     for name in ("prioritized", "priority_alpha", "priority_beta_start", "priority_epsilon"):
         assert fields[name]["description"], name  # the new-run form and the fork dialog are built from these
-    assert [m["key"] for m in schema["algorithms"]["dqn"]["metrics"] if m["setting"] == "prioritized"] == ["priority_beta", "priority_mean", "priority_max"]
+    assert [m["key"] for m in schema["algorithms"]["dqn"]["metrics"] if m["setting"] == "dqn.prioritized"] == ["priority_beta", "priority_mean", "priority_max"]
     assert client.get("/api/defaults", params={"algorithm": "dqn"}).json()["dqn"]["prioritized"] is False
     tables = tiny_tables("cnn", algorithm="dqn")
     tables["dqn"] |= {"prioritized": True, "priority_beta_start": 0.5}

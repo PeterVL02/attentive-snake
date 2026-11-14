@@ -25,7 +25,7 @@ from torch import Tensor, nn
 
 from attentive_snake.models.blocks.transformer import ClassToken, ClassTokenPool, TransformerBlock, run_blocks
 from attentive_snake.models.config import ModelConfig
-from attentive_snake.models.heads import DEFAULT_HEAD, get_head
+from attentive_snake.models.heads import DEFAULT_HEAD, HEADS, Head, get_head
 from attentive_snake.models.input_stages.catalog import StageBuilder
 from attentive_snake.models.input_stages.stage import Stage, StageInput
 from attentive_snake.models.token_layout import TokenLayout
@@ -56,6 +56,7 @@ def require_action_layout(spec: ObservationSpec, num_actions: int) -> None:
 
 class BasePolicy(nn.Module):
     observation_kinds: ClassVar[tuple[str, ...]] = ()
+    heads: ClassVar[Mapping[str, Head]] = HEADS  # the head forms by name; a kind may bring its own (same names)
 
     def __init__(
         self, config: ModelConfig, observation_spec: ObservationSpec, num_actions: int, head: str = DEFAULT_HEAD
@@ -72,7 +73,7 @@ class BasePolicy(nn.Module):
         self.num_actions = num_actions
         self.history_length = observation_spec.history_length
         self.head_name = head
-        self._head = get_head(head)
+        self._head = get_head(head, self.heads)
         trunk = self._build_net()
         self.net = nn.ModuleDict({**trunk, **self._head.modules(config.d_model, num_actions)})
 

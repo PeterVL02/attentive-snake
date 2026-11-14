@@ -10,12 +10,14 @@ from attentive_snake.models.kind_info import CONV_FIELDS, TRANSFORMER_FIELDS, In
 from attentive_snake.models.policies.cnn import CnnPolicy
 from attentive_snake.models.policies.frame_attention import FrameAttentionPolicy
 from attentive_snake.models.policies.hybrid import HybridPolicy
+from attentive_snake.models.policies.jepa import JepaPolicy
 from attentive_snake.models.policies.lstm import LstmPolicy
 from attentive_snake.models.policies.mlp import MlpPolicy
 from attentive_snake.models.policies.resnet import ResnetPolicy
 from attentive_snake.models.policies.temporal_transformer import TemporalTransformerPolicy
 from attentive_snake.models.policies.transformer import SnakeTransformerPolicy
 from attentive_snake.observation_spec import ObservationSpec
+from attentive_snake.training_metric import TrainingMetric
 
 _BUILDERS: dict[str, Callable[..., nn.Module]] = {
     "transformer": SnakeTransformerPolicy,
@@ -25,12 +27,27 @@ _BUILDERS: dict[str, Callable[..., nn.Module]] = {
     "temporal_transformer": TemporalTransformerPolicy,
     "frame_attention": FrameAttentionPolicy,
     "lstm": LstmPolicy,
+    "jepa": JepaPolicy,
     "mlp": MlpPolicy,
 }
 
 POLICY_KINDS: tuple[str, ...] = tuple(_BUILDERS)
 
 NO_KERNEL = ("kernel_size",)  # nothing to convolve in a list of numbers
+
+_JEPA_SWITCH = "model.prediction_coef"
+JEPA_METRICS = (
+    TrainingMetric("prediction_loss", "prediction loss", "jepa: mean cosine distance (0 = same direction, 1 = unrelated, 2 = opposite) between the embedding predicted for the action taken and the target encoder's embedding of the state that followed, over the gradient steps since the previous record.", _JEPA_SWITCH),
+    TrainingMetric("embedding_std", "embedding spread", "jepa: how different the encoder's embeddings of a batch of states are (mean per-dimension standard deviation of the unit-length embeddings). Near 0 means collapse: every state looks the same to the model; about 1/sqrt(d_model) means unrelated directions.", _JEPA_SWITCH),
+)
+_JEPA_HOW = (
+    "trained from scratch, no pretrained weights. The predictor then takes the embedding and each action and predicts the embedding of the next state "
+    "(num_layers deep), and a value decoder turns embeddings into values: with DQN, Q(s, a) is the value of the embedding action a is predicted to lead to, "
+    "so it plays the action whose predicted next state is worth most; with PPO the policy scores the predicted embeddings and the value decoder values the current one. "
+    "With prediction_coef > 0 a prediction loss makes the embedding predicted for the action taken match a slowly updated (EMA) copy of the encoder's embedding "
+    "of the state that really followed (JEPA-style; prediction_coef = 0 is the same network without it). "
+    "value_training (DQN) chooses whether the value decoder learns from the predicted next embedding or from the real one. Experimental."
+)
 
 KIND_INFO: dict[str, KindInfo] = {
     "transformer": KindInfo(
@@ -161,6 +178,24 @@ KIND_INFO: dict[str, KindInfo] = {
                 NO_KERNEL,
             ),
         },
+    ),
+    "jepa": KindInfo(
+        ("d_model", "num_layers", *CONV_FIELDS, "prediction_coef", "value_training", "target_ema"),
+        False,
+        None,
+        {
+            "grid": InputReading(
+                "A world model that acts by predicting where each action leads. A convolutional encoder (as in cnn) turns the board into an embedding, " + _JEPA_HOW,
+                False,
+            ),
+            "vector": InputReading(
+                "A world model that acts by predicting where each action leads. An MLP encoder (conv_channels wide, conv_layers deep, as in cnn) "
+                "turns the numbers into an embedding, " + _JEPA_HOW,
+                False,
+                NO_KERNEL,
+            ),
+        },
+        JEPA_METRICS,
     ),
     "mlp": KindInfo(
         ("d_model", "num_layers"),

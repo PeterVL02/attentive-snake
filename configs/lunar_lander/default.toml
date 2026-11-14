@@ -21,16 +21,20 @@ hide_velocities = false       # the model sees zeros for vx, vy and spin: it mus
 [model]  # attentive_snake.models.config.ModelConfig (input shape / actions / history come from the env)
 # The observation is 8 numbers. "mlp" (and "cnn", which is an MLP for numbers) are the
 # sensible baselines; "transformer", "hybrid" and "temporal_transformer" make one token
-# per number (attention over the inputs); "frame_attention" one token per past frame.
+# per number (attention over the inputs); "frame_attention" one token per past frame;
+# "jepa" predicts each action's next-state embedding and acts on their values.
 kind = "mlp"
 d_model = 64                  # mlp: layer width
 num_heads = 4                 # attention kinds only
-num_layers = 2                # mlp: fully connected layers; lstm: LSTM layers; attention kinds: transformer blocks
+num_layers = 2                # mlp: fully connected layers; lstm: LSTM layers; jepa: predictor layers; attention kinds: transformer blocks
 mlp_ratio = 4                 # attention kinds only
 dropout = 0.0
-conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm: width of the layers that replace convolutions
-conv_layers = 2               # cnn, resnet (residual blocks), hybrid, frame_attention, lstm: number of those layers
+conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm, jepa: width of the layers that replace convolutions
+conv_layers = 2               # cnn, resnet (residual blocks), hybrid, frame_attention, lstm, jepa: number of those layers
 kernel_size = 3               # unused for vector observations
+prediction_coef = 1.0         # jepa only: weight of the prediction loss (0 = off: the ablation)
+value_training = "predicted"  # jepa with dqn only: the value decoder learns from the "predicted" or the "actual" next embedding
+target_ema = 0.99             # jepa only: EMA rate of the target encoder (per gradient step)
 
 [train]  # attentive_snake.training.config.TrainConfig: what every algorithm shares
 algorithm = "ppo"             # "ppo" (the [ppo] section below) or "dqn" (its defaults: configs/lunar_lander/algorithms/dqn.toml)
