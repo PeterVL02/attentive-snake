@@ -33,9 +33,9 @@ TABLES = {
 }
 
 
-def short_training() -> tuple[dict[str, torch.Tensor], int]:
-    """Final weights and the number of truncated steps of a three-update Snake run (no ``bootstrap_truncated`` key)."""
-    config = experiment_from_tables(TABLES)
+def short_training(tables: dict = TABLES) -> tuple[dict[str, torch.Tensor], int]:
+    """Final weights and the number of truncated steps of a three-update Snake run (``TABLES``: no ``bootstrap_truncated`` key)."""
+    config = experiment_from_tables(tables)
     env = make_vec_env(config)
     truncations = []
     step = env.step

@@ -38,6 +38,7 @@ num_epochs = 4
 num_minibatches = 32          # 256 steps per minibatch: enough gradient steps per update (8 learned clearly slower)
 gamma = 0.999                 # landing pays off hundreds of steps after the decisive actions
 gae_lambda = 0.98
+bootstrap_truncated = true     # the time limit is not a landing or a crash: value the cut state, do not count it as an end
 clip_coef = 0.2
 value_coef = 0.5
 entropy_coef = 0.01

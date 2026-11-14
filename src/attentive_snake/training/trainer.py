@@ -18,6 +18,7 @@ from attentive_snake.training.ppo import ppo_update
 from attentive_snake.training.rollout import RolloutBuffer, compute_gae, flatten_rollout
 from attentive_snake.training.runtime import resolve_device, seed_everything
 from attentive_snake.training.schedule import linear_decay
+from attentive_snake.training.truncation import TruncationBootstrap
 
 
 class Trainer:
@@ -67,7 +68,8 @@ class Trainer:
         self._buffer = RolloutBuffer.allocate(
             config.rollout_length, env.num_envs, tuple(env.observation_shape), self.device
         )
-        self._collector = RolloutCollector(env, self._buffer, env.reset(seed=config.seed))
+        truncation = TruncationBootstrap(config.gamma) if config.bootstrap_truncated else None
+        self._collector = RolloutCollector(env, self._buffer, env.reset(seed=config.seed), truncation)
         self._episode_stats = EpisodeStatsWindow()
 
     @property

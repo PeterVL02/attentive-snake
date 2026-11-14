@@ -10,6 +10,7 @@ from torch.distributions import Categorical
 from attentive_snake.env.types import EpisodeSummary, VecEnv
 from attentive_snake.models.types import PolicyOutput
 from attentive_snake.training.rollout import RolloutBuffer
+from attentive_snake.training.truncation import TruncationBootstrap
 
 
 @dataclass(frozen=True)
@@ -30,19 +31,26 @@ class RolloutCollector:
     and values are those of the deterministic network; its previous
     train/eval mode is restored afterwards.
 
-    Truncation bias: the ``VecEnv`` contract auto-resets and does not expose
-    the final observation of a truncated episode, so truncation is treated
-    exactly like termination (no bootstrap from V(final observation)). For a
-    truncated episode this biases value targets towards zero at the cut-off.
+    Truncation: a step that ended its episode is ``done`` whether it was terminated or
+    truncated. Given a ``TruncationBootstrap``, the reward of a truncated step also gets
+    ``gamma * V(final observation)``, so its value target is bootstrapped; without one
+    (the default) truncation is treated exactly like termination.
     """
 
-    def __init__(self, env: VecEnv, buffer: RolloutBuffer, initial_observations: np.ndarray) -> None:
+    def __init__(
+        self,
+        env: VecEnv,
+        buffer: RolloutBuffer,
+        initial_observations: np.ndarray,
+        truncation: TruncationBootstrap | None = None,
+    ) -> None:
         if buffer.num_envs != env.num_envs:
             raise ValueError("Buffer and environment disagree on the number of environments.")
         self._env = env
         self._buffer = buffer
         self._device = buffer.observations.device
         self._observations = self._to_tensor(initial_observations)
+        self._truncation = truncation
 
     @torch.no_grad()
     def collect(self, policy: nn.Module) -> CollectResult:
@@ -67,7 +75,10 @@ class RolloutCollector:
             buffer.values[t] = output.value
 
             step = self._env.step(actions.cpu().numpy())
-            buffer.rewards[t] = self._to_tensor(step.rewards)
+            rewards = self._to_tensor(step.rewards)
+            if self._truncation is not None:
+                rewards = self._truncation.rewards(rewards, step, lambda obs: self._evaluate(policy, obs).value)
+            buffer.rewards[t] = rewards
             buffer.dones[t] = self._to_tensor(np.logical_or(step.terminated, step.truncated))
             self._observations = self._to_tensor(step.observations)
             finished.extend(step.finished_episodes)

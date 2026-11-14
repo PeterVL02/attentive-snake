@@ -174,6 +174,10 @@ def test_schema_defaults_and_page(client: TestClient):
     defaults = client.get("/api/defaults").json()
     assert defaults["model"]["kind"] == "transformer" and defaults["game"]["name"] == "snake"
     assert defaults["train"]["target_kl"] is None  # nullable fields are present as null
+    # The forms are built from the schema: bootstrap_truncated shows up with its help text (off for Snake).
+    bootstrap = next(row for row in schema["sections"]["train"] if row["name"] == "bootstrap_truncated")
+    assert bootstrap["type"] == "bool" and "cut short by a limit" in bootstrap["description"]
+    assert defaults["train"]["bootstrap_truncated"] is False
     assert client.get("/").status_code == 200
     script = client.get("/static/js/main.js")
     assert script.status_code == 200 and "javascript" in script.headers["content-type"]
@@ -282,7 +286,7 @@ def test_fork_through_the_api(client: TestClient, paths: AppPaths):
     parent = make_run(paths, "parent")
     append_event(parent, RunEvent("start", 0, "parent run"))
     parent_files = {path.name: path.stat().st_mtime_ns for path in parent.iterdir()}
-    tables = tiny_tables(total_env_steps=32, learning_rate=1e-3)
+    tables = tiny_tables(total_env_steps=32, learning_rate=1e-3, bootstrap_truncated=True)
     tables["reward"] = {"food": 2.0}
     forked = client.post(
         "/api/runs/parent/fork",
@@ -294,6 +298,7 @@ def test_fork_through_the_api(client: TestClient, paths: AppPaths):
     assert detail["status"]["state"] == "finished", detail["log"]
     assert detail["checkpoints"][-1]["steps"] == 32  # its own counter
     assert detail["config"]["train"]["learning_rate"] == 1e-3 and detail["config"]["reward"]["food"] == 2.0
+    assert detail["config"]["train"]["bootstrap_truncated"] is True  # a training setting a fork may change
     assert detail["parent"] == {"run": "parent", "checkpoint": "checkpoint_0000000016.pt", "env_steps": 16}
     assert detail["description"] == "lr up"
     assert [e["action"] for e in detail["history"]] == ["fork"]
