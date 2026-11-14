@@ -57,6 +57,9 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/n
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/dqn --set train.algorithm=dqn
 uv run python scripts/train.py --run-dir runs/snake/dqn-cnn --set train.algorithm=dqn --set model.kind=cnn \
     --set dqn.batch_size=128 --set dqn.buffer_size=200000
+# DQN with prioritized experience replay (off by default; the priority_* settings apply only when it is on)
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/per --set train.algorithm=dqn \
+    --set dqn.prioritized=true --set dqn.priority_alpha=0.6 --set dqn.priority_beta_start=0.4
 ```
 
 - `--game NAME` (new runs only) picks `configs/<NAME>/default.toml` and the default run directory `runs/<NAME>/default`.
@@ -104,7 +107,8 @@ uv run python scripts/train.py --resume runs/snake/8x8 --steps 10000000 --eval-i
 
 Resuming a DQN run restores its online and target networks and its optimizer, but not its replay buffer
 (checkpoints do not hold it): the buffer refills from scratch, and gradient steps wait until it holds
-`dqn.learning_starts` transitions again. Epsilon continues where the step count is.
+`dqn.learning_starts` transitions again. Epsilon continues where the step count is. With `dqn.prioritized`
+the priorities live in the buffer too, so they start fresh and beta (see below) continues from the step count.
 
 `--resume` uses the run's own `config.toml` (including its game); `--game`, `--config`, `--set`, `--width`,
 `--height`, `--num-envs`, `--seed` and `--fork` are rejected with it. `--steps`, `--[no-]keep-checkpoints`,
@@ -253,7 +257,8 @@ both for short experiments. Every record has `env_steps`, `iteration`, the episo
 `mean_length`, `mean_return`, `episodes`), `learning_rate` and `steps_per_second`, plus the algorithm's own:
 PPO `policy_loss`, `value_loss`, `entropy`, `approx_kl`, `clip_fraction`, `explained_variance`,
 `epochs_completed` (of the latest update); DQN `loss` (Huber), `q_mean`, `td_error` (means over the gradient
-steps since the previous record), `epsilon`, `replay_size`, `gradient_steps`. An iteration is one PPO update
+steps since the previous record), `epsilon`, `replay_size`, `gradient_steps` (with `dqn.prioritized` also `priority_beta`, `priority_mean`,
+`priority_max`). An iteration is one PPO update
 (`rollout_length * num_envs` env steps) or one DQN step of every game (`num_envs` env steps).
 
 `run.json` is not configuration; it is a log of what was done to the run:
@@ -310,6 +315,12 @@ per action), and attention is shown the same way.
 | --- | --- | --- |
 | `ppo` | on-policy actor-critic: learns from rollouts it has just played, a few epochs each | `rollout_length`, `num_minibatches`, `entropy_coef`, `gae_lambda` |
 | `dqn` | off-policy, value-based (Double DQN): plays epsilon-greedily into a replay buffer, learns from random batches against a target network | `learning_rate`, `train_frequency`, `target_update_interval`, `epsilon_fraction`, `buffer_size` |
+
+Prioritized replay (`dqn.prioritized = true`, Schaul et al. 2016, proportional variant): a transition is drawn with
+probability proportional to `(|TD error| + priority_epsilon) ** priority_alpha`, new transitions get the largest
+priority so far, and each sample's loss is scaled by an importance weight `(N x probability) ** -beta` (normalised
+by the batch maximum) with `beta` rising linearly from `priority_beta_start` to 1 over `train.total_env_steps`.
+It adds a little bookkeeping per step and can be forked with different priority settings.
 
 DQN's replay buffer lives in memory: about `2 x buffer_size x (numbers in one observation) x 4` bytes (Snake 8x8,
 100k transitions: ~150 MB; Lunar Lander: ~6 MB; history frames multiply it). It is not saved.
