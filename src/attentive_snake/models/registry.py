@@ -45,9 +45,9 @@ _JEPA_HOW = (
     "trained from scratch, no pretrained weights. The predictor then takes the embedding and each action and predicts the embedding of the next state "
     "(num_layers deep), and a value decoder turns embeddings into values: with DQN, Q(s, a) is the value of the embedding action a is predicted to lead to, "
     "so it plays the action whose predicted next state is worth most; with PPO the policy scores the predicted embeddings and the value decoder values the current one. "
-    "With prediction_coef > 0 a prediction loss makes the embedding predicted for the action taken match a slowly updated (EMA) copy of the encoder's embedding "
-    "of the state that really followed (JEPA-style; prediction_coef = 0 is the same network without it). "
-    "By default that loss trains the predictor only (prediction_trains_encoder). "
+    "The prediction loss is off by default (prediction_coef = 0: the network above trained by the reinforcement-learning loss alone). With prediction_coef > 0 a prediction loss makes the embedding predicted for the action taken match a slowly updated (EMA) copy of the encoder's embedding "
+    "of the state that really followed (JEPA-style). "
+    "By default that loss trains the predictor only (prediction_trains_encoder, which matters only when the loss is on). "
     "value_training (DQN) chooses whether the value decoder learns from the predicted next embedding (recommended) or from the real one (did not learn in our tests). Experimental."
 )
 

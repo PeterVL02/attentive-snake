@@ -36,7 +36,7 @@ dropout = 0.0
 conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm, jepa: width of the conv layers
 conv_layers = 3               # cnn, hybrid, frame_attention, lstm, jepa: number of conv layers; resnet: residual blocks
 kernel_size = 3               # odd; same-padded
-prediction_coef = 1.0         # jepa only: weight of the prediction loss (0 = off: the ablation)
+prediction_coef = 0.0         # jepa only: weight of the prediction loss (0 = off, the default; above 0 adds it)
 value_training = "predicted"  # jepa with dqn only: the value decoder learns from the "predicted" or the "actual" next embedding
 prediction_trains_encoder = false  # jepa only: true lets the prediction loss train the encoder too (false: the predictor only)
 target_ema = 0.99             # jepa only: EMA rate of the target encoder (per gradient step)

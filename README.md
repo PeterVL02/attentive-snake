@@ -102,11 +102,11 @@ at once; a value decoder turns an embedding into a value. With DQN the Q-value o
 is the decoded value of the embedding it is predicted to lead to, so the agent plays the
 action whose predicted next state is worth most. With PPO the policy scores the predicted
 embeddings with its own decoder and the value decoder values the current embedding. A
-prediction loss (`prediction_coef`, 0 = off) makes the embedding predicted for the action
+prediction loss (`prediction_coef`; 0 = off, the default) makes the embedding predicted for the action
 taken match the embedding of the state that really followed, given by a slowly updated
 (EMA, `target_ema`) copy of the encoder that gets no gradients, as in BYOL / I-JEPA; that
 copy is what stops the trivial answer of one embedding for every state, and the Runs chart
-shows `embedding spread` to check. By default the prediction loss trains the predictor only
+shows `embedding spread` to check. With the loss on it trains the predictor only by default
 (`prediction_trains_encoder = false`): the encoder learns from the reinforcement-learning loss
 alone, as without the loss. `value_training` (DQN) chooses what the TD loss trains:
 the decoded *predicted* embedding of the action taken (`predicted`, the default), or the
@@ -252,7 +252,7 @@ A statistic that cannot be computed (steps to win when no game was won) is N/A.
 - **Pure transformers are slow to start learning.** In short tests the kinds
   with a convolutional stage (`hybrid`, `cnn`, `frame_attention`) began scoring
   much sooner. These were single short runs, not a benchmark.
-- **`jepa`'s prediction loss does not help yet; by default it no longer hurts.** One seed each
+- **`jepa`'s prediction loss does not help yet, so it is off by default.** One seed each
   (seed 0), DQN, greedy evaluation of 50 games every 50k env steps; not a benchmark, nothing tuned.
 
   Lunar Lander, 300k env steps (mean score; landed share at the end):
@@ -261,14 +261,14 @@ A statistic that cannot be computed (steps to win when no game was won) is N/A.
   | --- | --- | --- | --- | --- | --- | --- | --- |
   | `mlp` | -50 | -59 | -20 | 18 | 167 | 74% | 2140 |
   | `jepa`, `prediction_coef = 0` | -52 | 13 | 231 | 227 | 223 | 86% | 1060 |
-  | `jepa` defaults (`predicted`, loss trains the predictor only) | -96 | -133 | -27 | 240 | 208 | 48% (50% hovered to the time limit) | 870 |
-  | the same with `dqn.prioritized = true` | -119 | -324 | -308 | -140 | -198 | 0% | 820 |
-  | `jepa`, `predicted`, loss also trains the encoder (the old default) | -65 | -93 | -108 | -19 | -187 | 6% (88% flew off) | 890 |
-  | `jepa`, `actual` | -21 | -69 | -31 | -134 | -178 | 0% | 960 |
+  | `jepa`, `prediction_coef = 1` (`predicted`, loss trains the predictor only) | -96 | -133 | -27 | 240 | 208 | 48% (50% hovered to the time limit) | 870 |
+  | the `prediction_coef = 1` run with `dqn.prioritized = true` | -119 | -324 | -308 | -140 | -198 | 0% | 820 |
+  | `jepa`, `prediction_coef = 1`, loss also trains the encoder (the old default) | -65 | -93 | -108 | -19 | -187 | 6% (88% flew off) | 890 |
+  | `jepa`, `prediction_coef = 1`, `actual` | -21 | -69 | -31 | -134 | -178 | 0% | 960 |
 
   Snake 6x6, 200k env steps planned (mean apples): `jepa` with `prediction_coef = 0` 11.3 /
-  13.1 / 16.1 at 100k / 150k / 200k (277 env steps/s); `jepa` defaults 9.7 / 14.3 at 100k /
-  150k (184 steps/s; stopped at 160k by the time cap); `jepa` `actual` 0.55 / 0.61 (stopped
+  13.1 / 16.1 at 100k / 150k / 200k (277 env steps/s); `jepa` with `prediction_coef = 1` 9.7 / 14.3 at 100k /
+  150k (184 steps/s; stopped at 160k by the time cap); `jepa` `actual` (`prediction_coef = 1`) 0.55 / 0.61 (stopped
   at 140k). The runs shared the machine, so the speeds compare only roughly.
 
   Reading: letting the prediction loss train the encoder is what hurt `predicted` (its

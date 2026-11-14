@@ -923,7 +923,7 @@ def test_jepa_is_offered_drawn_trained_watched_and_forked_through_the_api(client
     assert "value_decoder" in drawn["dqn"]["text"] and "policy_decoder" not in drawn["dqn"]["text"]
 
     tables = tiny_tables("jepa", algorithm="dqn")
-    tables["model"] |= {"value_training": "actual"}
+    tables["model"] |= {"value_training": "actual", "prediction_coef": 1.0}
     assert client.post("/api/runs", json={"name": "jepa", "config": tables}).status_code == 201
     detail = wait_until_done(client, "jepa")
     assert detail["status"]["state"] == "finished", detail["log"]

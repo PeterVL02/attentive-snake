@@ -22,7 +22,7 @@ from attentive_snake.training.dqn.target import TargetNetwork
 from attentive_snake.training.dqn.update import dqn_gradient_step
 
 A = 4
-CONFIG = ModelConfig(kind="jepa", d_model=16, num_layers=2, conv_channels=8, conv_layers=2)
+CONFIG = ModelConfig(kind="jepa", d_model=16, num_layers=2, conv_channels=8, conv_layers=2, prediction_coef=1.0)  # the loss is off by default
 SPECS = {
     ("grid", 1): ObservationSpec("grid", (3, 5, 5), 1),
     ("grid", 3): ObservationSpec("grid", (3 * (3 + A), 5, 5), 3, A),
@@ -121,6 +121,11 @@ def test_the_prediction_loss_learns_and_never_trains_the_target_encoder(value_tr
     assert set(terms.metrics) == {key.key for key in KIND_INFO["jepa"].metrics}
 
 
+def test_the_prediction_loss_is_off_by_default():
+    assert ModelConfig(kind="jepa").prediction_coef == 0.0
+    assert auxiliary_objective(build_policy(ModelConfig(kind="jepa"), SPECS["vector", 1], A, "q_values")) is None
+
+
 def test_no_objective_without_the_coefficient_and_actual_needs_one():
     assert auxiliary_objective(make(prediction_coef=0.0)) is None
     assert auxiliary_objective(build_policy(ModelConfig(kind="mlp"), SPECS["vector", 1], A, "q_values")) is None
@@ -155,7 +160,7 @@ def test_the_td_loss_reaches_the_predictor_only_when_it_trains_predicted_values(
 def tiny_dqn(model: dict, steps: int = 96):
     return experiment_from_tables({
         "game": {"width": 4, "height": 4},
-        "model": {"kind": "jepa", "d_model": 8, "num_layers": 1, "conv_channels": 4, "conv_layers": 1, **model},
+        "model": {"kind": "jepa", "d_model": 8, "num_layers": 1, "conv_channels": 4, "conv_layers": 1, "prediction_coef": 1.0, **model},
         "train": {"algorithm": "dqn", "total_env_steps": steps, "device": "cpu", "log_interval": 32},
         "dqn": {"buffer_size": 64, "batch_size": 4, "learning_starts": 8},
         "env": {"num_envs": 2},
@@ -215,7 +220,7 @@ def test_jepa_trains_resumes_and_forks_through_the_script(tmp_path):
 
     (tmp_path / "tiny.toml").write_text(TINY)
     run_dir = tmp_path / "run"
-    kind = ["--set", "model.kind=jepa", "--set", "model.conv_channels=8", "--set", "model.conv_layers=1", "--set", "model.value_training=actual"]
+    kind = ["--set", "model.kind=jepa", "--set", "model.conv_channels=8", "--set", "model.conv_layers=1", "--set", "model.value_training=actual", "--set", "model.prediction_coef=1"]
     result = train("--run-dir", run_dir, "--config", tmp_path / "tiny.toml", *kind, *DQN)
     assert result.returncode == 0, result.stderr
     saved = read_checkpoint(list_checkpoints(run_dir)[-1])

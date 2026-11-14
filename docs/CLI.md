@@ -341,26 +341,26 @@ decoder) and the value decoder values the current embedding.
 
 Four `[model]` settings belong to it, and unlike the rest of `[model]` they may change when forking a run:
 
-- `prediction_coef` (default 1.0): weight of the prediction loss, which makes the embedding predicted for the action
-  taken match a slowly updated (EMA) copy of the encoder's embedding of the real next state. `0` switches it off
-  (the ablation). The run then logs no `prediction_loss` / `embedding_std` / `value_gap`.
+- `prediction_coef` (default 0.0 = off): weight of the prediction loss, which makes the embedding predicted for the action
+  taken match a slowly updated (EMA) copy of the encoder's embedding of the real next state. Above 0 it is on; measurements
+  so far showed it does not beat leaving it off and costs 20-35% of the speed. The other three settings below only matter then. The run then logs no `prediction_loss` / `embedding_std` / `value_gap`.
 - `prediction_trains_encoder` (default false): whether that loss also trains the encoder. Off, it trains the predictor
-  only and the encoder learns from the reinforcement-learning loss alone. On was the old default; in a single-seed DQN
+  only and the encoder learns from the reinforcement-learning loss alone (it matters only with `prediction_coef > 0`). On was the old default; in a single-seed DQN
   test on Lunar Lander it made the agent end up flying off (README, Caveats).
 - `target_ema` (default 0.99): how slowly that target encoder follows the trained one (per gradient step).
 - `value_training` (DQN only, default `predicted`): `predicted` trains the decoded predicted embedding of the action
   taken with the TD loss; `actual` trains the decoded embedding of the next state that really happened (the value of
   arriving there, its reward included) and leaves the predictor to the prediction loss, which then matches whole
   embeddings (mean squared distance instead of cosine distance) and also the decoded values of prediction and real
-  next state. `actual` needs `prediction_coef > 0` and did not learn in our tests: the predictor's error in the value
+  next state. `actual` needs `prediction_coef > 0` (the default 0 is rejected) and did not learn in our tests: the predictor's error in the value
   is as large as the value differences between actions (README explains it).
 
 ```bash
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa --set train.algorithm=dqn --set model.kind=jepa
-uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa-off --set train.algorithm=dqn \
-    --set model.kind=jepa --set model.prediction_coef=0
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa-loss --set train.algorithm=dqn \
+    --set model.kind=jepa --set model.prediction_coef=1
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa-actual --set train.algorithm=dqn \
-    --set model.kind=jepa --set model.value_training=actual
+    --set model.kind=jepa --set model.prediction_coef=1 --set model.value_training=actual
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa-per --set train.algorithm=dqn \
     --set model.kind=jepa --set dqn.prioritized=true
 ```
