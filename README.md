@@ -4,9 +4,14 @@ Train neural networks to play Snake with reinforcement learning (PPO), and look
 inside them: which board cells a transformer attends to, how the architecture is
 put together, and how different models and reward schemes compare.
 
-The project contains a classic Snake game, a headless parallel RL environment,
-five selectable policy architectures, a PPO trainer, an architecture-diagram
-tool, and a local web app that ties it all together.
+The project contains a classic Snake game, a game-agnostic headless parallel RL
+environment layer, five selectable policy architectures, a PPO trainer, an
+architecture-diagram tool, and a local web app that ties it all together.
+
+Snake is the first game; the code is organised so that other games (Gymnasium
+classics such as Lunar Lander next) can be dropped in as one directory under
+`src/attentive_snake/games/` plus their configs. See
+[docs/ADDING_A_GAME.md](docs/ADDING_A_GAME.md).
 
 ## Quick start
 
@@ -53,16 +58,22 @@ The two temporal kinds need history: set `history_length` (for example 4) and
 
 ## Configs and runs
 
-- `configs/default.toml` lists every setting with a comment, except the reward
-  values. Copy it to make your own experiment config.
-- `configs/rewards/*.toml` are named reward schemes. `configs/rewards/default.toml`
-  is the one place the default reward values are written down: a config without
-  a `[reward]` section gets exactly those. Choosing a scheme for a run copies its
-  values into the run; editing the scheme later does not change existing runs.
-- Each run lives in `runs/<name>/` with its resolved `config.toml`, checkpoints,
+Everything game-specific is per game: `[game] name` in a config says which game
+it is (a config without it is a Snake config).
+
+- `configs/<game>/default.toml` lists every setting with a comment, except the
+  reward values. Copy it to make your own experiment config.
+- `configs/<game>/rewards/*.toml` are the game's named reward schemes.
+  `configs/<game>/rewards/default.toml` is the one place the game's default
+  reward values are written down: a config without a `[reward]` section gets
+  exactly those. Choosing a scheme for a run copies its values into the run;
+  editing the scheme later does not change existing runs.
+- Each run lives in `runs/<game>/<name>/` with its resolved `config.toml`, checkpoints,
   `metrics.jsonl`, `run.json` (history of starts, resumes and forks, with
   descriptions), `train.log` (when started from the app) and `model.html`.
-  `runs/` is not tracked by git.
+  `runs/` is not tracked by git. Runs from before there were several games sit
+  in `runs/<name>/`; `uv run python scripts/migrate_runs.py` moves them to
+  `runs/snake/<name>/` (add `--dry-run` to see the plan first).
 - `train.keep_checkpoints = false` (`--no-keep-checkpoints`, or the checkbox in
   the app) keeps only a run's latest checkpoint to save disk space; older
   checkpoints are deleted and can no longer be watched or continued from.
@@ -77,13 +88,15 @@ The two temporal kinds need history: set `history_length` (for example 4) and
 - **Pure transformers are slow to start learning.** In short tests the kinds
   with a convolutional stage (`hybrid`, `cnn`, `frame_attention`) began scoring
   much sooner. These were single short runs, not a benchmark.
+- **The web app shows Snake only for now.** The backend accepts a `game`
+  parameter everywhere, but the pages do not offer a game choice yet.
 - **History adds no information in principle.** Snake is fully observable from
   one frame, so the temporal models are for studying attention over time, not
   for better scores, and they train slower.
 - **A model is tied to its board size.** A checkpoint cannot be used on a
   different grid.
-- **A continued run (fork) cannot change the network, board or observation.**
-  All of `[model]`, the board size, `initial_length`, `history_length` and
+- **A continued run (fork) cannot change the game, network, board or observation.**
+  The game, all of `[model]`, the board size, `initial_length`, `history_length` and
   `history_actions` must match the parent, because its weights would not fit or
   would see a different input. It keeps the parent's Adam moments and starts its
   own learning-rate schedule from `learning_rate`, counting its steps from 0.

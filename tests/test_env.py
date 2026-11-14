@@ -10,7 +10,7 @@ from attentive_snake.games.snake.config import SnakeConfig
 from attentive_snake.games.snake.types import Action, GameState, StepEvent, StepResult
 
 
-def SyncVecSnakeEnv(n, config, reward=None, seed=None):
+def snake_vec_env(n, config, reward=None, seed=None):
     """N Snake envs (no history) in the generic vector env, seeded like the factory does."""
     return SyncVecEnv([HistoryEnv(SnakeEnv(config, reward, seed=env_seed(seed, i))) for i in range(n)])
 
@@ -65,7 +65,7 @@ def test_env_accepts_custom_reward():
     env = SnakeEnv(SnakeConfig(width=8, height=6), lambda prev, res: 7.0, seed=1)
     env.reset()
     assert env.step(env.state.direction).reward == 7.0
-    venv = SyncVecSnakeEnv(2, SnakeConfig(), SnakeRewardConfig(step=-0.5), seed=0)
+    venv = snake_vec_env(2, SnakeConfig(), SnakeRewardConfig(step=-0.5), seed=0)
     venv.reset()
     assert venv.step(np.array([1, 1])).rewards[0] <= 1.0
 
@@ -117,7 +117,7 @@ def test_env_wall_terminates_and_starvation_truncates():
 
 
 def run_vec(seed, steps=300, n=8):
-    venv = SyncVecSnakeEnv(n, SnakeConfig(width=6, height=5, max_steps_without_food=40), seed=seed)
+    venv = snake_vec_env(n, SnakeConfig(width=6, height=5, max_steps_without_food=40), seed=seed)
     rng = np.random.default_rng(123)
     obs = [venv.reset()]
     out = []
@@ -139,7 +139,7 @@ def test_vec_shapes_dtypes():
 
 
 def test_vec_auto_reset_and_summaries():
-    venv = SyncVecSnakeEnv(4, SnakeConfig(width=5, height=5), seed=3)
+    venv = snake_vec_env(4, SnakeConfig(width=5, height=5), seed=3)
     venv.reset()
     returns = np.zeros(4)
     lengths = np.zeros(4, int)
@@ -179,7 +179,7 @@ def test_vec_determinism_and_divergence():
 
 
 def test_vec_obs_not_aliased():
-    venv = SyncVecSnakeEnv(2, SnakeConfig(), seed=0)
+    venv = snake_vec_env(2, SnakeConfig(), seed=0)
     o = venv.reset()
     r = venv.step(np.array([1, 1]))
     assert not np.shares_memory(o, r.observations)

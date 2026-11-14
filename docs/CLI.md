@@ -2,7 +2,12 @@
 
 All commands run from the project root with `uv run ...`.
 
-## Play the game yourself
+Every run belongs to one game. Each game has its own default config (`configs/<game>/default.toml`), its own
+reward schemes (`configs/<game>/rewards/`) and its own runs directory (`runs/<game>/`). Snake is the default
+game; `--game NAME` picks another for a new run. Resuming, forking and watching read the game from the run's
+`config.toml`.
+
+## Play Snake yourself
 
 ```bash
 uv run python -m attentive_snake.games.snake.play --width 10 --height 10 --fps 8 --cell-size 30
@@ -13,21 +18,29 @@ Arrow keys or WASD steer, `R` restarts after a game over, `Esc` quits.
 ## Start a training run
 
 ```bash
-# Defaults from configs/default.toml, run saved in runs/8x8
-uv run python scripts/train.py --run-dir runs/8x8
+# Defaults from configs/snake/default.toml, run saved in runs/snake/8x8
+uv run python scripts/train.py --run-dir runs/snake/8x8
+
+# The game's defaults and runs/<game>/default (the game is snake unless --game or the --config file says otherwise)
+uv run python scripts/train.py --game snake
 
 # Your own config file
-uv run python scripts/train.py --run-dir runs/mine --config configs/mine.toml
+uv run python scripts/train.py --run-dir runs/snake/mine --config configs/mine.toml
 
 # Command-line overrides (new runs only; they win over the config file)
-uv run python scripts/train.py --run-dir runs/small --width 6 --height 6 --num-envs 32 --seed 1 --steps 2000000
+uv run python scripts/train.py --run-dir runs/snake/small --width 6 --height 6 --num-envs 32 --seed 1 --steps 2000000
 
 # Any single setting, a description, and keeping only the latest checkpoint
-uv run python scripts/train.py --run-dir runs/lr-test --set train.learning_rate=1e-4 --set reward.step=0 \
+uv run python scripts/train.py --run-dir runs/snake/lr-test --set train.learning_rate=1e-4 --set reward.step=0 \
     --description "lower LR, no living cost" --no-keep-checkpoints
 ```
 
-- `--run-dir` defaults to `runs/default`. A directory that already holds checkpoints is refused; use `--resume`.
+- `--game NAME` (new runs only) picks `configs/<NAME>/default.toml` and the default run directory `runs/<NAME>/default`.
+  Without it the game is the `--config` file's `[game] name`, else `snake`; a `--game` that differs from the config's
+  game is refused.
+- `--run-dir` defaults to `runs/<game>/default`. Keep runs in `runs/<game>/` so the app finds them. A directory
+  that already holds checkpoints is refused; use `--resume`.
+- `--width` / `--height` are shortcuts for `--set game.width=...` / `--set game.height=...` (games with a board).
 - `--steps` sets `train.total_env_steps` (the training budget over all parallel environments).
 - `--set section.key=value` changes one setting (repeatable; the value is read as TOML, e.g. `1e-4`, `true`, `"cpu"`).
   It cannot set a value to None; use a config file for that.
@@ -40,41 +53,42 @@ uv run python scripts/train.py --run-dir runs/lr-test --set train.learning_rate=
 
 ```bash
 # Continue from the latest checkpoint up to the run's total_env_steps
-uv run python scripts/train.py --resume runs/8x8
+uv run python scripts/train.py --resume runs/snake/8x8
 
 # Train longer: raise the budget (the saved config.toml is updated too)
-uv run python scripts/train.py --resume runs/8x8 --steps 10000000
+uv run python scripts/train.py --resume runs/snake/8x8 --steps 10000000
 
 # With a note, and from now on keep only the latest checkpoint (saved to config.toml)
-uv run python scripts/train.py --resume runs/8x8 --description "more steps" --no-keep-checkpoints
+uv run python scripts/train.py --resume runs/snake/8x8 --description "more steps" --no-keep-checkpoints
 ```
 
-`--resume` uses the run's own `config.toml`; `--config`, `--set`, `--width`, `--height`, `--num-envs`, `--seed`
-and `--fork` are rejected with it. To continue with other settings, start a new run from a checkpoint (next section).
+`--resume` uses the run's own `config.toml` (including its game); `--game`, `--config`, `--set`, `--width`,
+`--height`, `--num-envs`, `--seed` and `--fork` are rejected with it. To continue with other settings, start a new run from a checkpoint (next section).
 
 ## Continue a run under a new name with changed settings (fork)
 
 ```bash
-# New run runs/8x8-lowlr starting from the latest checkpoint of runs/8x8, with a lower learning rate
-uv run python scripts/train.py --run-dir runs/8x8-lowlr --fork runs/8x8 --set train.learning_rate=1e-4
+# New run runs/snake/8x8-lowlr starting from the latest checkpoint of runs/snake/8x8, with a lower learning rate
+uv run python scripts/train.py --run-dir runs/snake/8x8-lowlr --fork runs/snake/8x8 --set train.learning_rate=1e-4
 
 # From a specific checkpoint, with other rewards, a new budget and a note
-uv run python scripts/train.py --run-dir runs/8x8-food2 --fork runs/8x8 --fork-checkpoint checkpoint_0000500000.pt \
+uv run python scripts/train.py --run-dir runs/snake/8x8-food2 --fork runs/snake/8x8 --fork-checkpoint checkpoint_0000500000.pt \
     --set reward.food=2 --steps 2000000 --description "food worth more"
 
 # From an edited copy of the parent's config
-cp runs/8x8/config.toml configs/8x8-variant.toml   # edit it, then:
-uv run python scripts/train.py --run-dir runs/8x8-variant --fork runs/8x8 --config configs/8x8-variant.toml
+cp runs/snake/8x8/config.toml configs/8x8-variant.toml   # edit it, then:
+uv run python scripts/train.py --run-dir runs/snake/8x8-variant --fork runs/snake/8x8 --config configs/8x8-variant.toml
 ```
 
 - The new run loads the parent's weights and optimizer state, then counts its own env steps from 0 up to its own
   `total_env_steps` (by default the parent's), with its own learning-rate schedule starting from `learning_rate`.
   Adam's moment estimates are carried over even when the learning rate changes (they do not depend on it).
 - Its settings are the parent's `config.toml` (or `--config`) plus `--set`, `--steps`, `--num-envs`, `--seed`,
-  `--keep-checkpoints`. Everything under `[reward]` and `[train]`, `env.num_envs` and
-  `game.max_steps_without_food` may change. All of `[model]`, `game.width`, `game.height`, `game.initial_length`,
-  `env.history_length` and `env.history_actions` must equal the parent's (the weights would not fit, or the input
-  would change meaning); a change is rejected naming the field, before anything is written.
+  `--keep-checkpoints`. Everything under `[reward]` and `[train]`, `env.num_envs` and the game rules the game does
+  not lock (Snake: `game.max_steps_without_food`) may change. The game (`game.name`), all of `[model]`,
+  `env.history_length`, `env.history_actions` and the rules the game locks (Snake: `game.width`, `game.height`,
+  `game.initial_length`) must equal the parent's (the weights would not fit, or the input would change meaning);
+  a change is rejected naming the field, before anything is written.
 - `--run-dir` is required and must be a new run (a directory with checkpoints is refused). `--fork-checkpoint`
   takes a checkpoint file name of the parent (or its path); the default is the parent's latest.
 - The parent is never modified. The new run's `run.json` records the parent run, checkpoint and its env steps.
@@ -83,16 +97,17 @@ uv run python scripts/train.py --run-dir runs/8x8-variant --fork runs/8x8 --conf
 
 ```bash
 # Latest checkpoint of the run, greedy actions
-uv run python scripts/watch.py runs/8x8
+uv run python scripts/watch.py runs/snake/8x8
 
 # With the attention heatmap, a specific layer, sampled actions, faster
-uv run python scripts/watch.py runs/8x8 --attention --layer 0 --sample --fps 20
+uv run python scripts/watch.py runs/snake/8x8 --attention --layer 0 --sample --fps 20
 
 # A specific checkpoint
-uv run python scripts/watch.py runs/8x8 --checkpoint runs/8x8/checkpoint_0000100000.pt
+uv run python scripts/watch.py runs/snake/8x8 --checkpoint runs/snake/8x8/checkpoint_0000100000.pt
 ```
 
-Other flags: `--cell-size N`, `--frame N`. `Esc` or closing the window quits.
+The window shows the run's game (it reads the game from the run's `config.toml`); games whose view is a board
+(Snake) are drawn cell by cell. Other flags: `--cell-size N`, `--frame N`. `Esc` or closing the window quits.
 `--layer` picks the transformer block (negative counts from the last); `--frame` picks the history frame (0 = oldest, -1 = newest).
 
 | model kind | `--attention` shows |
@@ -106,20 +121,23 @@ Other flags: `--cell-size N`, `--frame N`. `Esc` or closing the window quits.
 
 | What | Where |
 | --- | --- |
-| Default experiment (every setting except the rewards, commented) | `configs/default.toml` |
+| Default experiment of a game (every setting except the rewards, commented) | `configs/<game>/default.toml` |
 | Your own experiments | copy it to e.g. `configs/mine.toml`, pass with `--config` |
-| Named reward schemes; `default` holds the default reward values | `configs/rewards/<name>.toml` (flat file of the `[reward]` keys, no header) |
-| The exact config of one run | `runs/<name>/config.toml` |
+| Named reward schemes of a game; `default` holds its default reward values | `configs/<game>/rewards/<name>.toml` (flat file of the `[reward]` keys, no header) |
+| The exact config of one run | `runs/<game>/<name>/config.toml` |
 
-An experiment file has the sections `[game] [reward] [model] [train] [env]`. A missing key takes its default; an unknown key is an error.
-A config without a `[reward]` section gets the default reward values (those of `configs/rewards/default.toml`).
+An experiment file has the sections `[game] [reward] [model] [train] [env]`. `[game] name` says which game it is
+(a file without it is a Snake config, so configs written before there were several games still load); the other
+`[game]` keys are that game's rules and `[reward]` its reward coefficients. A missing key takes its default; an
+unknown key is an error. A config without a `[reward]` section gets the game's default reward values (those of
+`configs/<game>/rewards/default.toml`).
 To use another reward scheme in an experiment, copy its lines under a `[reward]` header in the experiment file
 (only the keys that differ are needed), or pass single values with `--set reward.food=2`.
 
 ## What a run directory contains
 
 ```
-runs/<name>/
+runs/<game>/<name>/
     config.toml                 the full resolved config (written at start)
     model.html                  interactive architecture diagram
     metrics.jsonl               one JSON line per logged update (env_steps, scores, losses, ...)
@@ -167,11 +185,22 @@ from attentive_snake.config import load_experiment
 from attentive_snake.factory import make_env, make_policy
 from attentive_snake.viz import diagram, save_diagram
 
-config = load_experiment('configs/default.toml')
+config = load_experiment('configs/snake/default.toml')
 policy = make_policy(config, make_env(config))
 print(diagram(policy))                       # text tree
 save_diagram(policy, 'model.html')           # .html, .mmd, .md or .txt
 "
+```
+
+## Move runs from the old layout
+
+Runs made before there were several games sit directly in `runs/<name>/`. They are all Snake runs; this moves them
+to `runs/snake/<name>/` (only directories that contain a `config.toml`; nothing is ever overwritten, and nothing is
+moved if any target already exists). Running it again does nothing.
+
+```bash
+uv run python scripts/migrate_runs.py --dry-run     # show what would be moved
+uv run python scripts/migrate_runs.py               # move them (--runs-dir DIR for another runs root)
 ```
 
 ## Run the tests
@@ -183,7 +212,7 @@ uv run pytest -q
 ## Start the web app
 
 ```bash
-uv run python -m attentive_snake.app
+uv run python -m attentive_snake.app [--port 8000] [--runs-dir runs] [--configs-dir configs]
 ```
 
 Serves http://127.0.0.1:8000: configure, start and resume training, continue a run under a new name with changed

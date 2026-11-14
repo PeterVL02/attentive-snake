@@ -1,4 +1,4 @@
-// Tab 5: write and edit reward schemes (configs/rewards/*.toml) with a live preview of what they pay.
+// Tab 5: write and edit reward schemes (configs/snake/rewards/*.toml) with a live preview of what they pay.
 
 import { del, get, post, put } from "../api.js";
 import { debounce, h, message, replace } from "../dom.js";
@@ -101,7 +101,7 @@ async function saveAs(name) {
     setDirty(false);
     await refreshList();
     showEditor(name, values);
-    message(els.status, "info", `Saved configs/rewards/${name}.toml.`);
+    message(els.status, "info", `Saved configs/snake/rewards/${name}.toml.`);
     els.newName.value = "";
   } catch (error) {
     attachServerError(widgets, error.message);
@@ -110,7 +110,7 @@ async function saveAs(name) {
 }
 
 async function remove() {
-  if (!current || !confirm(`Delete the scheme “${current}”? This removes configs/rewards/${current}.toml.`)) return;
+  if (!current || !confirm(`Delete the scheme “${current}”? This removes configs/snake/rewards/${current}.toml.`)) return;
   try {
     await del(`/api/rewards/${encodeURIComponent(current)}`);
     const name = current;
@@ -156,7 +156,7 @@ export async function init(root) {
   replace(
     root,
     h("h2", { text: "Reward schemes" }),
-    h("p", { class: "lead", text: "A scheme is the [reward] section of an experiment, saved as configs/rewards/<name>.toml and offered in New training. All terms are added together." }),
+    h("p", { class: "lead", text: "A scheme is the [reward] section of an experiment, saved as configs/snake/rewards/<name>.toml and offered in New training. All terms are added together." }),
     h(
       "div",
       { class: "columns narrow-left" },

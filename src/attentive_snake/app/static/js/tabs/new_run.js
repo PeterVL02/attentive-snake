@@ -19,7 +19,7 @@ const COMMON_TRAIN = [
 ];
 const HIDDEN = new Set(["train.checkpoint_dir", "model.kind"]); // set by the app / by the kind dropdown
 const STATE_FIELDS = ["history_length", "history_actions"];
-const DEFAULT_SCHEME = "default"; // configs/rewards/default.toml: the single source of the default reward values
+const DEFAULT_SCHEME = "default"; // configs/snake/rewards/default.toml: the single source of the default reward values
 const BUILT_IN = ""; // option value used only when no scheme can be listed: the code defaults (same values)
 
 let schema;
