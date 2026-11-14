@@ -106,10 +106,28 @@ prediction loss (`prediction_coef`, 0 = off) makes the embedding predicted for t
 taken match the embedding of the state that really followed, given by a slowly updated
 (EMA, `target_ema`) copy of the encoder that gets no gradients, as in BYOL / I-JEPA; that
 copy is what stops the trivial answer of one embedding for every state, and the Runs chart
-shows `embedding spread` to check. `value_training` (DQN) chooses what the TD loss trains:
+shows `embedding spread` to check. By default the prediction loss trains the predictor only
+(`prediction_trains_encoder = false`): the encoder learns from the reinforcement-learning loss
+alone, as without the loss. `value_training` (DQN) chooses what the TD loss trains:
 the decoded *predicted* embedding of the action taken (`predicted`, the default), or the
 decoded embedding of the *actual* next state, i.e. the value of arriving there with the
-reward for getting there (`actual`; the predictor then learns only from the prediction loss).
+reward for getting there (`actual`; the predictor then learns only from the prediction loss,
+which also makes the decoded prediction match the decoded real next state). The Runs chart's
+`value gap` is the difference between those two values.
+
+Why `actual` does not learn (measured on Lunar Lander): it chooses an action by comparing
+the values of the next states the predictor foresees, and one step changes a state very
+little, so those values differ by about 0.006 between the two best actions. The predictor's
+error in exactly that value was the same size (about 0.006), even though its embeddings
+were close to the real ones: matching all numbers of an embedding does not make the one
+direction the value reads accurate. Replaying the same states with every action showed its
+choice agreed with the best real next state only about half the time, and the agent acted
+close to randomly (it crashed early like a random player). Training that value directly
+halved the error, but the gaps between actions shrank with it, and it still never learned
+to land. `predicted` avoids the problem because the TD loss trains each action's value
+itself. The other suspects were measured and ruled out as the main cause: the EMA and the
+online encoder hardly differ (copying the encoder every step changed nothing), the
+embeddings did not shrink, and the values at predicted embeddings showed no upward bias.
 
 What is JEPA about it: prediction happens in embedding space, never in pixels or numbers;
 the target embedding comes from an EMA target encoder; nothing is reconstructed. What is not:
@@ -234,22 +252,39 @@ A statistic that cannot be computed (steps to win when no game was won) is N/A.
 - **Pure transformers are slow to start learning.** In short tests the kinds
   with a convolutional stage (`hybrid`, `cnn`, `frame_attention`) began scoring
   much sooner. These were single short runs, not a benchmark.
-- **`jepa` did not beat the baselines in a first check, and its prediction loss did not help.**
-  One seed each, DQN with the shipped defaults (not a benchmark, nothing tuned). Lunar Lander,
-  300k env steps, greedy evaluation of 50 games at the end: `mlp` mean score 167 (74% landed);
-  `jepa` with `prediction_coef = 0` 223 (86% landed, already 231 at 200k); `jepa` (`predicted`,
-  `prediction_coef = 1`) -187 (unstable: 38% landed at 250k, then mostly flying off);
-  `jepa` (`actual`) -163 (never landed). Snake 6x6, 200k env steps: `cnn` 15.1 apples,
-  `jepa` without the loss 15.5, `jepa` (`predicted`) 14.9 (slower start; its embedding spread
-  dropped from 0.05 to about 0.01, a sign of partial collapse), `jepa` (`actual`) 0.7 (the
-  agent barely plays). With the loss on, a step takes about 1.3-1.6x as long.
+- **`jepa`'s prediction loss does not help yet; by default it no longer hurts.** One seed each
+  (seed 0), DQN, greedy evaluation of 50 games every 50k env steps; not a benchmark, nothing tuned.
+
+  Lunar Lander, 300k env steps (mean score; landed share at the end):
+
+  | run | 100k | 150k | 200k | 250k | 300k | landed | env steps/s |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | `mlp` | -50 | -59 | -20 | 18 | 167 | 74% | 2140 |
+  | `jepa`, `prediction_coef = 0` | -52 | 13 | 231 | 227 | 223 | 86% | 1060 |
+  | `jepa` defaults (`predicted`, loss trains the predictor only) | -96 | -133 | -27 | 240 | 208 | 48% (50% hovered to the time limit) | 870 |
+  | the same with `dqn.prioritized = true` | -119 | -324 | -308 | -140 | -198 | 0% | 820 |
+  | `jepa`, `predicted`, loss also trains the encoder (the old default) | -65 | -93 | -108 | -19 | -187 | 6% (88% flew off) | 890 |
+  | `jepa`, `actual` | -21 | -69 | -31 | -134 | -178 | 0% | 960 |
+
+  Snake 6x6, 200k env steps planned (mean apples): `jepa` with `prediction_coef = 0` 11.3 /
+  13.1 / 16.1 at 100k / 150k / 200k (277 env steps/s); `jepa` defaults 9.7 / 14.3 at 100k /
+  150k (184 steps/s; stopped at 160k by the time cap); `jepa` `actual` 0.55 / 0.61 (stopped
+  at 140k). The runs shared the machine, so the speeds compare only roughly.
+
+  Reading: letting the prediction loss train the encoder is what hurt `predicted` (its
+  gradient into the encoder was as large as the TD loss's); without that it is level with
+  `prediction_coef = 0` on both games within what one seed can show, but not better, and
+  it costs speed. `prediction_coef = 0` is still the fastest and at least as good. The one
+  prioritized-replay run was unstable (its value gap grew from 0.02 to 0.4, some games
+  scored below -1000); one seed cannot say whether that is prioritized replay with this
+  kind or chance. `actual` still does not learn (see the jepa section for why).
 - **History adds no information in principle.** Snake is fully observable from
   one frame, so the temporal models are for studying attention over time, not
   for better scores, and they train slower.
 - **A model is tied to its board size.** A checkpoint cannot be used on a
   different grid.
 - **A continued run (fork) cannot change the game, algorithm, network, board or observation.**
-  The game, `train.algorithm`, all of `[model]` (except jepa's `prediction_coef`, `value_training` and
+  The game, `train.algorithm`, all of `[model]` (except jepa's `prediction_coef`, `value_training`, `prediction_trains_encoder` and
   `target_ema`, which change how it is trained, not the network), the board size, `initial_length`, `history_length` and
   `history_actions` must match the parent, because its weights would not fit or
   would see a different input. It keeps the parent's Adam moments and starts its
