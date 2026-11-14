@@ -12,8 +12,8 @@ There is no attention, hence no ``attention_maps``.
 
 from torch import Tensor, nn
 
-from attentive_snake.models.conv_blocks import ConvEncoder, FlattenReadout
-from attentive_snake.models.policy_base import BasePolicy, output_heads
+from attentive_snake.models.blocks.conv import ConvEncoder, FlattenReadout
+from attentive_snake.models.policies.base import BasePolicy, output_heads
 
 
 class CnnPolicy(BasePolicy):

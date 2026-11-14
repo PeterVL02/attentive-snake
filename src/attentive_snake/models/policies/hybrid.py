@@ -10,9 +10,9 @@ Token order: [class token, cell 0 .. cell H*W-1] (row-major); see ``token_layout
 
 from torch import Tensor, nn
 
-from attentive_snake.models.blocks import PositionalEmbedding2D
-from attentive_snake.models.conv_blocks import ConvEncoder, GridToTokens
-from attentive_snake.models.policy_base import AttentivePolicy
+from attentive_snake.models.blocks.conv import ConvEncoder, GridToTokens
+from attentive_snake.models.blocks.transformer import PositionalEmbedding2D
+from attentive_snake.models.policies.base import AttentivePolicy
 from attentive_snake.models.token_layout import TokenLayout
 
 

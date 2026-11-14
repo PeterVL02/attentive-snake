@@ -4,13 +4,13 @@ from collections.abc import Callable
 
 from torch import nn
 
-from attentive_snake.models.cnn_policy import CnnPolicy
 from attentive_snake.models.config import ModelConfig
-from attentive_snake.models.frame_attention_policy import FrameAttentionPolicy
-from attentive_snake.models.hybrid_policy import HybridPolicy
 from attentive_snake.models.kind_info import CONV_FIELDS, TRANSFORMER_FIELDS, KindInfo
-from attentive_snake.models.temporal_transformer_policy import TemporalTransformerPolicy
-from attentive_snake.models.transformer_policy import SnakeTransformerPolicy
+from attentive_snake.models.policies.cnn import CnnPolicy
+from attentive_snake.models.policies.frame_attention import FrameAttentionPolicy
+from attentive_snake.models.policies.hybrid import HybridPolicy
+from attentive_snake.models.policies.temporal_transformer import TemporalTransformerPolicy
+from attentive_snake.models.policies.transformer import SnakeTransformerPolicy
 
 _BUILDERS: dict[str, Callable[..., nn.Module]] = {
     "transformer": SnakeTransformerPolicy,
