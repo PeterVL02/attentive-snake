@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
+from attentive_snake.training_metric import TrainingMetric
+
 type AttentionView = Literal["grid", "frames", "weights"]
 
 TRANSFORMER_FIELDS = ("d_model", "num_heads", "num_layers", "mlp_ratio", "dropout")
@@ -40,12 +42,15 @@ class KindInfo:
             per element (number) of the observation (``WatchFrame.element_weights``).
         inputs: ``{observation kind: InputReading}`` for every observation kind the kind
             can read (the keys equal the policy class's ``observation_kinds``).
+        metrics: What the kind's auxiliary objective logs while training (with either
+            algorithm), each switched on by its ``setting`` (``models.auxiliary``); none for most kinds.
     """
 
     fields: tuple[str, ...]
     uses_history: bool
     attention_view: AttentionView | None
     inputs: Mapping[str, InputReading]
+    metrics: tuple[TrainingMetric, ...] = ()
 
     @property
     def observation_kinds(self) -> tuple[str, ...]:

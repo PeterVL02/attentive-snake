@@ -4,6 +4,10 @@ A head contributes named, initialised modules to the policy's ``self.net`` (so t
 architecture diagram shows them) and turns pooled features into the output contract of
 ``models.types``. The trunk (everything before the head) is the same for every head.
 Adding one (e.g. a dueling head) = a class here and an entry in ``HEADS``.
+
+A kind whose output is not a linear readout of one pooled vector (``jepa``: values of
+predicted next-state embeddings) keeps its own table with the same names
+(``BasePolicy.heads``); its heads may use the kind's trunk modules in ``net`` by name.
 """
 
 from collections.abc import Mapping
@@ -63,7 +67,8 @@ HEADS: dict[str, Head] = {"actor_critic": ActorCriticHead(), "q_values": QValueH
 DEFAULT_HEAD = "actor_critic"
 
 
-def get_head(name: str) -> Head:
-    if name not in HEADS:
-        raise ValueError(f"unknown policy head {name!r}; valid heads: {', '.join(HEADS)}")
-    return HEADS[name]
+def get_head(name: str, table: Mapping[str, Head] = HEADS) -> Head:
+    """The head called ``name`` in ``table`` (a kind with its own head forms, e.g. ``jepa``, passes its table; same names)."""
+    if name not in table:
+        raise ValueError(f"unknown policy head {name!r}; valid heads: {', '.join(table)}")
+    return table[name]

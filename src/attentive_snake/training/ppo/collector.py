@@ -9,6 +9,7 @@ from torch.distributions import Categorical
 
 from attentive_snake.env.types import EpisodeSummary, VecEnv
 from attentive_snake.models.types import PolicyOutput
+from attentive_snake.training.next_observations import next_observations
 from attentive_snake.training.ppo.rollout import RolloutBuffer
 from attentive_snake.training.ppo.truncation import TruncationBootstrap
 
@@ -80,6 +81,8 @@ class RolloutCollector:
                 rewards = self._truncation.rewards(rewards, step, lambda obs: self._evaluate(policy, obs).value)
             buffer.rewards[t] = rewards
             buffer.dones[t] = self._to_tensor(np.logical_or(step.terminated, step.truncated))
+            if buffer.next_observations is not None:
+                buffer.next_observations[t] = self._to_tensor(next_observations(step))
             self._observations = self._to_tensor(step.observations)
             finished.extend(step.finished_episodes)
 

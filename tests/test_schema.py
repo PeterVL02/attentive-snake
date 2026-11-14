@@ -11,6 +11,7 @@ from attentive_snake.training.algorithms import algorithm_names
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.registry import KIND_INFO, POLICY_KINDS, build_policy
 from attentive_snake.observation_spec import ObservationSpec
+from attentive_snake.training_metric import setting_is_on
 
 SCHEMA = experiment_schema()
 
@@ -62,7 +63,8 @@ def test_model_kinds_follow_registry_order_with_documented_keys() -> None:
     assert list(SCHEMA["model_kinds"]) == list(POLICY_KINDS)
     model_fields = {f.name for f in dataclasses.fields(ModelConfig)} - {"kind"}
     for kind, info in SCHEMA["model_kinds"].items():
-        assert set(info) == {"description", "observation_kinds", "recommended", "fields", "uses_history", "recommended_env", "attention_view"}
+        assert set(info) == {"description", "observation_kinds", "recommended", "fields", "uses_history", "recommended_env", "attention_view", "metrics"}
+        assert info["metrics"] == [dataclasses.asdict(metric) for metric in KIND_INFO[kind].metrics]
         assert info["description"].strip()
         assert info["observation_kinds"] == list(KIND_INFO[kind].observation_kinds) and "grid" in info["observation_kinds"]
         assert info["description"] == KIND_INFO[kind].inputs["grid"].description
@@ -70,9 +72,11 @@ def test_model_kinds_follow_registry_order_with_documented_keys() -> None:
         temporal = info["uses_history"]
         assert info["recommended_env"] == {"history_length": 4 if temporal else 1, "history_actions": temporal}
         assert info["attention_view"] in ("grid", "frames", "weights", None)
-    assert {k for k, i in SCHEMA["model_kinds"].items() if i["uses_history"]} == {"temporal_transformer", "frame_attention"}
+    assert {k for k, i in SCHEMA["model_kinds"].items() if i["uses_history"]} == {"temporal_transformer", "frame_attention", "lstm"}
     assert SCHEMA["model_kinds"]["cnn"]["attention_view"] is None
-    assert {k for k, i in SCHEMA["model_kinds"].items() if not i["recommended"]} == {"mlp"}  # Snake is a grid game
+    assert {k for k, i in SCHEMA["model_kinds"].items() if not i["recommended"]} == {"mlp", "lstm", "jepa"}  # Snake is a grid game
+    assert {k for k, i in SCHEMA["model_kinds"].items() if i["metrics"]} == {"jepa"}
+    assert {m["setting"] for m in SCHEMA["model_kinds"]["jepa"]["metrics"]} == {"model.prediction_coef"}
 
 
 def test_every_vector_reading_names_only_listed_fields() -> None:
@@ -170,4 +174,5 @@ def test_each_algorithm_row_is_truthful(algorithm: str, switches: dict) -> None:
     records = make_trainer(config, policy, env, NullLogger()).train()
     shared = {"iteration", "env_steps", "episodes", "mean_score", "mean_length", "mean_return", "learning_rate", "steps_per_second"}
     logged = set().union(*records) - shared
-    assert logged == {metric["key"] for metric in row["metrics"] if metric["setting"] is None or switches.get(metric["setting"])}
+    switched_on = {f"{algorithm}.{name}" for name, value in switches.items() if setting_is_on(value)}
+    assert logged == {metric["key"] for metric in row["metrics"] if metric["setting"] is None or metric["setting"] in switched_on}

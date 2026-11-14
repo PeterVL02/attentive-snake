@@ -139,8 +139,8 @@ uv run python scripts/train.py --run-dir runs/snake/8x8-variant --fork runs/snak
   `--keep-checkpoints`. Everything under `[reward]`, `[train]` (but `train.algorithm`) and the algorithm's section
   (`[ppo]` / `[dqn]`), `env.num_envs` and the game rules the game does not lock (Snake:
   `game.max_steps_without_food`) may change. The game (`game.name`), the algorithm (`train.algorithm`: the weights
-  end in its head), all of `[model]`,
-  `env.history_length`, `env.history_actions` and the rules the game locks (Snake: `game.width`, `game.height`,
+  end in its head), all of `[model]` except jepa's `prediction_coef`, `value_training` and `target_ema` (they
+  change how it is trained, not the network), `env.history_length`, `env.history_actions` and the rules the game locks (Snake: `game.width`, `game.height`,
   `game.initial_length`) must equal the parent's (the weights would not fit, or the input would change meaning);
   a change is rejected naming the field, before anything is written.
 - `--run-dir` is required and must be a new run (a directory with checkpoints is refused). `--fork-checkpoint`
@@ -176,7 +176,7 @@ The window shows the run's game (it reads the game from the run's `config.toml`)
 | `transformer`, `hybrid` | heatmap of what the class token attends to on the board (`--layer` applies, `--frame` must stay -1/0) | one weight per input number in the window title, e.g. `x 0.12, y 1.00, ...` |
 | `temporal_transformer` | heatmap for one of the history frames (`--layer`, `--frame`) | one weight per number of one history frame (`--frame`) |
 | `frame_attention` | one weight per history frame, printed in the window title (`--layer`) | the same |
-| `cnn`, `mlp` | nothing: there is no attention, so `--attention` is refused | the same |
+| `cnn`, `resnet`, `lstm`, `jepa`, `mlp` | nothing: there is no attention, so `--attention` is refused | the same |
 
 ## Evaluate a trained agent
 
@@ -299,15 +299,69 @@ Set `kind` in `[model]` and `history_length` / `history_actions` in `[env]`.
 | --- | --- | --- | --- |
 | `transformer` | each board cell is a token | each number is a token | `history_length = 1` |
 | `cnn` | convolutional baseline, no attention | an MLP (nothing to convolve); use `mlp` instead | `history_length = 1` |
+| `resnet` | residual conv blocks (two convs and a skip each; `conv_layers` blocks), no attention | residual MLP blocks with layer norm (as in SimBa), `conv_layers` blocks | `history_length = 1` |
 | `hybrid` | conv stem, then transformer over cells | per-number MLP stem, then transformer over numbers | `history_length = 1` |
 | `temporal_transformer` | attention over the cells of several frames (plus action tokens) | attention over every number of several frames (plus action tokens) | `history_length = 4`, `history_actions = true` |
 | `frame_attention` | CNN per frame, attention across frames | MLP per frame, attention across frames | `history_length = 4`, `history_actions = true` |
+| `lstm` | CNN per frame, an LSTM over the frames | MLP per frame, an LSTM over the frames | `history_length = 4` or more, `history_actions = true` |
+| `jepa` | CNN encoder, a predictor of each action's next-state embedding, a value decoder; acts on the predicted values | the same with an MLP encoder | `history_length = 1` |
 | `mlp` | flattened board, weak baseline | plain MLP; recommended | `history_length = 1` |
 
 The non-temporal kinds see stacked frames only as extra input channels (extra values per number). Which `[model]` fields each kind uses
 (for example `cnn` ignores `num_heads`) is listed by the app's config page. Every kind works with both
 algorithms: the trunk is the same, only the head differs (PPO: a policy head and a value head; DQN: one Q-value
 per action), and attention is shown the same way.
+
+`lstm` is a DRQN-style policy with a fixed unroll length. The `history_length` frames (and the past actions, with
+`history_actions = true`) are encoded one by one and an LSTM reads them oldest to newest; its output after the newest
+frame feeds the head. Its memory is exactly that window: the hidden state starts at zero at every step, is not carried
+from one env step to the next and is not stored in the DQN replay buffer. `kind = "resnet"` and `"lstm"` have no
+attention, so Watch shows no attention panel for them. `resnet` uses `d_model`, `conv_channels`, `conv_layers` (the number of
+residual blocks) and, on boards, `kernel_size`; `lstm` uses those plus `num_layers` (LSTM layers) with `conv_*` building its per-frame encoder.
+
+Memory only matters when the observation hides something. Lunar Lander's `game.hide_velocities = true` shows the model zeros
+instead of its three velocity numbers (the physics, score and reward still use the true state), so it has to infer them from
+how position and angle change over several frames:
+
+```bash
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/blind-lstm --set game.hide_velocities=true \
+    --set model.kind=lstm --set env.history_length=8
+```
+
+`hide_velocities` is locked when forking a run (it changes what the observation means).
+
+### jepa: acting on predicted next states
+
+`kind = "jepa"` is a small world model trained from scratch on the game (no pretrained weights). An encoder (the `cnn`
+encoder: `conv_channels`, `conv_layers`, `d_model`) turns the observation into an embedding; a predictor (`num_layers`
+deep) takes the embedding and each action and predicts the embedding of the next state; a value decoder turns an
+embedding into a value. With DQN, Q(s, a) = value of the embedding action a is predicted to lead to, so the agent plays
+the action whose predicted next state is worth most. With PPO the policy scores the predicted embeddings (its own
+decoder) and the value decoder values the current embedding.
+
+Three `[model]` settings belong to it, and unlike the rest of `[model]` they may change when forking a run:
+
+- `prediction_coef` (default 1.0): weight of the prediction loss, which makes the embedding predicted for the action
+  taken match a slowly updated (EMA) copy of the encoder's embedding of the real next state. `0` switches it off
+  (the ablation). The run then logs no `prediction_loss` / `embedding_std`.
+- `target_ema` (default 0.99): how slowly that target encoder follows the trained one (per gradient step).
+- `value_training` (DQN only, default `predicted`): `predicted` trains the decoded predicted embedding of the action
+  taken with the TD loss (gradients reach decoder, predictor and encoder); `actual` trains the decoded embedding of the
+  next state that really happened (the value of arriving there, its reward included) and leaves the predictor to the
+  prediction loss alone, which then matches whole embeddings (mean squared distance instead of cosine distance).
+  `actual` needs `prediction_coef > 0`.
+
+```bash
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa --set train.algorithm=dqn --set model.kind=jepa
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa-actual --set train.algorithm=dqn \
+    --set model.kind=jepa --set model.value_training=actual
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa-off --set train.algorithm=dqn \
+    --set model.kind=jepa --set model.prediction_coef=0
+```
+
+The target encoder is saved with the checkpoint's training state (not with the policy weights), so resuming and forking
+keep it; watching and evaluating do not need it. The Runs chart offers `prediction loss` and `embedding spread` (near 0
+would mean every state gets the same embedding) for jepa runs with `prediction_coef > 0`.
 
 ## Choosing an algorithm
 

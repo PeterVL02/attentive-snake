@@ -69,8 +69,9 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
   const algorithmWidgets = fieldsOf(algorithm);
   const evaluationWidgets = fieldsOf("evaluation");
   const runWidgets = [...fieldsOf("env", (s) => !(`env.${s.name}` in locked)), ...fieldsOf("game", (s) => !(`game.${s.name}` in locked))];
+  const modelWidgets = fieldsOf("model", (s) => usedModelFields.has(s.name) && !(`model.${s.name}` in locked)); // jepa's training objective
   const lockedShown = [
-    ...fieldsOf("model", (s) => usedModelFields.has(s.name)),
+    ...fieldsOf("model", (s) => usedModelFields.has(s.name) && `model.${s.name}` in locked),
     ...fieldsOf("game", (s) => `game.${s.name}` in locked),
     ...fieldsOf("env", (s) => `env.${s.name}` in locked),
   ];
@@ -148,7 +149,7 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
         h("div", { class: "row", style: "margin-bottom:12px" }, h("label", { for: "fork-reward-scheme", class: "label", text: "fill from scheme" }), schemeSelect),
         h("div", { class: "fields" }, rewardWidgets.map((w) => w.el)),
       ),
-      panel("Training", h("div", { class: "fields" }, [...trainWidgets, ...runWidgets].map((w) => w.el))),
+      panel("Training", h("div", { class: "fields" }, [...trainWidgets, ...runWidgets, ...modelWidgets].map((w) => w.el))),
       panel(`${algorithmInfo?.label ?? algorithm} settings`, h("div", { class: "fields" }, algorithmWidgets.map((w) => w.el))),
       panel(
         "Evaluation",

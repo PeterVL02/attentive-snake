@@ -18,45 +18,27 @@ directly showing which frame the decision draws on (the newest frame can still b
 attended by the class token trivially, so nothing is lost).
 """
 
-from collections import OrderedDict
-
 from torch import Tensor, nn
 
-from attentive_snake.models.blocks.temporal import ActionEmbedding, TemporalEmbedding
-from attentive_snake.models.frames import action_ids, base_planes, split_frames
+from attentive_snake.models.blocks.temporal import TemporalEmbedding
 from attentive_snake.models.input_stages.catalog import FRAME_STAGES, readable_kinds
-from attentive_snake.models.input_stages.stage import Stage, one_frame
-from attentive_snake.models.policies.base import AttentivePolicy, require_action_layout
+from attentive_snake.models.input_stages.stage import one_frame
+from attentive_snake.models.policies.base import AttentivePolicy
+from attentive_snake.models.policies.frame_vectors import frame_vector_modules, frame_vectors
 from attentive_snake.models.token_layout import TokenLayout
-
-
-class FrameEncoder(nn.Sequential):
-    """One frame -> one vector: (N, C, *spatial) -> (N, D), the frame stage's modules in order."""
-
-    def __init__(self, stage: Stage) -> None:
-        super().__init__(OrderedDict(stage.modules))
 
 
 class FrameAttentionPolicy(AttentivePolicy):
     observation_kinds = readable_kinds(FRAME_STAGES)
 
     def _build_front(self) -> dict[str, nn.Module]:
-        require_action_layout(self.observation_spec, self.num_actions)
         stage = self._input_stage(FRAME_STAGES, one_frame(self.observation_spec))
-        front: dict[str, nn.Module] = {"frame_encoder": FrameEncoder(stage)}
-        if self.observation_spec.has_actions:
-            front["action_embed"] = ActionEmbedding(self.num_actions, self.config.d_model)
+        front = frame_vector_modules(stage, self.observation_spec, self.num_actions, self.config.d_model)
         front["temporal"] = TemporalEmbedding(self.history_length, self.config.d_model)
         return front
 
     def _tokens(self, obs: Tensor) -> Tensor:
-        net = self.net
-        frames = split_frames(obs, self.observation_spec)  # (B, K, F, *spatial)
-        batch = frames.shape[0]
-        tokens = net["frame_encoder"](base_planes(frames, self.observation_spec).flatten(0, 1)).unflatten(0, (batch, self.history_length))
-        if self.observation_spec.has_actions:
-            tokens = tokens + net["action_embed"](action_ids(frames, self.observation_spec, self.num_actions))
-        return net["temporal"](tokens)
+        return self.net["temporal"](frame_vectors(self.net, obs, self.observation_spec, self.num_actions))
 
     @property
     def token_layout(self) -> TokenLayout:

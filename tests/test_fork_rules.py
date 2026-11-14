@@ -6,7 +6,7 @@ import pytest
 
 from attentive_snake.config import ExperimentConfig
 from attentive_snake.config.fork_rules import locked_field_changes, locked_fields, require_forkable
-from attentive_snake.models.config import ModelConfig
+from attentive_snake.models.config import OBJECTIVE_FIELDS, ModelConfig
 
 
 def changed(config: ExperimentConfig, section: str, **values) -> ExperimentConfig:
@@ -16,7 +16,8 @@ def changed(config: ExperimentConfig, section: str, **values) -> ExperimentConfi
 def test_locked_fields_cover_the_game_model_board_and_observation_layout() -> None:
     locked = locked_fields("snake")
     assert locked == locked_fields() and "game.name" in locked
-    assert {f"model.{field.name}" for field in dataclasses.fields(ModelConfig)} <= set(locked)
+    assert {f"model.{field.name}" for field in dataclasses.fields(ModelConfig) if field.name not in OBJECTIVE_FIELDS} <= set(locked)
+    assert not {f"model.{name}" for name in OBJECTIVE_FIELDS} & set(locked)  # jepa's training objective may change on fork
     assert {"game.width", "game.height", "game.initial_length", "env.history_length", "env.history_actions"} <= set(locked)
     assert not {key for key in locked if key.startswith(("reward.", "train.", "ppo."))} - {"train.algorithm"}
     assert "train.algorithm" in locked

@@ -70,9 +70,12 @@ Chosen with `kind` in the `[model]` section of a config (or the dropdown in the 
 |---|---|---|
 | `transformer` | One token per board cell; attention over the board. | Board heatmap |
 | `cnn` | Residual convolutions with a linear readout. Baseline. | None |
+| `resnet` | A conv stem, then residual blocks (two convolutions and a skip each) and a linear readout; residual MLP blocks on vectors. | None |
 | `hybrid` | A conv stem embeds each cell with its neighbourhood, then transformer blocks. | Board heatmap |
 | `temporal_transformer` | Attention over the cells of the last K frames plus one token per past action. | Board heatmap per frame |
 | `frame_attention` | A CNN turns each of the last K frames into one vector; attention runs across frames. | Weight per frame |
+| `lstm` | A CNN (or MLP) turns each of the last K frames into one vector and an LSTM reads them oldest to newest. | None |
+| `jepa` | A world model: an encoder, a predictor of each action's next-state embedding, a value decoder; plays the action whose predicted next state is worth most. Experimental. | None |
 | `mlp` | A plain multilayer perceptron on the flattened observation. Baseline for vector games. | None |
 
 Every kind reads both grids and vectors; only the input stage changes. On a
@@ -83,7 +86,49 @@ input number instead of a board heatmap. `mlp`
 is the recommended kind for vector games; the app marks the recommended kinds
 for the chosen game.
 
-The two temporal kinds need history: set `history_length` (for example 4) and
+`lstm` is a DRQN-style policy with a fixed unroll length, not a recurrent agent that
+remembers a whole episode: the last K frames are encoded one by one and an LSTM reads them
+oldest to newest, but its hidden state is reset at every step, never carried from one env
+step to the next and never stored in the DQN replay buffer. Its memory is exactly
+`history_length`, like the temporal kinds. `resnet` differs from `cnn` (whose layers after the first
+are already single-convolution residual layers) in using the standard two-convolution residual block
+(`conv_layers` of them; on vectors, layer-normalised residual MLP blocks as in SimBa).
+
+`jepa` is a JEPA-like world model, trained from scratch on the game like every other kind
+(no pretrained weights, nothing downloaded). An encoder turns the observation into an
+embedding (the `cnn` encoder: convolutions on a board, an MLP on numbers); a predictor takes
+the embedding and an action and predicts the embedding of the next state, for every action
+at once; a value decoder turns an embedding into a value. With DQN the Q-value of an action
+is the decoded value of the embedding it is predicted to lead to, so the agent plays the
+action whose predicted next state is worth most. With PPO the policy scores the predicted
+embeddings with its own decoder and the value decoder values the current embedding. A
+prediction loss (`prediction_coef`, 0 = off) makes the embedding predicted for the action
+taken match the embedding of the state that really followed, given by a slowly updated
+(EMA, `target_ema`) copy of the encoder that gets no gradients, as in BYOL / I-JEPA; that
+copy is what stops the trivial answer of one embedding for every state, and the Runs chart
+shows `embedding spread` to check. `value_training` (DQN) chooses what the TD loss trains:
+the decoded *predicted* embedding of the action taken (`predicted`, the default), or the
+decoded embedding of the *actual* next state, i.e. the value of arriving there with the
+reward for getting there (`actual`; the predictor then learns only from the prediction loss).
+
+What is JEPA about it: prediction happens in embedding space, never in pixels or numbers;
+the target embedding comes from an EMA target encoder; nothing is reconstructed. What is not:
+there is no masking and no large-scale self-supervised pre-training: the encoder is trained
+at the same time as, and also by, the reinforcement-learning loss; the predictor looks one
+step ahead only (multi-step lookahead over predicted embeddings, DFS/BFS, is not built yet,
+though the predictor can be applied to its own predictions). Caveats: the predictor is
+deterministic, so where the next state is random (where Snake's next apple appears) it can
+only predict something like an average embedding; with `actual`, a reward that depends on
+where the snake came from (Snake's closer/farther shaping) is not a function of the next
+state alone, so the decoder cannot learn it exactly; and the extra encoder and target-encoder
+passes make a gradient step slower than `cnn`/`mlp`.
+
+Lunar Lander can hide part of what the model sees: `game.hide_velocities = true` replaces
+the three velocity numbers by zeros (the physics, score and reward still use the true
+state), so a model has to infer them from several frames and memory can matter. The rule
+is locked when forking a run.
+
+The temporal kinds (`temporal_transformer`, `frame_attention`, `lstm`) need history: set `history_length` (for example 4) and
 `history_actions = true` under `[env]`. The app does this for you.
 
 ## Training algorithms
@@ -189,13 +234,23 @@ A statistic that cannot be computed (steps to win when no game was won) is N/A.
 - **Pure transformers are slow to start learning.** In short tests the kinds
   with a convolutional stage (`hybrid`, `cnn`, `frame_attention`) began scoring
   much sooner. These were single short runs, not a benchmark.
+- **`jepa` did not beat the baselines in a first check, and its prediction loss did not help.**
+  One seed each, DQN with the shipped defaults (not a benchmark, nothing tuned). Lunar Lander,
+  300k env steps, greedy evaluation of 50 games at the end: `mlp` mean score 167 (74% landed);
+  `jepa` with `prediction_coef = 0` 223 (86% landed, already 231 at 200k); `jepa` (`predicted`,
+  `prediction_coef = 1`) -187 (unstable: 38% landed at 250k, then mostly flying off);
+  `jepa` (`actual`) -163 (never landed). Snake 6x6, 200k env steps: `cnn` 15.1 apples,
+  `jepa` without the loss 15.5, `jepa` (`predicted`) 14.9 (slower start; its embedding spread
+  dropped from 0.05 to about 0.01, a sign of partial collapse), `jepa` (`actual`) 0.7 (the
+  agent barely plays). With the loss on, a step takes about 1.3-1.6x as long.
 - **History adds no information in principle.** Snake is fully observable from
   one frame, so the temporal models are for studying attention over time, not
   for better scores, and they train slower.
 - **A model is tied to its board size.** A checkpoint cannot be used on a
   different grid.
 - **A continued run (fork) cannot change the game, algorithm, network, board or observation.**
-  The game, `train.algorithm`, all of `[model]`, the board size, `initial_length`, `history_length` and
+  The game, `train.algorithm`, all of `[model]` (except jepa's `prediction_coef`, `value_training` and
+  `target_ema`, which change how it is trained, not the network), the board size, `initial_length`, `history_length` and
   `history_actions` must match the parent, because its weights would not fit or
   would see a different input. It keeps the parent's Adam moments and starts its
   own learning-rate schedule from `learning_rate`, counting its steps from 0.
