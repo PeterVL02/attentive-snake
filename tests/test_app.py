@@ -901,6 +901,48 @@ def test_prioritized_replay_settings_are_in_the_schema_and_a_prioritized_run_log
     assert wait_until_done(client, "per-v2")["config"]["dqn"]["priority_alpha"] == 0.3
 
 
+def test_jepa_is_offered_drawn_trained_watched_and_forked_through_the_api(client: TestClient):
+    schema = client.get("/api/schema").json()
+    kind = schema["model_kinds"]["jepa"]
+    assert {"prediction_coef", "value_training", "target_ema", "conv_channels", "num_layers"} <= set(kind["fields"])
+    assert kind["attention_view"] is None and not kind["recommended"]
+    assert [m["key"] for m in kind["metrics"]] == ["prediction_loss", "embedding_std"]
+    assert all(m["setting"] == "model.prediction_coef" for m in kind["metrics"])
+    assert all(not row["metrics"] for name, row in schema["model_kinds"].items() if name != "jepa")
+    fields = {row["name"]: row for row in schema["sections"]["model"]}
+    assert fields["value_training"]["choices"] == ["predicted", "actual"] and fields["value_training"]["description"]
+    locked = client.get("/api/fork-rules").json()["locked"]
+    assert "model.num_layers" in locked and not {"model.prediction_coef", "model.value_training", "model.target_ema"} & set(locked)
+
+    drawn = {algorithm: client.post("/api/architecture", json=tiny_tables("jepa", algorithm=algorithm)).json() for algorithm in ("ppo", "dqn")}
+    assert all(word in drawn["ppo"]["text"] for word in ("predictor", "policy_decoder", "value_decoder"))
+    assert "value_decoder" in drawn["dqn"]["text"] and "policy_decoder" not in drawn["dqn"]["text"]
+
+    tables = tiny_tables("jepa", algorithm="dqn")
+    tables["model"] |= {"value_training": "actual"}
+    assert client.post("/api/runs", json={"name": "jepa", "config": tables}).status_code == 201
+    detail = wait_until_done(client, "jepa")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert detail["kind"] == "jepa" and {"prediction_loss", "embedding_std"} <= set(detail["metrics"][-1])
+
+    watch = client.post("/api/watch", json={"run": "jepa"}).json()
+    assert watch["info"]["attention_view"] is None and watch["frame"]["action_values"]["kind"] == "q_values"
+    assert client.post(f"/api/watch/{watch['id']}/step", json={"count": 2}).status_code == 200
+
+    tables["model"] |= {"prediction_coef": 0.5, "value_training": "predicted"}  # the training objective may change on fork
+    forked = client.post("/api/runs/jepa/fork", json={"name": "jepa-v2", "config": tables})
+    assert forked.status_code == 201, forked.text
+    assert wait_until_done(client, "jepa-v2")["config"]["model"]["prediction_coef"] == 0.5
+    tables["model"]["num_layers"] = 2
+    assert client.post("/api/runs/jepa/fork", json={"name": "jepa-v3", "config": tables}).status_code == 422
+
+    ablation = tiny_tables("jepa", algorithm="dqn")
+    ablation["model"]["prediction_coef"] = 0.0
+    assert client.post("/api/runs", json={"name": "jepa-off", "config": ablation}).status_code == 201
+    off = wait_until_done(client, "jepa-off")
+    assert off["status"]["state"] == "finished" and "prediction_loss" not in off["metrics"][-1]
+
+
 def test_a_dqn_run_through_the_api_trains_watches_evaluates_forks_and_compares(client: TestClient, paths: AppPaths):
     started = client.post("/api/runs", json={"name": "dqn", "config": tiny_tables("cnn", algorithm="dqn")})
     assert started.status_code == 201, started.text
