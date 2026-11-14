@@ -197,5 +197,8 @@ A statistic that cannot be computed (steps to win when no game was won) is N/A.
 uv run pytest -q
 ```
 
+Tests run on every pull request and on pushes to `main` (GitHub Actions,
+`.github/workflows/tests.yml`).
+
 The code is organised so that each module has one job; see [CLAUDE.md](CLAUDE.md)
 for a map of the packages and the contracts between them.
