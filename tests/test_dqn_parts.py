@@ -9,6 +9,7 @@ from attentive_snake.env.types import EpisodeSummary, VecEnvStep
 from attentive_snake.models.types import QValues
 from attentive_snake.training.algorithm import LearnerSetup
 from attentive_snake.training.config import TrainConfig
+from attentive_snake.training.dqn.beta import linear_beta
 from attentive_snake.training.dqn.collector import EpsilonGreedyCollector, next_observations, transition_dones
 from attentive_snake.training.dqn.config import DqnConfig
 from attentive_snake.training.dqn.epsilon import linear_epsilon
@@ -260,3 +261,13 @@ def test_target_syncs_every_interval_and_epsilon_decays() -> None:
     assert record["epsilon"] == pytest.approx(linear_epsilon(1.0, 0.05, 0.1, 12, 400))
     assert {"loss", "q_mean", "td_error", "replay_size"} <= set(record) and record["replay_size"] == 16.0
     assert set(dqn.report()) == {"epsilon", "replay_size", "gradient_steps"}  # no gradient step since the last report
+
+
+def test_prioritized_learner_trains_reports_priorities_and_anneals_beta() -> None:
+    dqn, _ = learner(num_envs=4, learning_starts=8, prioritized=True, priority_beta_start=0.4)
+    for i in range(4):
+        dqn.iterate(env_steps=4 * i)
+    record = dqn.report()
+    assert record["gradient_steps"] > 0 and record["priority_max"] > 0 and record["priority_mean"] > 0
+    assert record["priority_beta"] == pytest.approx(linear_beta(0.4, 16, 400))  # after 16 of 400 env steps
+    assert learner(prioritized=False)[0].report().keys() == {"epsilon", "replay_size", "gradient_steps"}

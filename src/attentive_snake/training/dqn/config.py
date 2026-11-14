@@ -18,6 +18,10 @@ class DqnConfig:
     epsilon_fraction: float = field(default=0.1, metadata={"help": "Share of total_env_steps over which epsilon falls linearly from epsilon_start to epsilon_end."})
     max_grad_norm: float = field(default=10.0, metadata={"help": "Gradients are scaled down if their overall size exceeds this value, which protects against occasional huge updates."})
     double: bool = field(default=True, metadata={"help": "Double DQN: the online network picks the next action and the target network values it, which curbs the overestimation of plain DQN (off: the target network's highest Q-value)."})
+    prioritized: bool = field(default=False, metadata={"help": "Prioritized experience replay: sample the transitions the network predicts worst (largest |TD error|) more often than the rest, and correct the bias that causes with importance weights. It can speed up learning where useful transitions are rare, but adds bookkeeping (slower steps) and more settings; off = every stored transition is equally likely. The priorities live with the replay buffer, so a resumed or forked run starts with fresh ones."})
+    priority_alpha: float = field(default=0.6, metadata={"help": "How strongly priorities shape sampling (prioritized replay only): a transition is drawn with probability proportional to (|TD error| + priority_epsilon) ** priority_alpha. 0 is uniform sampling; raising it concentrates replay on the largest errors (1 = proportional to the error)."})
+    priority_beta_start: float = field(default=0.4, metadata={"help": "How much of the sampling bias is corrected at the start (prioritized replay only): each sample's loss is scaled by (buffer_size_in_use x its probability) ** -beta, and beta rises linearly to 1 (full correction) at the end of total_env_steps. Raising the start value corrects more early on (steadier but slower to exploit priorities); 1 corrects fully throughout."})
+    priority_epsilon: float = field(default=1e-6, metadata={"help": "A small amount added to every |TD error| before priorities are formed (prioritized replay only), so a transition the network predicts perfectly keeps a non-zero chance of being replayed. Raising it makes priorities more uniform."})
 
     def __post_init__(self) -> None:
         for name in ("buffer_size", "batch_size", "train_frequency", "gradient_steps", "target_update_interval"):
@@ -32,5 +36,11 @@ class DqnConfig:
                 raise ValueError(f"{name} must be in [0, 1].")
         if not 0.0 <= self.epsilon_fraction <= 1.0:
             raise ValueError("epsilon_fraction must be in [0, 1].")
+        if self.priority_alpha < 0.0:
+            raise ValueError("priority_alpha must be non-negative.")
+        if not 0.0 <= self.priority_beta_start <= 1.0:
+            raise ValueError("priority_beta_start must be in [0, 1].")
+        if self.priority_epsilon <= 0.0:
+            raise ValueError("priority_epsilon must be positive.")
         if self.max_grad_norm <= 0.0:
             raise ValueError("max_grad_norm must be positive.")

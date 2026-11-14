@@ -8,11 +8,12 @@ import torch
 
 from attentive_snake.env.types import EpisodeSummary
 from attentive_snake.training.algorithm import LearnerSetup
+from attentive_snake.training.dqn.beta import linear_beta
+from attentive_snake.training.dqn.build_replay import build_replay
 from attentive_snake.training.dqn.collector import EpsilonGreedyCollector
 from attentive_snake.training.dqn.epsilon import linear_epsilon
 from attentive_snake.training.dqn.replay import ReplayBuffer
 from attentive_snake.training.dqn.target import TargetNetwork
-from attentive_snake.training.dqn.uniform_replay import UniformReplayBuffer
 from attentive_snake.training.dqn.update import dqn_gradient_step
 from attentive_snake.training.schedule import crossed_multiple
 
@@ -35,8 +36,12 @@ class DqnLearner:
         self._train, self._settings, self._device = train, settings, setup.device
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=train.learning_rate)
         self._target = TargetNetwork(self.policy)
-        self._replay = replay if replay is not None else UniformReplayBuffer(
-            settings.buffer_size, tuple(env.observation_shape), np.random.default_rng([train.seed, REPLAY_STREAM])
+        self._env_steps = 0  # env steps taken so far, for the beta schedule
+        self._replay = replay if replay is not None else build_replay(
+            settings,
+            tuple(env.observation_shape),
+            np.random.default_rng([train.seed, REPLAY_STREAM]),
+            lambda: linear_beta(settings.priority_beta_start, self._env_steps, train.total_env_steps),
         )
         self._collector = EpsilonGreedyCollector(
             env,
@@ -59,7 +64,7 @@ class DqnLearner:
         self._epsilon = linear_epsilon(s.epsilon_start, s.epsilon_end, s.epsilon_fraction, env_steps, self._train.total_env_steps)
         collected = self._collector.step(self.policy, self._epsilon)
         self._replay.add(collected.transitions)
-        after = env_steps + self._steps_per_iteration
+        after = self._env_steps = env_steps + self._steps_per_iteration
         rounds = after // s.train_frequency - env_steps // s.train_frequency
         if len(self._replay) >= max(s.learning_starts, s.batch_size):
             for _ in range(rounds * s.gradient_steps):
@@ -75,7 +80,7 @@ class DqnLearner:
             loss, q_mean, td_error = np.mean(np.array(self._window), axis=0).tolist()
             record |= {"loss": loss, "q_mean": q_mean, "td_error": td_error}
         self._window = []
-        return record
+        return record | self._replay.statistics()
 
     def extra_state(self) -> dict[str, Any]:
         return {"target": self._target.state_dict()}
