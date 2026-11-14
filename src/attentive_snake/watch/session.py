@@ -48,8 +48,10 @@ class WatchSession:
         self._policy = make_policy(config, self._env)
         env_steps = load_checkpoint(checkpoint, self._policy)
         self._policy.eval()
-        self._observation = self._env.reset()  # GameEnv contract: view() only after a reset
-        view = self._env.view()
+        self._sample, self._attention, self._layer, self._frame = sample, attention, layer, frame
+        check_attention_options(self._policy, layer, frame)
+        self._episode = 0
+        first = self.reset()  # GameEnv contract: view() only after a reset
         self.info = {
             "game": config.game_name,
             "view_kind": self._view_kind,
@@ -61,17 +63,9 @@ class WatchSession:
             "element_names": element_names(game, observation_spec(config, self._env)),  # vector games only
             "checkpoint": str(checkpoint),
             "env_steps": env_steps,
-            "width": view["width"],  # of the view: cells for "board", pixels for "image"
-            "height": view["height"],
+            "width": first.view["width"],  # of the view: cells for "board", pixels for "image"
+            "height": first.view["height"],
         }
-        self._sample, self._attention, self._layer, self._frame = sample, attention, layer, frame
-        check_attention_options(self._policy, layer, frame)
-        self._episode = 0
-        self._event: str | None = None
-        self._done = False
-        self._score = 0.0
-        self._steps = 0
-        self.reset()
 
     def set_options(
         self,
