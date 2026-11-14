@@ -1,8 +1,8 @@
 import pytest
 
-from attentive_snake.env.reward import RewardConfig, build_reward
-from attentive_snake.env.reward_pipeline import RewardBuilder, RewardPipeline
-from attentive_snake.env.reward_terms import (
+from attentive_snake.games.snake.reward import SnakeRewardConfig, build_reward
+from attentive_snake.games.snake.reward_pipeline import RewardBuilder, RewardPipeline
+from attentive_snake.games.snake.reward_terms import (
     DeathPenalty,
     FoodDistanceShaping,
     FoodReward,
@@ -10,7 +10,7 @@ from attentive_snake.env.reward_terms import (
     StepCost,
     WinReward,
 )
-from attentive_snake.game.types import Action, GameState, StepEvent, StepResult
+from attentive_snake.games.snake.types import Action, GameState, StepEvent, StepResult
 
 
 def state(snake, food, score=0):
@@ -87,13 +87,13 @@ def test_builder_add_custom_term():
 
 
 def test_build_reward_skips_zero_terms_and_defaults():
-    default = build_reward(RewardConfig())
+    default = build_reward(SnakeRewardConfig())
     assert [t.name for t in default.terms] == ["food", "death", "win", "starvation", "step_cost"]
     assert default(PREV, res(StepEvent.ATE_FOOD)) == pytest.approx(0.99)
     assert default(PREV, res(StepEvent.MOVED)) == pytest.approx(-0.01)
     assert default(PREV, res(StepEvent.WON)) == 1.0
-    sparse = build_reward(RewardConfig(food=1.0, death=0, win=0, starved=0, step=0))
+    sparse = build_reward(SnakeRewardConfig(food=1.0, death=0, win=0, starved=0, step=0))
     assert [t.name for t in sparse.terms] == ["food"]
-    grow = build_reward(RewardConfig(food=0.0, food_growth=0.2, step=0))
+    grow = build_reward(SnakeRewardConfig(food=0.0, food_growth=0.2, step=0))
     assert "food" in [t.name for t in grow.terms]
     assert grow(PREV, res(StepEvent.ATE_FOOD)) == pytest.approx(0.6)

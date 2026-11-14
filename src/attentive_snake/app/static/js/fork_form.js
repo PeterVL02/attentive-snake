@@ -1,8 +1,10 @@
-// "Continue with changes…": a dialog that starts a new run from a checkpoint of an existing run (a fork).
+// "Start a new run from a checkpoint": a dialog that starts a new run of the same game from a
+// checkpoint of an existing run (a fork), with changed rewards or training settings.
 
 import { ApiError, get, post } from "./api.js";
 import { formatNumber, h, message } from "./dom.js";
 import { attachServerError, descriptionField, fieldControl, readFields } from "./fields.js";
+import { gameUrl } from "./game.js";
 import { loadSchema } from "./schema.js";
 
 const PARENT_VALUES = ""; // reward-scheme option value: keep the parent's reward values
@@ -25,15 +27,15 @@ function same(a, b) {
 }
 
 /**
- * Open the dialog for continuing run `parent` (its detail from /api/runs/{name}) from `checkpoint`
- * ({name, steps}); `onStarted(name)` is called once the new run has been launched.
+ * Open the dialog for starting a new run of `game` from run `parent` (its detail from /api/runs/{name})
+ * at `checkpoint` ({name, steps}); `onStarted(name)` is called once the new run has been launched.
  */
-export async function openForkForm(parent, checkpoint, onStarted) {
+export async function openForkForm(game, parent, checkpoint, onStarted) {
   const [{ schema }, rules, schemes, runs] = await Promise.all([
-    loadSchema(),
-    get("/api/fork-rules"),
-    get("/api/rewards").then((r) => r.schemes).catch(() => []),
-    get("/api/runs").catch(() => []),
+    loadSchema(game),
+    get(gameUrl("/api/fork-rules", game)),
+    get(gameUrl("/api/rewards", game)).then((r) => r.schemes).catch(() => []),
+    get(gameUrl("/api/runs", game)).catch(() => []),
   ]);
   const locked = rules.locked;
   const config = parent.config;
@@ -71,7 +73,7 @@ export async function openForkForm(parent, checkpoint, onStarted) {
 
   const taken = new Set([parent.name, ...runs.map((r) => r.name)]);
   const nameWidget = fieldControl(
-    { name: "new run name", type: "str", nullable: false, description: "A new directory under runs/; must differ from every existing run." },
+    { name: "new run name", type: "str", nullable: false, description: `A new directory under runs/${game}/; must differ from every existing run of this game.` },
     suggestName(parent.name, taken),
   );
   const description = descriptionField();
@@ -86,7 +88,7 @@ export async function openForkForm(parent, checkpoint, onStarted) {
   );
   schemeSelect.addEventListener("change", async () => {
     try {
-      const values = schemeSelect.value === PARENT_VALUES ? config.reward : await get(`/api/rewards/${encodeURIComponent(schemeSelect.value)}`);
+      const values = schemeSelect.value === PARENT_VALUES ? config.reward : await get(gameUrl(`/api/rewards/${encodeURIComponent(schemeSelect.value)}`, game));
       for (const w of rewardWidgets) w.set(values[w.spec.name]);
       updateNote();
     } catch (error) {
@@ -116,7 +118,7 @@ export async function openForkForm(parent, checkpoint, onStarted) {
   function updateNote() {
     const changed = changedFields();
     if (changed.length === 0) {
-      message(note, "info", "No settings changed yet. Starting now copies this checkpoint into a new run with the same settings; to simply continue the same run, close this and use Resume.");
+      message(note, "info", "No settings changed yet. Starting now copies this checkpoint into a new run with the same settings; to simply train the same run longer, close this and use \u201cResume this run\u201d.");
     } else {
       message(note, "info", `Changed: ${changed.map(([section, w]) => `${section}.${w.spec.name}`).join(", ")}.`);
     }
@@ -131,7 +133,7 @@ export async function openForkForm(parent, checkpoint, onStarted) {
     h(
       "div",
       { class: "dialog-body" },
-      h("h2", { id: "fork-title", text: `Continue ${parent.name} with changes` }),
+      h("h2", { id: "fork-title", text: `New run from ${parent.name}` }),
       h("p", {
         class: "lead",
         text: `A new run starts from the weights and optimizer state of ${parent.name} at ${formatNumber(checkpoint.steps)} env steps (${checkpoint.name}). It counts its own steps from 0 with its own total_env_steps, and its learning-rate schedule starts again from learning_rate. ${parent.name} itself is not changed.`,
@@ -147,7 +149,7 @@ export async function openForkForm(parent, checkpoint, onStarted) {
         "details",
         { class: "panel" },
         h("summary", { text: "Locked settings (taken from the parent)" }),
-        h("p", { class: "muted small", text: "These must stay as they are: the parent's weights only fit this network, board and observation." }),
+        h("p", { class: "muted small", text: "These must stay as they are: the parent's weights only fit this network, these game rules and this observation." }),
         h("div", { class: "fields" }, lockedShown.map((w) => w.el)),
       ),
       note,
@@ -171,7 +173,7 @@ export async function openForkForm(parent, checkpoint, onStarted) {
     startButton.textContent = "Starting…";
     try {
       const body = { name: name.value, checkpoint: checkpoint.name, config: tables, description: description.get() };
-      const result = await post(`/api/runs/${encodeURIComponent(parent.name)}/fork`, body);
+      const result = await post(gameUrl(`/api/runs/${encodeURIComponent(parent.name)}/fork`, game), body);
       dialog.close();
       onStarted(result.name);
     } catch (error) {

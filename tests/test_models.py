@@ -6,12 +6,13 @@ import torch
 from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.policies.transformer import SnakeTransformerPolicy
 from attentive_snake.models.types import PolicyOutput
+from attentive_snake.observation_spec import ObservationSpec
 
 NET_PARTS = ["embed", "positional", "cls", "blocks", "norm", "pool", "policy_head", "value_head"]
 
 
 def make(shape=(3, 10, 10), num_actions=4, **kw) -> SnakeTransformerPolicy:
-    return SnakeTransformerPolicy(ModelConfig(**kw), shape, num_actions)
+    return SnakeTransformerPolicy(ModelConfig(**kw), ObservationSpec("grid", shape), num_actions)
 
 
 @pytest.mark.parametrize("batch", [1, 2, 17])

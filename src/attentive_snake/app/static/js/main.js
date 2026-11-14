@@ -1,6 +1,10 @@
-// Tab switching and start-up. Each tab module exports init(panel), optional show(params) and hide().
+// Start-up and tab switching. Each tab module exports init(panel), optional show(params), hide()
+// and reset(game): reset is called when another game is selected and drops all per-game state.
 
 import { onNavigate } from "./bus.js";
+import { h, replace } from "./dom.js";
+import { loadGames, onGameChange } from "./game.js";
+import { renderGamePicker } from "./game_picker.js";
 import * as newRun from "./tabs/new_run.js";
 import * as runs from "./tabs/runs.js";
 import * as compare from "./tabs/compare.js";
@@ -24,22 +28,24 @@ const main = document.getElementById("main");
 const ready = {};
 let active = null;
 
-for (const [id, tab] of Object.entries(TABS)) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.setAttribute("role", "tab");
-  button.id = `tab-${id}`;
-  button.textContent = tab.label;
-  button.setAttribute("aria-controls", `panel-${id}`);
-  button.addEventListener("click", () => select(id));
-  nav.append(button);
-  const panel = document.createElement("section");
-  panel.id = `panel-${id}`;
-  panel.setAttribute("role", "tabpanel");
-  panel.hidden = true;
-  panel.setAttribute("aria-labelledby", button.id);
-  main.append(panel);
-  ready[id] = Promise.resolve(tab.module.init(panel));
+function buildTabs() {
+  for (const [id, tab] of Object.entries(TABS)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "tab");
+    button.id = `tab-${id}`;
+    button.textContent = tab.label;
+    button.setAttribute("aria-controls", `panel-${id}`);
+    button.addEventListener("click", () => select(id));
+    nav.append(button);
+    const panel = document.createElement("section");
+    panel.id = `panel-${id}`;
+    panel.setAttribute("role", "tabpanel");
+    panel.hidden = true;
+    panel.setAttribute("aria-labelledby", button.id);
+    main.append(panel);
+    ready[id] = Promise.resolve(tab.module.init(panel));
+  }
 }
 
 // Arrow keys move between tabs (WAI-ARIA tabs pattern).
@@ -68,6 +74,25 @@ async function select(id, params = {}) {
   TABS[id].module.show?.(params);
 }
 
-onNavigate((tab, params) => select(tab, params));
-window.addEventListener("hashchange", () => select(location.hash.slice(1)));
-select(location.hash.slice(1) || "new");
+async function changeGame(game) {
+  await Promise.all(Object.values(ready));
+  for (const tab of Object.values(TABS)) tab.module.reset?.(game);
+  select(active);
+}
+
+async function start() {
+  try {
+    await loadGames();
+  } catch (error) {
+    replace(main, h("div", { class: "message error", text: `Could not load the games: ${error.message}` }));
+    return;
+  }
+  renderGamePicker(document.getElementById("game-picker"));
+  buildTabs();
+  onGameChange(changeGame);
+  onNavigate((tab, params) => select(tab, params));
+  window.addEventListener("hashchange", () => select(location.hash.slice(1)));
+  select(location.hash.slice(1) || "new");
+}
+
+start();

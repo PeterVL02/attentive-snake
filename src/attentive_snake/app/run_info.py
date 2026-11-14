@@ -3,6 +3,7 @@
 import dataclasses
 from pathlib import Path
 
+from attentive_snake.app.config_json import dataclass_to_json
 from attentive_snake.config import load_experiment
 from attentive_snake.run_dir import config_path, list_checkpoints, metrics_path
 from attentive_snake.run_metadata import event_to_json, latest_description, lineage, read_events
@@ -28,15 +29,18 @@ def metrics(run_dir: Path) -> list[dict]:
 
 
 def config_summary(run_dir: Path) -> dict:
-    """Model kind, grid size and training target from config.toml (``None`` values if it cannot be read)."""
+    """Game, model kind, game rules (every ``[game]`` field but ``name``) and training target from config.toml.
+
+    All values are ``None`` if the config cannot be read.
+    """
     try:
         config = load_experiment(config_path(run_dir))
     except (OSError, ValueError, TypeError):
-        return {"kind": None, "width": None, "height": None, "total_env_steps": None}
+        return {"game": None, "kind": None, "rules": None, "total_env_steps": None}
     return {
+        "game": config.game_name,
         "kind": config.model.kind,
-        "width": config.game.width,
-        "height": config.game.height,
+        "rules": dataclass_to_json(config.game),
         "total_env_steps": config.train.total_env_steps,
     }
 

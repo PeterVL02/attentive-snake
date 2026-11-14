@@ -113,3 +113,17 @@ def test_fork_refuses_existing_runs_and_the_parent_itself(parent: Path):
     assert train("--run-dir", sibling, "--fork", parent, "--steps", 16).returncode == 0
     refused = train("--run-dir", sibling, "--fork", parent)
     assert refused.returncode == 2 and "already contains checkpoints" in refused.stderr
+
+
+def test_game_flag_picks_the_default_config_and_must_match_the_config(tmp_path: Path):
+    (tmp_path / "tiny.toml").write_text(TINY)
+    run_dir = tmp_path / "snake" / "g"
+    result = train("--game", "snake", "--run-dir", run_dir, "--config", tmp_path / "tiny.toml", "--steps", 16)
+    assert result.returncode == 0, result.stderr
+    assert load_experiment(config_path(run_dir)).game_name == "snake"
+    assert train("--game", "chess", "--run-dir", tmp_path / "x").returncode == 2  # not a known game
+    (tmp_path / "other.toml").write_text('[game]\nname = "chess"\n')
+    refused = train("--run-dir", tmp_path / "y", "--config", tmp_path / "other.toml")
+    assert refused.returncode == 2 and "unknown game 'chess'" in refused.stderr
+    resumed = train("--resume", run_dir, "--game", "snake")
+    assert resumed.returncode == 2 and "--game" in resumed.stderr

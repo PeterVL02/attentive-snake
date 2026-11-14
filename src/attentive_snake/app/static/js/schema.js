@@ -1,18 +1,17 @@
-// The experiment schema and default config, fetched once and shared.
+// The experiment schema and default config of a game, fetched once per game and shared.
 
 import { get } from "./api.js";
+import { currentGame, gameUrl } from "./game.js";
 
-let cached = null;
+const cache = new Map(); // game -> Promise<{schema, defaults}>
 
-export function loadSchema() {
-  cached ??= Promise.all([get("/api/schema"), get("/api/defaults")]).then(([schema, defaults]) => ({
-    schema,
-    defaults,
-  }));
-  cached.catch(() => (cached = null)); // allow a retry after an error
-  return cached;
-}
-
-export function fieldSpec(schema, section, name) {
-  return schema.sections[section].find((f) => f.name === name);
+export function loadSchema(game = currentGame().name) {
+  if (!cache.has(game)) {
+    const loading = Promise.all([get(gameUrl("/api/schema", game)), get(gameUrl("/api/defaults", game))]).then(
+      ([schema, defaults]) => ({ schema, defaults }),
+    );
+    loading.catch(() => cache.delete(game)); // allow a retry after an error
+    cache.set(game, loading);
+  }
+  return cache.get(game);
 }

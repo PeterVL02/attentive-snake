@@ -1,0 +1,59 @@
+# Default Lunar Lander experiment for scripts/train.py --game lunar_lander.
+#
+# Every field is listed except the [reward] values (see below). A missing key
+# (or a whole missing section) takes the dataclass default; an unknown key is
+# an error. TOML has no null, so fields that may be None are commented out to mean None.
+# scripts/train.py writes the full resolved config to <run-dir>/config.toml.
+
+[game]  # name selects the game; the other keys are attentive_snake.games.lunar_lander.config.LanderRules
+name = "lunar_lander"
+gravity = -10.0               # between -12 and 0
+enable_wind = false           # random wind and turbulence (much harder)
+wind_power = 15.0             # 0..20, only with enable_wind
+turbulence_power = 1.5        # 0..2, only with enable_wind
+max_episode_steps = 1000      # time limit (Gymnasium's); the cut counts as the end of the episode
+
+# [reward]: not listed here. The default reward values live in one place, the
+# reward scheme configs/lunar_lander/rewards/default.toml
+# (= attentive_snake.games.lunar_lander.reward.LanderReward()).
+
+[model]  # attentive_snake.models.config.ModelConfig (input shape / actions / history come from the env)
+# The observation is 8 numbers. "mlp" (and "cnn", which is an MLP for numbers) are the
+# sensible baselines; "transformer", "hybrid" and "temporal_transformer" make one token
+# per number (attention over the inputs); "frame_attention" one token per past frame.
+kind = "mlp"
+d_model = 64                  # mlp: layer width
+num_heads = 4                 # attention kinds only
+num_layers = 2                # mlp: fully connected layers; attention kinds: transformer blocks
+mlp_ratio = 4                 # attention kinds only
+dropout = 0.0
+conv_channels = 64            # cnn, hybrid, frame_attention: width of the layers that replace convolutions
+conv_layers = 2               # cnn, hybrid, frame_attention: number of those layers
+kernel_size = 3               # unused for vector observations
+
+[train]  # attentive_snake.training.config.TrainConfig
+total_env_steps = 2000000     # summed over all envs; train.py --steps overrides it
+rollout_length = 256          # steps per env per update (update = rollout_length * num_envs = 8192 steps)
+num_epochs = 4
+num_minibatches = 32          # 256 steps per minibatch: enough gradient steps per update (8 learned clearly slower)
+gamma = 0.999                 # landing pays off hundreds of steps after the decisive actions
+gae_lambda = 0.98
+clip_coef = 0.2
+value_coef = 0.5
+entropy_coef = 0.01
+learning_rate = 0.0003
+anneal_lr = true              # linear decay to 0 over total_env_steps
+max_grad_norm = 0.5
+normalize_advantages = true
+# target_kl = 0.02            # early-stop an update's epochs above this KL (None = off)
+device = "auto"               # "auto" = cuda if available, else cpu
+seed = 0
+log_interval = 5              # updates
+# checkpoint_dir = "runs/x"   # set to the run directory by train.py
+checkpoint_interval = 25      # updates
+keep_checkpoints = true       # false: delete older checkpoints after each save (only the latest remains)
+
+[env]  # attentive_snake.config.EnvConfig
+num_envs = 32
+history_length = 1            # the observation already holds velocities; 4 for the temporal kinds
+history_actions = false       # add the one-hot action that produced each frame (4 extra numbers per frame)

@@ -1,7 +1,8 @@
-"""Building environments and the policy from an ``ExperimentConfig``.
+"""Building environments and the policy from an ``ExperimentConfig``, for any game.
 
-The policy's input shape and action count come from the environment, so build
-the environment first and pass it to ``make_policy``.
+The game (``config.game_name``) provides one ``GameEnv``; history, action channels and
+vectorisation are added here generically. The policy's input layout and action count come
+from the environment, so build the environment first and pass it to ``make_policy``.
 """
 
 from typing import Protocol
@@ -9,41 +10,48 @@ from typing import Protocol
 from torch import nn
 
 from attentive_snake.config import ExperimentConfig
-from attentive_snake.env.snake_env import SnakeEnv
-from attentive_snake.env.vec_env import SyncVecSnakeEnv
+from attentive_snake.env.history_env import HistoryEnv
+from attentive_snake.env.types import GameEnv
+from attentive_snake.env.vec_env import SyncVecEnv, env_seed
+from attentive_snake.games.registry import get_game
 from attentive_snake.models.registry import build_policy
+from attentive_snake.observation_spec import ObservationSpec
 
 
 class EnvSpec(Protocol):
-    """What the policy needs to know about an environment (``SnakeEnv`` and ``SyncVecSnakeEnv`` both qualify)."""
+    """What the policy needs to know about an environment (``HistoryEnv`` and ``SyncVecEnv`` both qualify)."""
 
-    observation_shape: tuple[int, int, int]
+    observation_shape: tuple[int, ...]
     num_actions: int
     history_length: int
+    action_channels: int
 
 
-def make_vec_env(config: ExperimentConfig) -> SyncVecSnakeEnv:
-    """The training environments, seeded with ``config.train.seed``."""
-    return SyncVecSnakeEnv(
-        config.env.num_envs,
-        config.game,
-        config.reward,
-        seed=config.train.seed,
-        history_length=config.env.history_length,
-        history_actions=config.env.history_actions,
-    )
+def make_game_env(config: ExperimentConfig, seed: int | None = None) -> GameEnv:
+    """The game's own environment (one frame per observation) with the experiment's rules and reward."""
+    return get_game(config.game_name).make_env(config.game, config.reward, seed)
 
 
-def make_env(config: ExperimentConfig, seed: int | None = None) -> SnakeEnv:
-    """A single environment with the experiment's game and reward (e.g. for watching)."""
-    return SnakeEnv(
-        config.game,
-        config.reward,
-        seed=seed,
-        history_length=config.env.history_length,
-        history_actions=config.env.history_actions,
+def make_env(config: ExperimentConfig, seed: int | None = None) -> HistoryEnv:
+    """A single environment as the policy sees it (history and action channels per ``[env]``), e.g. for watching."""
+    return HistoryEnv(make_game_env(config, seed), config.env.history_length, config.env.history_actions)
+
+
+def make_vec_env(config: ExperimentConfig) -> SyncVecEnv:
+    """The training environments, ``config.env.num_envs`` of them, seeded from ``config.train.seed``."""
+    seed = config.train.seed
+    return SyncVecEnv([make_env(config, env_seed(seed, i)) for i in range(config.env.num_envs)])
+
+
+def observation_spec(config: ExperimentConfig, env: EnvSpec) -> ObservationSpec:
+    """The input layout of ``env`` for an experiment of ``config``'s game."""
+    return ObservationSpec(
+        kind=get_game(config.game_name).observation_kind,
+        shape=tuple(env.observation_shape),
+        history_length=env.history_length,
+        action_channels=env.action_channels,
     )
 
 
 def make_policy(config: ExperimentConfig, env: EnvSpec) -> nn.Module:
-    return build_policy(config.model, tuple(env.observation_shape), env.num_actions, env.history_length)
+    return build_policy(config.model, observation_spec(config, env), env.num_actions)

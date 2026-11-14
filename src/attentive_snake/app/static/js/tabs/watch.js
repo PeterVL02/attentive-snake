@@ -1,82 +1,103 @@
-// Tab 4: watch a checkpoint play, with the attention heatmap over the board.
+// Tab 4: watch a checkpoint of the selected game play, with the attention it pays: a heatmap over a
+// board, weights per history frame, or weights per observation element.
 
 import { del, post } from "../api.js";
-import { drawBoard } from "../board.js";
+import { elementWeightBars, frameWeightBars } from "../attention_bars.js";
+import { boardView } from "../board.js";
 import { formatNumber, formatSteps, h, message, replace } from "../dom.js";
+import { currentGame, isCurrent } from "../game.js";
+import { imageView } from "../image_view.js";
 import { fillCheckpointSelect, fillRunSelect } from "../run_options.js";
 
 const EPISODE_END_PAUSE_MS = 700;
+const VIEWS = { board: boardView, image: imageView };
+const STEPS_PER_TICK = [1, 2, 5, 10, 25];
 
 let els = {};
-let session = null; // {id, info}
+let session = null; // {id, info, game}
+let view = null; // {el, draw(frame)} for the session's view kind
 let playing = false;
 let timer = null;
 let busy = false;
+let loadToken = 0; // bumped by every load and reset; a load that finds it changed is dropped
 let scores = [];
 let lastEpisode = 0;
+let showFrames = false;
+let showElements = false;
 
 function option(value, text) {
   return h("option", { value: String(value), text });
 }
 
+/** Element weights are expected for vector observations of a model with attention (the panel stays put while they come and go). */
+function expectsElements(info) {
+  return info.attention_view !== null && (Array.isArray(info.element_names) || currentGame().observation_kind === "vector");
+}
+
+function attentionNote(info) {
+  if (info.attention_view === null) return `This model (${info.kind}) has no attention to show; only the game is drawn.`;
+  const cellHeatmap = info.attention_view === "grid" || info.attention_view === "frames";
+  if (cellHeatmap && info.view_kind !== "board" && !expectsElements(info)) return "This model's attention is a heatmap over the observation's cells, which cannot be laid over this game's picture.";
+  return "";
+}
+
 function configureControls(info) {
-  const view = info.attention_view;
-  els.attention.disabled = view === null;
-  els.layer.disabled = view === null;
+  const attention = info.attention_view;
+  els.attention.disabled = attention === null;
+  els.layer.disabled = attention === null;
   replace(els.layer, option(-1, "last"), Array.from({ length: info.num_layers }, (_, i) => option(i, `${i + 1} of ${info.num_layers}`)));
-  els.frameField.hidden = view !== "frames";
+  els.frameField.hidden = attention !== "frames";
   replace(
     els.frame,
     option(-1, "newest"),
     Array.from({ length: info.history_length }, (_, i) => option(i, i === 0 ? "1 (oldest)" : String(i + 1))),
   );
-  els.note.hidden = view !== null;
-  els.note.textContent = view === null ? `This model (${info.kind}) has no attention to show; only the game is drawn.` : "";
-  els.weightsPanel.hidden = view !== "weights";
-  els.sessionInfo.textContent = `${info.kind} · ${info.width}×${info.height} · checkpoint at ${formatSteps(info.env_steps)} env steps`;
+  const note = attentionNote(info);
+  els.note.hidden = !note;
+  els.note.textContent = note;
+  showFrames = attention === "weights";
+  showElements = expectsElements(info);
+  els.sessionInfo.textContent = `${info.kind} · observation ${info.observation_shape.join("×")} · checkpoint at ${formatSteps(info.env_steps)} env steps`;
 }
 
-function renderWeights(weights) {
-  if (!weights) {
-    replace(els.weights, h("div", { class: "muted small", text: "No weights for this frame." }));
-    return;
-  }
-  const peak = Math.max(...weights, 1e-9);
-  replace(
-    els.weights,
-    weights.map((w, i) =>
-      h(
-        "div",
-        { class: "bar", title: `frame ${i + 1}: ${w.toFixed(3)}` },
-        h("span", { text: w.toFixed(2) }),
-        h("div", { style: `height:${Math.max(1, (70 * w) / peak)}px` }),
-        h("span", { text: i === weights.length - 1 ? "now" : `t-${weights.length - 1 - i}` }),
-      ),
-    ),
-  );
+function renderAttention(frame) {
+  showFrames ||= Array.isArray(frame.frame_weights);
+  showElements ||= Array.isArray(frame.element_weights);
+  els.framesPanel.hidden = !showFrames;
+  els.elementsPanel.hidden = !showElements;
+  if (showFrames) replace(els.frameWeights, frameWeightBars(frame.frame_weights));
+  if (showElements) replace(els.elementWeights, elementWeightBars(frame.element_weights, session.info.element_names));
 }
 
-function render(frame) {
-  drawBoard(els.canvas, frame);
-  if (frame.done && frame.episode > lastEpisode) {
-    scores.push(frame.score);
-    lastEpisode = frame.episode;
+/** Count finished episodes in `frames` (all of a step call) and draw the last one. */
+function render(frames) {
+  for (const f of frames) {
+    if (f.done && f.episode > lastEpisode) {
+      scores.push(f.score);
+      lastEpisode = f.episode;
+    }
   }
+  const frame = frames[frames.length - 1];
+  view.draw(frame);
   const mean = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-  els.score.textContent = String(frame.score);
+  els.score.textContent = formatNumber(frame.score, 2);
   els.steps.textContent = String(frame.steps);
   els.episode.textContent = String(frame.episode + (frame.done ? 0 : 1));
   els.mean.textContent = mean === null ? "–" : `${formatNumber(mean, 2)} (${scores.length})`;
-  els.caption.textContent = frame.done ? `Episode over: ${frame.event}, score ${frame.score}.` : frame.caption || "";
-  if (session.info.attention_view === "weights") renderWeights(frame.frame_weights);
+  els.caption.textContent = frame.done ? `Episode over: ${frame.event}, score ${formatNumber(frame.score, 2)}.` : frame.caption || "";
+  renderAttention(frame);
 }
 
+/** Run `fn` against the open session; the result is dropped if the session changed meanwhile. */
 async function call(fn) {
   if (busy || !session) return null;
+  const used = session;
   busy = true;
   try {
-    return await fn();
+    const result = await fn(used);
+    return session === used ? result : null;
   } catch (error) {
+    if (session !== used) return null;
     message(els.status, "error", error.message);
     setPlaying(false);
     if (error.status === 404) session = null;
@@ -86,9 +107,9 @@ async function call(fn) {
   }
 }
 
-async function stepOnce() {
-  const result = await call(() => post(`/api/watch/${session.id}/step`, { count: 1 }));
-  if (result) render(result.frames[result.frames.length - 1]);
+async function step(count) {
+  const result = await call((s) => post(`/api/watch/${s.id}/step`, { count, frames: "last" }));
+  if (result) render(result.frames);
   return result?.frames.at(-1);
 }
 
@@ -99,7 +120,7 @@ function fps() {
 async function tick() {
   if (!playing) return;
   const started = performance.now();
-  const frame = await stepOnce();
+  const frame = await step(Number(els.perTick.value));
   if (!playing) return;
   const wait = frame?.done ? EPISODE_END_PAUSE_MS : 1000 / fps();
   timer = setTimeout(tick, Math.max(0, wait - (performance.now() - started)));
@@ -114,14 +135,14 @@ function setPlaying(on) {
 }
 
 async function setOptions(changes) {
-  const result = await call(() => post(`/api/watch/${session.id}/options`, changes));
+  const result = await call((s) => post(`/api/watch/${s.id}/options`, changes));
   if (result) {
     message(els.status, "", "");
-    render(result.frame);
+    render([result.frame]);
   }
 }
 
-async function closeSession() {
+function closeSession() {
   setPlaying(false);
   if (session) {
     const id = session.id;
@@ -131,7 +152,9 @@ async function closeSession() {
 }
 
 async function load() {
-  await closeSession();
+  const token = ++loadToken;
+  const game = currentGame().name;
+  closeSession();
   if (!els.run.value) {
     message(els.status, "error", "Choose a run.");
     return;
@@ -141,6 +164,7 @@ async function load() {
   let created;
   try {
     created = await post("/api/watch", {
+      game,
       run: els.run.value,
       checkpoint: els.checkpoint.value || null,
       sample: els.sample.checked,
@@ -148,25 +172,38 @@ async function load() {
       layer: -1,
       frame: -1,
     });
-    session = { id: created.id, info: created.info };
   } catch (error) {
-    message(els.status, "error", error.message);
+    if (token === loadToken) message(els.status, "error", error.message);
     return;
   }
+  if (token !== loadToken || !isCurrent(game)) {
+    del(`/api/watch/${created.id}`).catch(() => {}); // superseded by a newer load or another game
+    return;
+  }
+  session = { id: created.id, info: created.info, game };
+  const makeView = VIEWS[created.info.view_kind];
+  if (!makeView) {
+    message(els.status, "error", `This page cannot draw the view kind “${created.info.view_kind}”.`);
+    closeSession();
+    return;
+  }
+  view = makeView();
+  replace(els.viewWrap, view.el);
   message(els.status, "", "");
   scores = [];
   lastEpisode = 0;
-  els.attention.checked = session.info.attention_view !== null;
-  configureControls(session.info);
+  els.attention.checked = created.info.attention_view !== null;
+  configureControls(created.info);
   els.controls.hidden = false;
-  render(created.frame);
+  render([created.frame]);
 }
 
 async function refreshCheckpoints(selected) {
+  const game = currentGame().name;
   try {
-    await fillCheckpointSelect(els.checkpoint, els.run.value, selected);
+    await fillCheckpointSelect(els.checkpoint, game, els.run.value, selected);
   } catch (error) {
-    message(els.status, "error", error.message);
+    if (isCurrent(game)) message(els.status, "error", error.message);
   }
 }
 
@@ -180,18 +217,20 @@ export function init(root) {
     run: h("select", { id: "watch-run" }),
     checkpoint: h("select", { id: "watch-checkpoint" }),
     status: h("div", { class: "message", role: "status" }),
-    canvas: h("canvas", { role: "img", "aria-label": "Snake board with attention heatmap" }),
+    viewWrap: h("div", { class: "board-wrap" }),
     play: h("button", { type: "button", class: "primary", text: "Play", "aria-pressed": "false", onclick: () => setPlaying(!playing) }),
-    step: h("button", { type: "button", text: "Step", onclick: () => { setPlaying(false); stepOnce(); } }),
-    reset: h("button", { type: "button", text: "New episode", onclick: () => call(() => post(`/api/watch/${session.id}/reset`)).then((r) => r && render(r.frame)) }),
+    step: h("button", { type: "button", text: "Step", onclick: () => { setPlaying(false); step(1); } }),
+    reset: h("button", { type: "button", text: "New episode", onclick: () => call((s) => post(`/api/watch/${s.id}/reset`)).then((r) => r && render([r.frame])) }),
     speed: h("input", { type: "range", id: "watch-speed", min: "1", max: "30", value: "8" }),
     speedLabel: h("span", { class: "muted small mono", text: "8 fps" }),
+    perTick: h("select", { id: "watch-per-tick" }, STEPS_PER_TICK.map((n) => option(n, n === 1 ? "1 (every step)" : `${n} (skip ahead)`))),
     sample: h("input", { type: "checkbox", id: "watch-sample" }),
     attention: h("input", { type: "checkbox", id: "watch-attention", checked: true }),
     layer: h("select", { id: "watch-layer" }),
     frame: h("select", { id: "watch-frame" }),
     note: h("div", { class: "message info", hidden: true }),
-    weights: h("div", { class: "weights" }),
+    frameWeights: h("div", {}),
+    elementWeights: h("div", {}),
     caption: h("div", { class: "muted small", "aria-live": "polite" }),
     sessionInfo: h("div", { class: "muted small" }),
     score: v(),
@@ -200,7 +239,14 @@ export function init(root) {
     mean: v(),
   };
   els.frameField = h("label", { class: "row", style: "gap:6px" }, "frame", els.frame);
-  els.weightsPanel = h("div", { hidden: true }, h("div", { class: "label", text: "attention per frame (oldest → newest)" }), els.weights);
+  els.framesPanel = h("div", { hidden: true }, h("div", { class: "label", text: "attention per frame (oldest → newest)" }), els.frameWeights);
+  els.elementsPanel = h(
+    "div",
+    { class: "panel", hidden: true },
+    h("h3", { text: "Attention per observation element" }),
+    h("p", { class: "muted small", text: "How much the model attends to each number of the observation when choosing the next action (scaled so the largest is a full bar)." }),
+    els.elementWeights,
+  );
   els.speed.addEventListener("input", () => (els.speedLabel.textContent = `${fps()} fps`));
   els.run.addEventListener("change", () => refreshCheckpoints());
   els.sample.addEventListener("change", () => session && setOptions({ sample: els.sample.checked }));
@@ -211,7 +257,12 @@ export function init(root) {
   els.controls = h(
     "div",
     { class: "columns", hidden: true },
-    h("div", { class: "panel" }, h("div", { class: "board-wrap" }, els.canvas), h("div", { style: "margin-top:8px" }, els.caption)),
+    h(
+      "div",
+      {},
+      h("div", { class: "panel" }, els.viewWrap, h("div", { style: "margin-top:8px" }, els.caption)),
+      els.elementsPanel,
+    ),
     h(
       "div",
       {},
@@ -221,11 +272,12 @@ export function init(root) {
         els.sessionInfo,
         h("div", { class: "row" }, els.play, els.step, els.reset),
         h("div", { class: "row" }, h("label", { for: "watch-speed", class: "label", text: "speed" }), els.speed, els.speedLabel),
+        h("div", { class: "row" }, h("label", { for: "watch-per-tick", class: "label", text: "steps per update" }), els.perTick),
         h("label", { class: "row", style: "gap:6px" }, els.sample, "sample actions (instead of the most likely one)"),
         h("label", { class: "row", style: "gap:6px" }, els.attention, "show attention"),
         h("div", { class: "row" }, h("label", { class: "row", style: "gap:6px" }, "layer", els.layer), els.frameField),
         els.note,
-        els.weightsPanel,
+        els.framesPanel,
       ),
       h(
         "div",
@@ -237,7 +289,10 @@ export function init(root) {
   replace(
     root,
     h("h2", { text: "Watch & attention" }),
-    h("p", { class: "lead", text: "Play a checkpoint greedily or by sampling. Orange shading shows how much the class token attends to each cell when choosing the next move (scaled so the brightest cell is 1)." }),
+    h("p", {
+      class: "lead",
+      text: "Play a checkpoint greedily or by sampling. Attention shows what the class token looks at when choosing the next action: orange shading over a board's cells, or bars per history frame or per observation number (scaled so the largest is 1).",
+    }),
     h(
       "div",
       { class: "panel" },
@@ -260,16 +315,29 @@ export function init(root) {
 }
 
 export async function show(params = {}) {
+  const game = currentGame().name;
   try {
-    await fillRunSelect(els.run, params.run || els.run.value);
+    await fillRunSelect(els.run, game, params.run || els.run.value);
+    if (!isCurrent(game)) return;
     await refreshCheckpoints(params.checkpoint || els.checkpoint.value);
   } catch (error) {
-    message(els.status, "error", error.message);
+    if (isCurrent(game)) message(els.status, "error", error.message);
     return;
   }
-  if (params.run) load();
+  if (params.run && isCurrent(game)) load();
 }
 
 export function hide() {
   setPlaying(false);
+}
+
+export function reset() {
+  loadToken += 1;
+  closeSession();
+  view = null;
+  els.controls.hidden = true;
+  replace(els.viewWrap);
+  replace(els.run);
+  replace(els.checkpoint);
+  message(els.status, "", "");
 }

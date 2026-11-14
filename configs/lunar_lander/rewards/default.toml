@@ -1,0 +1,7 @@
+# The default Lunar Lander reward: Gymnasium's own reward, scaled by 0.01.
+# The single source of the default reward values (tests check it equals LanderReward()).
+# A flat LanderReward table (no section header):
+#   reward = scale * (gymnasium_reward + timeout on the step the time limit ends the episode)
+# The score (mean_score) is always the raw, unscaled Gymnasium return.
+scale = 0.01                  # returns of about -400..+300 become -4..+3: value targets of Snake's size
+timeout = 0.0                 # extra points when max_episode_steps cuts the episode; negative discourages hovering

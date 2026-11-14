@@ -8,7 +8,7 @@ let counter = 0;
 function loadMermaid() {
   loading ??= import(MERMAID_URL).then(({ default: mermaid }) => {
     const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "neutral" });
+    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "neutral", flowchart: { subGraphTitleMargin: { top: 8, bottom: 30 } } });
     return mermaid;
   });
   loading.catch(() => (loading = null));

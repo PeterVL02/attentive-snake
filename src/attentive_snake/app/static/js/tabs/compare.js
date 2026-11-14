@@ -1,9 +1,12 @@
-// Tab: several runs on one chart, with the config fields that differ between them.
+// Tab: several runs of the selected game on one chart, with the config fields that differ between
+// them. Runs of different games are never mixed: the list is the selected game's runs only.
 
 import { get, post } from "../api.js";
 import { badge, debounce, formatDuration, formatNumber, formatSteps, h, message, replace } from "../dom.js";
+import { currentGame, gameUrl, isCurrent } from "../game.js";
 import { LineChart, movingAverage, renderLegend, seriesColor, seriesDash } from "../chart.js";
 import { estimatedSeconds, median, monotonic, points } from "../metric_series.js";
+import { rulesSummary } from "../rules_summary.js";
 
 const METRIC_LABELS = { mean_score: "mean score", mean_length: "mean episode length", mean_return: "mean return" };
 const POLL_MS = 10000;
@@ -32,7 +35,7 @@ function runRow(run) {
       "label",
       { for: id },
       h("span", { class: "name", text: run.name }),
-      h("span", { class: "muted small", text: `${run.kind ?? "?"} · ${run.width ?? "?"}×${run.height ?? "?"} · ${formatSteps(run.env_steps)} / ${formatSteps(run.total_env_steps)}` }),
+      h("span", { class: "muted small", text: `${run.kind ?? "?"} · ${rulesSummary(run.rules)} · ${formatSteps(run.env_steps)} / ${formatSteps(run.total_env_steps)}` }),
       run.description ? h("span", { class: "run-description", text: run.description, title: run.description }) : null,
     ),
     badge(run.status.state),
@@ -40,13 +43,15 @@ function runRow(run) {
 }
 
 async function refreshRuns() {
+  const game = currentGame().name;
   try {
-    const runs = await get("/api/runs");
+    const runs = await get(gameUrl("/api/runs", game));
+    if (!isCurrent(game)) return;
     const names = new Set(runs.map((r) => r.name));
     checked = new Set([...checked].filter((n) => names.has(n)));
-    replace(els.list, runs.length === 0 ? h("li", { class: "empty", text: "No runs yet." }) : runs.map(runRow));
+    replace(els.list, runs.length === 0 ? h("li", { class: "empty", text: `No ${currentGame().title} runs yet.` }) : runs.map(runRow));
   } catch (error) {
-    message(els.status, "error", error.message);
+    if (isCurrent(game)) message(els.status, "error", error.message);
   }
 }
 
@@ -87,7 +92,7 @@ function drawChart() {
 }
 
 function summaryTable() {
-  const head = ["", "run", "kind", "parameters", "grid", "final mean score", "best mean score", "steps / s", "description"];
+  const head = ["", "run", "kind", "parameters", "rules", "final mean score", "best mean score", "steps / s", "description"];
   return h(
     "table",
     {},
@@ -106,7 +111,7 @@ function summaryTable() {
           h("td", { class: "mono", text: run.name }),
           h("td", { text: run.config.model.kind }),
           h("td", { class: "num", text: formatNumber(run.parameters) }),
-          h("td", { text: `${run.config.game.width}×${run.config.game.height}` }),
+          h("td", { text: rulesSummary(run.config.game) }),
           h("td", { class: "num", text: scores.length ? formatNumber(scores[scores.length - 1], 2) : "–" }),
           h("td", { class: "num", text: scores.length ? formatNumber(Math.max(...scores), 2) : "–" }),
           h("td", { class: "num", text: formatNumber(median(speeds), 0) }),
@@ -148,13 +153,17 @@ async function compare() {
     message(els.status, "", "");
     return;
   }
+  const game = currentGame().name;
+  let result;
   try {
-    data = await post("/api/compare", { runs: [...checked] });
-    message(els.status, "", "");
+    result = await post("/api/compare", { game, runs: [...checked] });
   } catch (error) {
-    message(els.status, "error", error.message);
+    if (isCurrent(game)) message(els.status, "error", error.message);
     return;
   }
+  if (!isCurrent(game)) return; // the game changed while waiting: these runs are not shown any more
+  data = result;
+  message(els.status, "", "");
   drawChart();
   replace(
     els.tables,
@@ -218,4 +227,15 @@ export async function show() {
 export function hide() {
   visible = false;
   clearTimeout(timer);
+}
+
+export function reset() {
+  clearTimeout(timer);
+  checked = new Set();
+  series = [];
+  data = { runs: [], differences: [] };
+  drawChart();
+  replace(els.list, h("li", { class: "empty", text: "Loading…" }));
+  replace(els.tables);
+  message(els.status, "", "");
 }

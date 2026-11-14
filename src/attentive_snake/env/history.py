@@ -4,22 +4,23 @@ import numpy as np
 
 
 class FrameHistory:
-    """Owns a (K*F, H, W) buffer, oldest frame first, newest last.
+    """Owns a ``(K*F, *rest)`` buffer, oldest frame first, newest last.
 
-    Frames before the episode start are zeros. ``reset`` and ``push`` return a
-    fresh copy, so earlier observations are never mutated by later steps.
+    Works for frames of any rank (``(F, H, W)`` or ``(F,)``). Frames before the
+    episode start are zeros. ``reset`` and ``push`` return a fresh copy, so earlier
+    observations are never mutated by later steps.
     """
 
-    def __init__(self, length: int, frame_shape: tuple[int, int, int]):
+    def __init__(self, length: int, frame_shape: tuple[int, ...]):
         if length < 1:
             raise ValueError("history length must be at least 1.")
-        channels, height, width = frame_shape
+        channels, *rest = frame_shape
         self._channels = channels
-        self._buffer = np.zeros((length * channels, height, width), dtype=np.float32)
+        self._buffer = np.zeros((length * channels, *rest), dtype=np.float32)
 
     @property
-    def shape(self) -> tuple[int, int, int]:
-        return self._buffer.shape  # type: ignore[return-value]
+    def shape(self) -> tuple[int, ...]:
+        return self._buffer.shape
 
     def reset(self, frame: np.ndarray) -> np.ndarray:
         """Start a new episode with ``frame`` as the only (newest) frame."""

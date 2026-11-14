@@ -1,30 +1,32 @@
-"""Pure convolutional actor-critic baseline (``kind = "cnn"``).
+"""Actor-critic baseline without attention (``kind = "cnn"``).
 
-Children of ``self.net``: encoder -> readout -> {policy_head, value_head}
+Children of ``self.net``: encoder -> readout -> {policy_head, value_head} (from ``FEATURE_STAGES``).
 
-``encoder``: ``conv_layers`` same-padded convs (``conv_channels`` wide, residual after the first).
-``readout``: flatten the whole feature map, linear to ``d_model``, GELU. Flatten-then-linear
-was chosen over global mean pooling because the policy depends on *where* the head and
-food are (a mean would erase position and dilute the one head cell), and it is possible
-because the grid size is fixed per model. Stacked history frames are plain input channels.
-There is no attention, hence no ``attention_maps``.
+Grid: ``encoder`` is ``conv_layers`` same-padded convs (``conv_channels`` wide, residual
+after the first); ``readout`` flattens the whole feature map, linear to ``d_model``, GELU.
+Flatten-then-linear was chosen over global mean pooling because the policy depends on
+*where* the head and food are (a mean would erase position and dilute the one head cell),
+and it is possible because the grid size is fixed per model.
+Vector: a convolution over an arbitrary order of numbers is meaningless, so ``encoder`` is
+an MLP of the same width and depth and ``readout`` a linear layer to ``d_model``.
+Stacked history frames are plain input channels / numbers. There is no attention, hence
+no ``attention_maps``.
 """
 
 from torch import Tensor, nn
 
-from attentive_snake.models.blocks.conv import ConvEncoder, FlattenReadout
+from attentive_snake.models.input_stages.catalog import FEATURE_STAGES, readable_kinds
+from attentive_snake.models.input_stages.stage import run_stage, whole_observation
 from attentive_snake.models.policies.base import BasePolicy, output_heads
 
 
 class CnnPolicy(BasePolicy):
+    observation_kinds = readable_kinds(FEATURE_STAGES)
+
     def _build_net(self) -> dict[str, nn.Module]:
-        c = self.config
-        channels, height, width = self.observation_shape
-        return {
-            "encoder": ConvEncoder(channels, c.conv_channels, c.conv_layers, c.kernel_size),
-            "readout": FlattenReadout(c.conv_channels, height, width, c.d_model),
-            **output_heads(c.d_model, self.num_actions),
-        }
+        stage = self._input_stage(FEATURE_STAGES, whole_observation(self.observation_spec))
+        self._stage_names = tuple(stage.modules)
+        return {**stage.modules, **output_heads(self.config.d_model, self.num_actions)}
 
     def _pooled(self, obs: Tensor, need_weights: bool) -> tuple[Tensor, list[Tensor]]:
-        return self.net["readout"](self.net["encoder"](obs)), []
+        return run_stage(self.net, self._stage_names, obs), []

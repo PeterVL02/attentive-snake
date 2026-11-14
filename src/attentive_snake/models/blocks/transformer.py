@@ -1,4 +1,4 @@
-"""Small single-purpose building blocks of the Snake transformer.
+"""Small single-purpose building blocks of the transformer policies.
 
 Token layout: ``(batch, tokens, d_model)``. Grid tokens are in row-major order.
 """
