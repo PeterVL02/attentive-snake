@@ -87,6 +87,11 @@ def test_episode_flow_reset_done_and_auto_restart(runs) -> None:
     assert frames[i].event in {"hit_wall", "hit_self", "starved", "won"}
     assert frames[i].episode == 1
     assert frames[i + 1].steps == 1 and not frames[i + 1].done and frames[i + 1].episode == 1  # new episode started
+    # What the network says about each action of the observation the next action is chosen from.
+    assert session.info["algorithm"] == "ppo" and session.info["action_names"] == ["up", "right", "down", "left"]
+    values = first.action_values
+    assert values["kind"] == "probabilities" and len(values["values"]) == 4 and isinstance(values["state_value"], float)
+    assert abs(sum(values["values"]) - 1.0) < 1e-5 and frames[i].action_values is None  # nothing is chosen after the end
 
 
 def test_info_for_temporal_and_options_validation(runs) -> None:

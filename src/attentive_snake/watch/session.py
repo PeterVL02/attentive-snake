@@ -10,7 +10,8 @@ from attentive_snake.games.registry import get_game
 from attentive_snake.models.registry import KIND_INFO
 from attentive_snake.run_dir import config_path
 from attentive_snake.training.checkpoint import latest_checkpoint, load_checkpoint
-from attentive_snake.watch.actions import choose_action
+from attentive_snake.watch.action_names import action_names
+from attentive_snake.watch.actions import choose_action, readout
 from attentive_snake.watch.attention_panel import (
     AttentionPanel,
     attention_panel,
@@ -61,6 +62,8 @@ class WatchSession:
             "history_length": config.env.history_length,
             "attention_view": KIND_INFO[config.model.kind].attention_view,
             "element_names": element_names(game, observation_spec(config, self._env)),  # vector games only
+            "algorithm": config.train.algorithm,
+            "action_names": action_names(game, self._env.num_actions),
             "checkpoint": str(checkpoint),
             "env_steps": env_steps,
             "width": first.view["width"],  # of the view: cells for "board", pixels for "image"
@@ -118,6 +121,7 @@ class WatchSession:
             caption=panel.caption,
             episode=self._episode,
             element_weights=None if panel.element_weights is None else panel.element_weights.tolist(),
+            action_values=None if self._done else readout(self._policy, self._tensor()).to_dict(),
         )
 
     def _panel(self) -> AttentionPanel:

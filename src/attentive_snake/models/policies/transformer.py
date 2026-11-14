@@ -1,7 +1,7 @@
 """Actor-critic transformer over the observation's positions (``kind = "transformer"``).
 
 Children of ``self.net``, in order:
-embed -> positional -> cls -> blocks (each applied in turn) -> norm -> pool -> {policy_head, value_head}
+embed -> positional -> cls -> blocks (each applied in turn) -> norm -> pool -> head (policy_head + value_head, or q_head: models.heads)
 
 Grid: every cell is one token built from all its channels. Vector: every element (number)
 is one token, a value embedding plus a learned element embedding, so attention is over

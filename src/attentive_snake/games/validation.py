@@ -38,6 +38,8 @@ def spec_problems(spec: GameSpec, package_name: str) -> list[str]:
         problems += metric_problems(spec.episode_metrics)
     if spec.observation_labels is not None and not problems:
         problems += _label_problems(spec)
+    if spec.action_labels is not None and not problems:
+        problems += _action_label_problems(spec)
     return problems
 
 
@@ -74,6 +76,20 @@ def _label_problems(spec: GameSpec) -> list[str]:
         return [f"cannot build a default env to check observation_labels: {error!r}"]
     if shape != (len(labels),):
         return [f"observation_labels has {len(labels)} names but a frame has shape {shape}"]
+    return []
+
+
+def _action_label_problems(spec: GameSpec) -> list[str]:
+    """``action_labels``: distinct non-empty names, one per action of a default env."""
+    labels = spec.action_labels
+    if not all(isinstance(label, str) and label.strip() for label in labels) or len(set(labels)) != len(labels):
+        return ["action_labels must be distinct, non-empty strings"]
+    try:
+        num_actions = spec.make_env(spec.rules_type(), spec.reward_type(), 0).num_actions
+    except Exception as error:
+        return [f"cannot build a default env to check action_labels: {error!r}"]
+    if num_actions != len(labels):
+        return [f"action_labels has {len(labels)} names but the game has {num_actions} actions"]
     return []
 
 

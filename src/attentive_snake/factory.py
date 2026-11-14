@@ -17,6 +17,7 @@ from attentive_snake.env.vec_env import SyncVecEnv, env_seed
 from attentive_snake.games.registry import get_game
 from attentive_snake.models.registry import build_policy
 from attentive_snake.observation_spec import ObservationSpec
+from attentive_snake.training.algorithms import get_algorithm
 from attentive_snake.training.build import build_trainer
 from attentive_snake.training.hooks import UpdateHook
 from attentive_snake.training.metrics import MetricsLogger
@@ -59,7 +60,9 @@ def observation_spec(config: ExperimentConfig, env: EnvSpec) -> ObservationSpec:
 
 
 def make_policy(config: ExperimentConfig, env: EnvSpec) -> nn.Module:
-    return build_policy(config.model, observation_spec(config, env), env.num_actions)
+    """The policy of ``[model]`` with the head its algorithm trains (``Algorithm.head``)."""
+    head = get_algorithm(config.train.algorithm).head
+    return build_policy(config.model, observation_spec(config, env), env.num_actions, head)
 
 
 def make_trainer(
