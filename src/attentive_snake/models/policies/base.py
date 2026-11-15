@@ -46,6 +46,13 @@ def transformer_tail(config: ModelConfig) -> dict[str, nn.Module]:
     }
 
 
+def pool_tokens(tail: Mapping[str, nn.Module], tokens: Tensor, need_weights: bool) -> tuple[Tensor, list[Tensor]]:
+    """``transformer_tail``'s modules (looked up by name in ``tail``) over ``tokens`` (B, N, D):
+    pooled features (B, D) and per-block attention maps (empty unless ``need_weights``)."""
+    out, maps = run_blocks(tail["blocks"], tail["cls"](tokens), need_weights)
+    return tail["pool"](tail["norm"](out)), maps
+
+
 def require_action_layout(spec: ObservationSpec, num_actions: int) -> None:
     """For policies that read actions from the frames: the action channels are absent or one per action."""
     if spec.action_channels not in (0, num_actions):
@@ -121,9 +128,7 @@ class AttentivePolicy(BasePolicy):
         return {**self._build_front(), **transformer_tail(self.config)}
 
     def _pooled(self, obs: Tensor, need_weights: bool) -> tuple[Tensor, list[Tensor]]:
-        net = self.net
-        tokens, maps = run_blocks(net["blocks"], net["cls"](self._tokens(obs)), need_weights)
-        return net["pool"](net["norm"](tokens)), maps
+        return pool_tokens(self.net, self._tokens(obs), need_weights)
 
     @torch.no_grad()
     def attention_maps(self, obs: Tensor) -> tuple[Tensor, ...]:

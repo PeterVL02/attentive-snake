@@ -76,6 +76,7 @@ Chosen with `kind` in the `[model]` section of a config (or the dropdown in the 
 | `frame_attention` | A CNN turns each of the last K frames into one vector; attention runs across frames. | Weight per frame |
 | `lstm` | A CNN (or MLP) turns each of the last K frames into one vector and an LSTM reads them oldest to newest. | None |
 | `jepa` | A world model: an encoder, a predictor of each action's next-state embedding, a value decoder; plays the action whose predicted next state is worth most. Experimental. | None |
+| `jepa_attention` | `jepa` with `hybrid`'s attention encoder: the class token's output is the embedding the predictor works on. Experimental. | Board heatmap |
 | `mlp` | A plain multilayer perceptron on the flattened observation. Baseline for vector games. | None |
 
 Every kind reads both grids and vectors; only the input stage changes. On a
@@ -94,7 +95,7 @@ step to the next and never stored in the DQN replay buffer. Its memory is exactl
 are already single-convolution residual layers) in using the standard two-convolution residual block
 (`conv_layers` of them; on vectors, layer-normalised residual MLP blocks as in SimBa).
 
-`hybrid`, `frame_attention` and `lstm` have a convolutional stem (an MLP on numbers) in front of
+`hybrid` (and `jepa_attention`, which uses its trunk), `frame_attention` and `lstm` have a convolutional stem (an MLP on numbers) in front of
 their attention or recurrent part. `[model] residual = true` builds that stem (for the other two:
 the encoder of each frame) from the same residual blocks as `resnet` instead of plain layers, so
 you get the kind you chose with a deeper-trainable stem rather than a new kind. The other kinds
@@ -162,6 +163,35 @@ only predict something like an average embedding; with `actual`, a reward that d
 where the snake came from (Snake's closer/farther shaping) is not a function of the next
 state alone, so the decoder cannot learn it exactly; and the extra encoder and target-encoder
 passes make a gradient step slower than `cnn`/`mlp`.
+
+`jepa_attention` is the same world model with `hybrid`'s encoder: the conv stem (an MLP per
+number on vectors), transformer blocks over the cells and the class token's output as the
+embedding the predictor and the value decoder work on. Its `num_layers` sets both the number
+of transformer blocks and the predictor's depth (no separate setting), the Watch tab shows the
+encoder's attention as for `hybrid`, and everything above (heads, `prediction_coef`,
+`value_training`, ...) applies unchanged; the jepa part is shared code, not a copy.
+
+Single-seed check, not a benchmark: Snake 6x6, DQN with its Snake defaults (`--set
+train.algorithm=dqn`, default `[model]` sizes: `d_model` 64, 3 layers, 64 conv channels x 3),
+200k env steps, `prediction_coef = 0` unless noted, seed 0, greedy evaluation of 50 games every
+50k env steps, GPU, all runs sharing the machine (so speeds compare only roughly).
+Mean score (apples); win rate at 200k:
+
+| run | parameters | 50k | 100k | 150k | 200k | won | env steps/s |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `cnn` | 223k | 8.5 | 11.7 | 14.2 | 16.0 | 0% | 355 |
+| `jepa` | 244k | 8.0 | 11.0 | 13.9 | 16.6 | 0% | 300 |
+| `hybrid` | 231k | 6.9 | 14.1 | 16.2 | 19.5 | 2% | 237 |
+| `jepa_attention` | 252k | 12.3 | 14.8 | 18.0 | 19.8 | 2% | 219 |
+| `jepa_attention`, `prediction_coef = 1` | 252k | 12.5 | 14.3 | 18.3 | stopped at 160k by the time cap | | about 170 |
+
+(The `prediction_coef = 1` run was stopped at 60k to make room and resumed from its 50k
+checkpoint, which refills the replay buffer.) Reading: `jepa_attention` was ahead of `jepa` at
+every point (by 3-4 apples) and ended level with `hybrid`, which has the same encoder without
+the predictor; it was well ahead of `hybrid` early (12.3 against 6.9 at 50k) and about 8% slower.
+So most of the gain over `jepa` is the attention encoder; what the predictor adds on top of it
+was faster early learning in this one run, not a better end result. The prediction loss again
+changed nothing measurable and cost about 30% of the speed. `cnn` and `jepa` were level, as before.
 
 Lunar Lander can hide part of what the model sees: `game.hide_velocities = true` replaces
 the three velocity numbers by zeros (the physics, score and reward still use the true

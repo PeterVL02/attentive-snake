@@ -2,6 +2,8 @@
 
 import copy
 import dataclasses
+import json
+from pathlib import Path
 
 import pytest
 import torch
@@ -325,3 +327,24 @@ def test_prioritized_replay_trains_jepa_and_logs_priorities_with_the_prediction_
     records = trainer.train()
     assert {"priority_beta", "priority_mean", "priority_max", "prediction_loss", "embedding_std", "value_gap", "td_error"} <= set(records[-1])
     assert records[-1]["priority_max"] > 0
+
+
+# The jepa kind's state-dict keys, shapes and seeded initial weights (sum and absolute sum of
+# every tensor), recorded before its jepa-specific parts moved to models.jepa.world_model: saved
+# jepa runs must keep loading, and seed 0 must keep building the same network.
+RECORDED = json.loads((Path(__file__).parent / "data" / "jepa_state_dicts.json").read_text())
+RECORDED_CONFIG = dict(d_model=16, num_layers=2, conv_channels=8, conv_layers=2)
+RECORDED_SPECS = {"grid": ObservationSpec("grid", (3, 5, 5), 1), "vector": ObservationSpec("vector", (6,), 1)}
+
+
+@pytest.mark.parametrize("entry", sorted(RECORDED))
+def test_jepa_keys_shapes_and_seeded_weights_never_change(entry):
+    observation, head = entry.split("/")
+    torch.manual_seed(0)
+    policy = build_policy(ModelConfig(kind="jepa", **RECORDED_CONFIG), RECORDED_SPECS[observation], A, head)
+    state = policy.state_dict()
+    assert list(state) == list(RECORDED[entry])
+    for key, (shape, total, absolute) in RECORDED[entry].items():
+        tensor = state[key].double()
+        assert list(tensor.shape) == shape, key
+        assert float(tensor.sum()) == pytest.approx(total, abs=1e-9) and float(tensor.abs().sum()) == pytest.approx(absolute, rel=1e-12), key
