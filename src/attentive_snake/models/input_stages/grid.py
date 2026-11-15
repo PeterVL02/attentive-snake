@@ -1,6 +1,8 @@
 """Input stages for grid observations ``(N, C, H, W)``: every cell is a position.
 
 The module names here are the checkpoint keys of every Snake model trained so far.
+``config.layer_norm`` adds a normalisation after every convolution and in the readout
+(``blocks.norm``), under the same module names.
 """
 
 from torch import nn
@@ -15,7 +17,13 @@ from attentive_snake.models.input_stages.stage import Stage, StageInput
 def _conv_encoder(source: StageInput, config: ModelConfig, residual: bool) -> nn.Module:
     """The convolutions over the board: plain layers, or a widening layer and residual blocks (same shapes)."""
     encoder = ResidualConvEncoder if residual else ConvEncoder
-    return encoder(source.values * source.channels, config.conv_channels, config.conv_layers, config.kernel_size)
+    return encoder(source.values * source.channels, config.conv_channels, config.conv_layers, config.kernel_size, config.layer_norm)
+
+
+def _readout(source: StageInput, config: ModelConfig) -> nn.Module:
+    """The whole feature map flattened into one ``d_model`` vector."""
+    height, width = source.spatial
+    return FlattenReadout(config.conv_channels, height, width, config.d_model, config.layer_norm)
 
 
 def token_stage(source: StageInput, config: ModelConfig) -> Stage:
@@ -32,24 +40,12 @@ def token_stage(source: StageInput, config: ModelConfig) -> Stage:
 
 def feature_stage(source: StageInput, config: ModelConfig) -> Stage:
     """Convolutions, then the whole feature map flattened into one ``d_model`` vector."""
-    height, width = source.spatial
-    return Stage(
-        {
-            "encoder": _conv_encoder(source, config, residual=False),
-            "readout": FlattenReadout(config.conv_channels, height, width, config.d_model),
-        }
-    )
+    return Stage({"encoder": _conv_encoder(source, config, residual=False), "readout": _readout(source, config)})
 
 
 def frame_stage(source: StageInput, config: ModelConfig) -> Stage:
     """Like ``feature_stage`` for one frame (its modules are named ``conv``/``readout``, as in old checkpoints); residual blocks with ``config.residual``."""
-    height, width = source.spatial
-    return Stage(
-        {
-            "conv": _conv_encoder(source, config, config.residual),
-            "readout": FlattenReadout(config.conv_channels, height, width, config.d_model),
-        }
-    )
+    return Stage({"conv": _conv_encoder(source, config, config.residual), "readout": _readout(source, config)})
 
 
 def hybrid_stage(source: StageInput, config: ModelConfig) -> Stage:
@@ -69,10 +65,4 @@ def hybrid_stage(source: StageInput, config: ModelConfig) -> Stage:
 
 def residual_stage(source: StageInput, config: ModelConfig) -> Stage:
     """A conv stem and ``conv_layers`` residual conv blocks, then the feature map flattened into one ``d_model`` vector."""
-    height, width = source.spatial
-    return Stage(
-        {
-            "encoder": _conv_encoder(source, config, residual=True),
-            "readout": FlattenReadout(config.conv_channels, height, width, config.d_model),
-        }
-    )
+    return Stage({"encoder": _conv_encoder(source, config, residual=True), "readout": _readout(source, config)})

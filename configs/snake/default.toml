@@ -43,6 +43,7 @@ conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm, jepa
 conv_layers = 3               # cnn, hybrid, frame_attention, lstm, jepa, jepa_attention: number of conv layers; resnet: residual blocks
 kernel_size = 3               # odd; same-padded
 residual = false             # hybrid, jepa_attention, frame_attention, lstm: build the stem (frame encoder) from residual blocks, as resnet does
+layer_norm = false            # every kind with a conv / MLP part (not transformer, temporal_transformer, jepa_temporal): normalise after each of its layers and in its readout
 predictor_layers = 1          # jepa_tokens only: transformer blocks of its per-token predictor (run once per action)
 prediction_coef = 0.0         # jepa kinds only: weight of the prediction loss (0 = off, the default; above 0 adds it)
 value_training = "predicted"  # jepa kinds with dqn only: the value decoder learns from the "predicted" or the "actual" next embedding
@@ -55,7 +56,7 @@ total_env_steps = 5000000     # summed over all envs; train.py --steps overrides
 gamma = 0.99
 bootstrap_truncated = false    # starving is a rule of the game (own reward, counter not observed): a real end
 learning_rate = 0.00025
-anneal_lr = true              # linear decay to 0 over total_env_steps
+anneal_lr = true             # linear decay to 0 over total_env_steps
 device = "auto"               # "auto" = cuda if available, else cpu
 seed = 0
 log_interval = 81920          # env steps (one PPO update here is 8192)

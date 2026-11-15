@@ -1,27 +1,35 @@
 """Residual blocks: ``x + F(x)`` with ``F`` two layers deep, and the encoders that stack them.
 
 Grids use two same-padded convolutions per block (He et al., 2015, without
-normalisation: the batch statistics of an RL rollout are a poor fit). Vectors use
+normalisation by default: the batch statistics of an RL rollout are a poor fit; ``norm``
+adds a batch-independent one after each convolution, ``blocks.norm.map_norm``). Vectors use
 two linear layers with a LayerNorm in front of the block's body, as in SimBa
 (arXiv 2410.09754). Neither block changes the width, so the skips need no projection.
 """
 
 from torch import Tensor, nn
 
+from attentive_snake.models.blocks.norm import map_norm, normalised, present
 from attentive_snake.models.blocks.vector import ElementEmbedding, ElementPositionalEmbedding
 
 
 class ResidualConvBlock(nn.Module):
-    """``GELU(x + conv2(GELU(conv1(x))))``: two same-padded convolutions and a skip. (B, C, H, W) -> same."""
+    """``GELU(x + conv2(GELU(conv1(x))))``: two same-padded convolutions and a skip. (B, C, H, W) -> same.
 
-    def __init__(self, channels: int, kernel_size: int) -> None:
+    With ``norm`` each convolution's output is normalised: ``GELU(x + norm2(conv2(GELU(norm1(conv1(x))))))``.
+    """
+
+    def __init__(self, channels: int, kernel_size: int, norm: bool = False) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(channels, channels, kernel_size, padding=kernel_size // 2)
+        self.norm1 = map_norm(channels, norm)
         self.conv2 = nn.Conv2d(channels, channels, kernel_size, padding=kernel_size // 2)
+        self.norm2 = map_norm(channels, norm)
         self.act = nn.GELU()
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.act(x + self.conv2(self.act(self.conv1(x))))
+        hidden = self.act(normalised(self.norm1, self.conv1(x)))
+        return self.act(x + normalised(self.norm2, self.conv2(hidden)))
 
 
 class ResidualMlpBlock(nn.Module):
@@ -39,12 +47,17 @@ class ResidualMlpBlock(nn.Module):
 
 
 class ResidualConvEncoder(nn.Module):
-    """One widening conv + GELU, then ``blocks`` residual conv blocks. (B, C, H, W) -> (B, channels, H, W)."""
+    """One widening conv + GELU, then ``blocks`` residual conv blocks. (B, C, H, W) -> (B, channels, H, W).
 
-    def __init__(self, in_channels: int, channels: int, blocks: int, kernel_size: int) -> None:
+    With ``norm`` every convolution is followed by a normalisation of its feature map.
+    """
+
+    def __init__(self, in_channels: int, channels: int, blocks: int, kernel_size: int, norm: bool = False) -> None:
         super().__init__()
-        self.stem = nn.Sequential(nn.Conv2d(in_channels, channels, kernel_size, padding=kernel_size // 2), nn.GELU())
-        self.blocks = nn.Sequential(*[ResidualConvBlock(channels, kernel_size) for _ in range(blocks)])
+        self.stem = nn.Sequential(
+            nn.Conv2d(in_channels, channels, kernel_size, padding=kernel_size // 2), *present(map_norm(channels, norm)), nn.GELU()
+        )
+        self.blocks = nn.Sequential(*[ResidualConvBlock(channels, kernel_size, norm) for _ in range(blocks)])
 
     def forward(self, x: Tensor) -> Tensor:
         return self.blocks(self.stem(x))
