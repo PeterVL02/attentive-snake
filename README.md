@@ -283,6 +283,25 @@ not show. The early lead of `jepa_attention` in the single-seed table (12.3 agai
 was seed noise: at 50k its three seeds span 1.9 to 12.5 and its mean equals `hybrid`'s. Three
 seeds are still few; treat this as "attention yes, predictor no gain so far", not as a ranking.
 
+Would looking ahead with the predictor help? Measured before building it (one seed, one
+checkpoint: `jepa_tokens`, Snake 6x6, DQN, 150k env steps, `prediction_coef = 1` with
+`prediction_trains_encoder = true`; 100 greedy games on the same seeds per row). "Depth 2"
+picks the action with the best `reward + gamma * max Q(next state)`:
+
+| how the action is chosen | mean score | against greedy |
+| --- | --- | --- |
+| greedy on Q(s, a) | 16.5 | |
+| depth 2, next state from the real game rules | 21.2 | +4.7 ± 0.6 |
+| depth 2, next state from the learned predictor (real reward for the first step) | 16.8 | +0.3 ± 0.6 |
+
+Reading: one step of search is worth almost five apples with a perfect model and nothing with
+the learned one, so search and a reward head are not built. The value read from a chained
+prediction is off by about 1.6 (mostly a constant overestimate), while the actions that
+survive the step differ by about 0.3; it picks the truly best action exactly as often as
+plain Q does (73%). The predictor is only ever trained on one real step, and the value
+decoder on one-step predictions, so a second chained step is outside what either has seen:
+making search pay needs training on multi-step rollouts first (issue #38).
+
 Lunar Lander can hide part of what the model sees: `game.hide_velocities = true` replaces
 the three velocity numbers by zeros (the physics, score and reward still use the true
 state), so a model has to infer them from several frames and memory can matter. The rule
