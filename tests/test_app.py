@@ -2,6 +2,7 @@
 
 import base64
 import json
+import re
 import shutil
 import sys
 import threading
@@ -191,7 +192,25 @@ def test_schema_defaults_and_page(client: TestClient):
     script = client.get("/static/js/main.js")
     assert script.status_code == 200 and "javascript" in script.headers["content-type"]
     assert client.get("/static/js/fork_form.js").status_code == 200
+    assert client.get("/static/js/tabs/queue.js").status_code == 200
+    assert client.get("/static/js/queue_panel.js").status_code == 200
     assert "# " in client.get("/api/cheatsheet").text
+
+
+def test_every_named_js_import_is_exported_by_its_module():
+    """No node here to load the frontend: at least every ``import { name } from "./x.js"`` must name an export of x.js."""
+    js_dir = PROJECT_ROOT / "src" / "attentive_snake" / "app" / "static" / "js"
+    imports = re.compile(r'import\s*\{([^}]*)\}\s*from\s*"(\.{1,2}/[^"]+)"')
+    exports = re.compile(r"export\s+(?:async\s+)?(?:function\*?|const|let|class)\s+(\w+)")
+    missing = []
+    for module in sorted(js_dir.rglob("*.js")):
+        for names, target in imports.findall(module.read_text(encoding="utf-8")):
+            path = (module.parent / target).resolve()
+            exported = set(exports.findall(path.read_text(encoding="utf-8"))) if path.is_file() else set()
+            for name in (n.split(" as ")[0].strip() for n in names.split(",")):
+                if name and name not in exported:
+                    missing.append(f"{module.relative_to(js_dir)}: {name} from {target}")
+    assert missing == []
 
 
 # --------------------------------------------------------------------------- starting runs

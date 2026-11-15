@@ -2,6 +2,7 @@
 // checkpoint of an existing run (a fork), with changed rewards or training settings.
 
 import { ApiError, get, post } from "./api.js";
+import { navigate } from "./bus.js";
 import { formatNumber, h, message } from "./dom.js";
 import { attachServerError, descriptionField, fieldControl, readFields } from "./fields.js";
 import { gameUrl } from "./game.js";
@@ -130,7 +131,13 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
     }
   }
 
-  const startButton = h("button", { type: "button", class: "primary", text: "Start new run" });
+  // Start the new run now, or put it in the training queue (same body, same checks).
+  const submits = {
+    start: { prefix: "/api/runs", label: "Start new run", busy: "Starting…", then: (result) => onStarted(result.name) },
+    queue: { prefix: "/api/queue/runs", label: "Add to queue", busy: "Adding…", then: () => navigate("queue") },
+  };
+  const startButton = h("button", { type: "button", class: "primary", text: submits.start.label });
+  const queueButton = h("button", { type: "button", text: submits.queue.label, title: "Start it by itself when the runs queued before it have ended (see the Queue tab)." });
   const cancelButton = h("button", { type: "button", text: "Cancel" });
   const panel = (title, ...children) => h("section", { class: "panel" }, h("h3", { text: title }), ...children);
   const dialog = h(
@@ -165,12 +172,13 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
         h("div", { class: "fields" }, lockedShown.map((w) => w.el)),
       ),
       note,
-      h("div", { class: "row dialog-actions" }, startButton, cancelButton),
+      h("div", { class: "row dialog-actions" }, startButton, queueButton, cancelButton),
       formError,
     ),
   );
 
-  async function start() {
+  async function submit(how, button) {
+    const { prefix, label, busy, then } = submits[how];
     message(formError, "", "");
     nameWidget.setError("");
     const name = nameWidget.get();
@@ -181,26 +189,27 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
       message(formError, "error", "Some fields need attention (marked in red).");
       return;
     }
-    startButton.disabled = true;
-    startButton.textContent = "Starting…";
+    startButton.disabled = queueButton.disabled = true;
+    button.textContent = busy;
     try {
-      if (!(await confirmWarnings(tables, game))) return; // "Go back": the finally below re-enables the button
+      if (!(await confirmWarnings(tables, game))) return; // "Go back": the finally below re-enables the buttons
       const body = { name: name.value, checkpoint: checkpoint.name, config: tables, description: description.get() };
-      const result = await post(gameUrl(`/api/runs/${encodeURIComponent(parent.name)}/fork`, game), body);
+      const result = await post(gameUrl(`${prefix}/${encodeURIComponent(parent.name)}/fork`, game), body);
       dialog.close();
-      onStarted(result.name);
+      then(result);
     } catch (error) {
       const text = error.message;
       if (error instanceof ApiError && (error.status === 409 || /name/.test(text))) nameWidget.setError(text);
       else attachServerError([...editable.map(([, w]) => w), ...lockedWidgets], text);
       message(formError, "error", text);
     } finally {
-      startButton.disabled = false;
-      startButton.textContent = "Start new run";
+      startButton.disabled = queueButton.disabled = false;
+      button.textContent = label;
     }
   }
 
-  startButton.addEventListener("click", start);
+  startButton.addEventListener("click", () => submit("start", startButton));
+  queueButton.addEventListener("click", () => submit("queue", queueButton));
   cancelButton.addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
   document.body.append(dialog);
