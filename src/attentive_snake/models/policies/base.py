@@ -3,7 +3,7 @@
 Every policy is built as ``Policy(config, observation_spec, num_actions, head)``: the input
 layout comes from the environment (via the factory) as an ``ObservationSpec``, never from
 ``ModelConfig``; ``head`` names a ``models.heads.HEADS`` entry (the training algorithm's
-choice: actor-critic for PPO, Q-values for DQN). A policy class lists the observation kinds it can read in
+choice: actor-critic for PPO, Q-values or dueling for DQN). A policy class lists the observation kinds it can read in
 ``observation_kinds``; building it for another kind is a ``ValueError``.
 
 The part that reads the observation (the input stage) comes from

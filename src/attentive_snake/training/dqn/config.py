@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass, field
 
+LOSSES: tuple[str, ...] = ("huber", "mse")
+
 
 @dataclass(frozen=True)
 class DqnConfig:
@@ -22,9 +24,12 @@ class DqnConfig:
     priority_alpha: float = field(default=0.6, metadata={"help": "How strongly priorities shape sampling (prioritized replay only): a transition is drawn with probability proportional to (|TD error| + priority_epsilon) ** priority_alpha. 0 is uniform sampling; raising it concentrates replay on the largest errors (1 = proportional to the error)."})
     priority_beta_start: float = field(default=0.4, metadata={"help": "How much of the sampling bias is corrected at the start (prioritized replay only): each sample's loss is scaled by (buffer_size_in_use x its probability) ** -beta, and beta rises linearly to 1 (full correction) at the end of total_env_steps. Raising the start value corrects more early on (steadier but slower to exploit priorities); 1 corrects fully throughout."})
     priority_epsilon: float = field(default=1e-6, metadata={"help": "A small amount added to every |TD error| before priorities are formed (prioritized replay only), so a transition the network predicts perfectly keeps a non-zero chance of being replayed. Raising it makes priorities more uniform."})
+    n_step: int = field(default=1, metadata={"help": "How many steps a target looks ahead before it falls back on the network's own estimate: the rewards of the next n_step steps are added up (discounted by gamma) and the value of the state reached after them, discounted by gamma ** n_step, is added on top. 1 is plain DQN. 3 to 5 spread a reward backwards faster and lean less on estimates that are still wrong, which often speeds up early learning; but the later steps were chosen by the older, exploring policy of the time, which nothing corrects for, so large values can teach the wrong values. A window never crosses the end of an episode. Costs no memory: the replay buffer keeps single steps and joins them when sampling."})
+    dueling: bool = field(default=False, metadata={"help": "Dueling network head: instead of one output per action, one part of the head estimates how good the state is (V) and another how much better or worse each action is than the average action there (A); Q = V + A - mean(A). Every transition then improves the state's value for all actions at once, which helps where the choice of action often matters little. Each part has one hidden layer of d_model units, so the head is a little larger. The jepa kinds read V from the current state's embedding and A from the embeddings they predict for each action, and cannot combine it with value_training = 'actual'. It changes the network's weights, so it cannot be changed when continuing from a checkpoint."})
+    loss: str = field(default="huber", metadata={"help": "How the error between Q(s, a) and its target is penalised. 'huber': squared for errors below 1, linear above, so a few very wrong predictions cannot dominate an update (the usual DQN choice). 'mse': squared throughout, so large errors are corrected harder (and small ones twice as hard as with huber); it can learn faster where rewards are small and steady and be less stable where targets jump. max_grad_norm limits the update size either way.", "choices": LOSSES})
 
     def __post_init__(self) -> None:
-        for name in ("buffer_size", "batch_size", "train_frequency", "gradient_steps", "target_update_interval"):
+        for name in ("buffer_size", "batch_size", "train_frequency", "gradient_steps", "target_update_interval", "n_step"):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be positive.")
         if self.learning_starts < 0:
@@ -42,5 +47,7 @@ class DqnConfig:
             raise ValueError("priority_beta_start must be in [0, 1].")
         if self.priority_epsilon <= 0.0:
             raise ValueError("priority_epsilon must be positive.")
+        if self.loss not in LOSSES:
+            raise ValueError(f"loss must be one of: {', '.join(LOSSES)} (got {self.loss!r}).")
         if self.max_grad_norm <= 0.0:
             raise ValueError("max_grad_norm must be positive.")

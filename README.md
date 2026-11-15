@@ -283,6 +283,25 @@ not show. The early lead of `jepa_attention` in the single-seed table (12.3 agai
 was seed noise: at 50k its three seeds span 1.9 to 12.5 and its mean equals `hybrid`'s. Three
 seeds are still few; treat this as "attention yes, predictor no gain so far", not as a ranking.
 
+Would looking ahead with the predictor help? Measured before building it (one seed, one
+checkpoint: `jepa_tokens`, Snake 6x6, DQN, 150k env steps, `prediction_coef = 1` with
+`prediction_trains_encoder = true`; 100 greedy games on the same seeds per row). "Depth 2"
+picks the action with the best `reward + gamma * max Q(next state)`:
+
+| how the action is chosen | mean score | against greedy |
+| --- | --- | --- |
+| greedy on Q(s, a) | 16.5 | |
+| depth 2, next state from the real game rules | 21.2 | +4.7 ± 0.6 |
+| depth 2, next state from the learned predictor (real reward for the first step) | 16.8 | +0.3 ± 0.6 |
+
+Reading: one step of search is worth almost five apples with a perfect model and nothing with
+the learned one, so search and a reward head are not built. The value read from a chained
+prediction is off by about 1.6 (mostly a constant overestimate), while the actions that
+survive the step differ by about 0.3; it picks the truly best action exactly as often as
+plain Q does (73%). The predictor is only ever trained on one real step, and the value
+decoder on one-step predictions, so a second chained step is outside what either has seen:
+making search pay needs training on multi-step rollouts first (issue #38).
+
 Lunar Lander can hide part of what the model sees: `game.hide_velocities = true` replaces
 the three velocity numbers by zeros (the physics, score and reward still use the true
 state), so a model has to infer them from several frames and memory can matter. The rule
@@ -338,7 +357,7 @@ same, only its head differs, so attention and architecture diagrams work alike.
 | Algorithm | What it is here | Head |
 |---|---|---|
 | `ppo` (default) | Proximal policy optimisation: on-policy actor-critic. Plays rollouts with its own sampled actions, computes GAE advantages and takes a few epochs of clipped-surrogate updates on them, then throws them away. | policy (action probabilities) + value |
-| `dqn` | Double DQN: off-policy and value-based. Plays epsilon-greedily, stores every transition in a replay buffer, and takes gradient steps on random batches of it with a Huber loss against a target network (the online network picks the next action, the target network values it). | one Q-value per action |
+| `dqn` | Double DQN: off-policy and value-based. Plays epsilon-greedily, stores every transition in a replay buffer, and takes gradient steps on random batches of it with a Huber loss against a target network (the online network picks the next action, the target network values it). Optional: n-step targets, a dueling head, prioritized replay, a squared-error loss. | one Q-value per action (or a dueling value + advantage head) |
 
 ```bash
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/dqn --set train.algorithm=dqn
@@ -361,6 +380,42 @@ priorities start fresh on resume or fork (like the buffer), and one seed on
 Lunar Lander is no evidence that it helps. One DQN iteration is one step of every parallel game, so
 `num_envs` only changes how experience is gathered, not how much is learned
 per step.
+
+Three more DQN switches, each off by default (off = exactly the DQN above) and
+each in the app's DQN panel:
+
+- **`dqn.n_step`** (default 1): targets add up the next n rewards and bootstrap
+  after them with `gamma ** n`. A window never crosses an episode's end and
+  honours `train.bootstrap_truncated`. The replay buffer keeps single steps and
+  joins them when sampling, so it costs no memory and works with prioritized
+  replay; the later steps are not corrected for having been chosen by an older policy.
+- **`dqn.dueling`** (default false): the head becomes a state-value stream and an
+  advantage stream, `Q = V + A - mean(A)`. Works with every model kind (the jepa
+  kinds: `V` of the current embedding, advantages of the predicted ones; not
+  together with `value_training = "actual"`). It changes the network, so a fork must keep it.
+- **`dqn.loss`** (`"huber"` or `"mse"`): how TD errors are penalised.
+
+Measured once (Lunar Lander, DQN defaults, seed 0, 500k env steps, CPU with one
+thread per run, greedy evaluation of 50 games every 100k steps; mean score /
+share of games landed):
+
+| run | 100k | 200k | 300k | 400k | 500k | time |
+|---|---|---|---|---|---|---|
+| baseline | -38 / 0% | -64 / 0% | 108 / 68% | 165 / 66% | 212 / 78% | 155 s |
+| `n_step = 3` | -145 / 0% | 49 / 18% | 209 / 76% | 274 / 100% | 268 / 96% | 159 s |
+| `dueling = true` | -24 / 0% | 181 / 54% | 187 / 70% | 173 / 70% | 271 / 96% | 213 s |
+| `loss = "mse"` | 95 / 72% | -87 / 4% | 234 / 88% | 106 / 50% | 206 / 80% | 156 s |
+| all three | 187 / 100% | 70 / 30% | 229 / 80% | 257 / 76% | 281 / 98% | 214 s |
+
+One seed each, so this is an indication, not a ranking: every run swings by
+100 points or more between evaluations, which is as large as the differences
+between the runs. What it does show: all three switches train, none broke
+learning, and the runs with 3-step targets or the dueling head ended higher
+than the baseline (about 270-280 with 96-98% landed, against 212 with 78%);
+3-step targets were ahead from 300k on. The squared-error loss ended level with
+the baseline and was the least steady. The dueling head made a run about 30%
+slower here from its first steps on (its two streams add two hidden layers to a
+two-layer network; the test suite also ran beside the last two runs).
 
 In one test (one seed each, CPU, 500k env steps on Lunar Lander with the default
 `mlp`): DQN with its defaults reached a greedy evaluation mean score of 203 (41

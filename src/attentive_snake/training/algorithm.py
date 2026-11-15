@@ -1,14 +1,16 @@
 """The contract a training algorithm satisfies (PPO, DQN, ...), so the training loop, the config and the app need not know which one runs.
 
 An ``Algorithm`` names its settings dataclass (its own TOML section, named like the
-algorithm), the policy head it trains (``attentive_snake.models.heads``), the metrics it
+algorithm), the policy head it trains (``attentive_snake.models.heads``; a function of its
+settings, so a setting may choose between head forms), which of its settings a continued run
+must keep, the metrics it
 reports and a builder of its ``Learner``. The shared loop (``training.trainer.Trainer``)
 drives a ``Learner`` iteration by iteration and handles the learning-rate schedule,
 logging, checkpoints and hooks for every algorithm alike.
 """
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import torch
@@ -68,6 +70,7 @@ class Algorithm:
     label: str
     description: str
     settings_type: type
-    head: str  # the policy head it trains, a key of attentive_snake.models.heads.HEADS
+    head: Callable[[Any], str]  # its settings -> the policy head it trains, a key of attentive_snake.models.heads.HEADS
     metrics: tuple[TrainingMetric, ...]
     build: Callable[[LearnerSetup], Learner]
+    locked_settings: Mapping[str, str] = field(default_factory=dict)  # field of its section -> why a fork must keep it

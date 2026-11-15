@@ -60,8 +60,8 @@ def observation_spec(config: ExperimentConfig, env: EnvSpec) -> ObservationSpec:
 
 
 def make_policy(config: ExperimentConfig, env: EnvSpec) -> nn.Module:
-    """The policy of ``[model]`` with the head its algorithm trains (``Algorithm.head``)."""
-    head = get_algorithm(config.train.algorithm).head
+    """The policy of ``[model]`` with the head its algorithm trains with these settings (``Algorithm.head``)."""
+    head = get_algorithm(config.train.algorithm).head(config.algorithm_settings)
     return build_policy(config.model, observation_spec(config, env), env.num_actions, head)
 
 

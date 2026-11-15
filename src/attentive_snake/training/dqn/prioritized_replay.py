@@ -5,6 +5,7 @@ from collections.abc import Callable
 import numpy as np
 import torch
 
+from attentive_snake.training.dqn.n_step import Horizon
 from attentive_snake.training.dqn.replay import ReplaySample, Transitions
 from attentive_snake.training.dqn.replay_storage import ReplayStorage
 from attentive_snake.training.dqn.sum_tree import SumTree
@@ -18,6 +19,7 @@ class PrioritizedReplayBuffer:
     - Importance weights ``(size * P(i)) ** -beta`` are divided by the batch maximum; ``beta()`` is asked at every
       ``sample``, so whoever owns the training progress decides how it is annealed.
     - Priorities belong to slots: overwriting a slot resets its priority; wrapping around needs no extra care.
+    - ``horizon`` is how far the sampled targets look ahead; a slot's priority is the TD error of its window's target.
     """
 
     def __init__(
@@ -28,8 +30,9 @@ class PrioritizedReplayBuffer:
         alpha: float,
         epsilon: float,
         beta: Callable[[], float],
+        horizon: Horizon,
     ) -> None:
-        self._storage = ReplayStorage(capacity, observation_shape)
+        self._storage = ReplayStorage(capacity, observation_shape, horizon)
         self._tree = SumTree(capacity)
         self._rng, self._alpha, self._epsilon, self._beta = rng, alpha, epsilon, beta
         self._max_priority = 1.0  # the running maximum of every priority ever set (it never decays)

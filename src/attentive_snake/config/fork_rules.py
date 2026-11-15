@@ -7,7 +7,8 @@ only shape the training objective (``models.config.OBJECTIVE_FIELDS``: jepa's ``
 ``env.history_actions``) and the game rules its ``GameSpec.locked_rules`` names (for
 Snake: the board size and the start length) are locked. Everything else (rewards,
 training settings including the algorithm's own section, the number of parallel games,
-the other rules) may change.
+the other rules) may change, except the settings of the algorithm's section that it names itself
+(``Algorithm.locked_settings``; DQN: ``dqn.dueling``, which chooses the head).
 """
 
 import dataclasses
@@ -15,6 +16,7 @@ import dataclasses
 from attentive_snake.config.experiment import GAME_NAME_KEY, ExperimentConfig
 from attentive_snake.games.registry import DEFAULT_GAME, get_game
 from attentive_snake.models.config import OBJECTIVE_FIELDS, ModelConfig
+from attentive_snake.training.algorithms import algorithm_names, get_algorithm
 
 GAME_KEY = f"game.{GAME_NAME_KEY}"
 ALGORITHM_FIELD = "train.algorithm"
@@ -30,7 +32,10 @@ def locked_fields(game: str = DEFAULT_GAME) -> dict[str, str]:
     model = {f"model.{field.name}": _MODEL_REASON for field in dataclasses.fields(ModelConfig) if field.name not in OBJECTIVE_FIELDS}
     rules = {f"game.{name}": reason for name, reason in get_game(game).locked_rules.items()}
     env = {f"env.{name}": reason for name, reason in _LOCKED_ENV.items()}
-    return {GAME_KEY: _GAME_REASON, ALGORITHM_FIELD: _ALGORITHM_REASON} | model | rules | env
+    algorithms = {
+        f"{name}.{setting}": reason for name in algorithm_names() for setting, reason in get_algorithm(name).locked_settings.items()
+    }
+    return {GAME_KEY: _GAME_REASON, ALGORITHM_FIELD: _ALGORITHM_REASON} | model | rules | env | algorithms
 
 
 def locked_field_changes(parent: ExperimentConfig, child: ExperimentConfig) -> list[str]:
@@ -40,7 +45,12 @@ def locked_field_changes(parent: ExperimentConfig, child: ExperimentConfig) -> l
     """
     if parent.game_name != child.game_name:
         return [GAME_KEY]
-    return [key for key in locked_fields(parent.game_name) if _value(parent, key) != _value(child, key)]
+    sections = set(parent.sections()) & set(child.sections())  # a locked setting of an algorithm neither or only one trains is not compared
+    return [
+        key
+        for key in locked_fields(parent.game_name)
+        if (key == GAME_KEY or key.split(".")[0] in sections) and _value(parent, key) != _value(child, key)
+    ]
 
 
 def require_forkable(parent: ExperimentConfig, child: ExperimentConfig) -> None:
@@ -58,4 +68,4 @@ def _value(config: ExperimentConfig, key: str) -> object:
     if key == GAME_KEY:
         return config.game_name
     section, name = key.split(".")
-    return getattr(getattr(config, section), name)
+    return getattr(config.sections()[section], name)

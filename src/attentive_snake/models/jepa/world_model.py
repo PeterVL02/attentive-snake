@@ -10,6 +10,9 @@ turn observations into embeddings ``z`` (here (B, d_model)), through ``encode`` 
 * the head forms ``JEPA_HEADS`` (values / scores of the predicted embeddings),
 * the prediction objective (``auxiliary_objective``, ``None`` with ``prediction_coef = 0``),
 * what DQN's TD loss trains (``trained_values``, ``models.value_training``).
+
+``value_training = "actual"`` trains ``value_decoder`` on the real next state as Q(s, a); with the
+``dueling`` head that decoder values the current state instead, so the two are refused together.
 """
 
 from typing import ClassVar
@@ -18,10 +21,11 @@ from torch import Tensor, nn
 
 from attentive_snake.models.blocks.predictor import ActionPredictor
 from attentive_snake.models.config import ModelConfig
-from attentive_snake.models.heads import Head
+from attentive_snake.models.heads import DEFAULT_HEAD, Head
 from attentive_snake.models.jepa.heads import JEPA_HEADS
 from attentive_snake.models.jepa.objective import DISTANCES, PredictionObjective
 from attentive_snake.models.jepa.readout import whole
+from attentive_snake.observation_spec import ObservationSpec
 
 
 class JepaWorldModel:
@@ -31,6 +35,15 @@ class JepaWorldModel:
     config: ModelConfig
     num_actions: int
     net: nn.ModuleDict
+
+    def __init__(self, config: ModelConfig, observation_spec: ObservationSpec, num_actions: int, head: str = DEFAULT_HEAD) -> None:
+        if head == "dueling" and config.value_training == "actual":
+            raise ValueError(
+                f"model kind {config.kind!r} cannot combine the dueling head (dqn.dueling = true) with value_training = 'actual': "
+                "'actual' trains the value decoder on the real next state as Q(s, a), but with the dueling head that decoder "
+                "values the current state. Use value_training = 'predicted' or dqn.dueling = false."
+            )
+        super().__init__(config, observation_spec, num_actions, head)
 
     def encode(self, obs: Tensor) -> Tensor:
         """Observations -> embeddings ``z`` (B, d_model)."""

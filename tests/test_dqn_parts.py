@@ -15,12 +15,14 @@ from attentive_snake.training.next_observations import next_observations
 from attentive_snake.training.dqn.config import DqnConfig
 from attentive_snake.training.dqn.epsilon import linear_epsilon
 from attentive_snake.training.dqn.learner import DqnLearner
-from attentive_snake.training.dqn.loss import dqn_loss, dqn_targets
+from attentive_snake.training.dqn.loss import ERROR_LOSSES, dqn_loss, dqn_targets, huber, squared_error
+from attentive_snake.training.dqn.n_step import Horizon
 from attentive_snake.training.dqn.replay import Transitions
 from attentive_snake.training.dqn.target import TargetNetwork
 from attentive_snake.training.dqn.uniform_replay import UniformReplayBuffer
 
 CPU = torch.device("cpu")
+ONE_STEP = Horizon(1, 0.99)
 
 
 def transitions(start: int, count: int, shape=(2,)) -> Transitions:
@@ -32,6 +34,7 @@ def transitions(start: int, count: int, shape=(2,)) -> Transitions:
         rewards=serial,
         next_observations=np.broadcast_to((serial + 0.5).reshape(-1, *([1] * len(shape))), (count, *shape)).copy(),
         dones=np.zeros(count, dtype=np.float32),
+        ends=np.zeros(count, dtype=bool),
     )
 
 
@@ -39,7 +42,7 @@ def transitions(start: int, count: int, shape=(2,)) -> Transitions:
 
 
 def test_uniform_buffer_wraps_around_and_keeps_the_latest() -> None:
-    buffer = UniformReplayBuffer(5, (2,), np.random.default_rng(0))
+    buffer = UniformReplayBuffer(5, (2,), np.random.default_rng(0), ONE_STEP)
     assert len(buffer) == 0
     buffer.add(transitions(0, 3))
     assert len(buffer) == 3
@@ -53,7 +56,7 @@ def test_uniform_buffer_wraps_around_and_keeps_the_latest() -> None:
 
 
 def test_uniform_sample_shapes_weights_and_indices() -> None:
-    buffer = UniformReplayBuffer(10, (3, 4, 4), np.random.default_rng(1))
+    buffer = UniformReplayBuffer(10, (3, 4, 4), np.random.default_rng(1), ONE_STEP)
     buffer.add(transitions(0, 6, shape=(3, 4, 4)))
     sample = buffer.sample(8, CPU)
     assert sample.observations.shape == sample.next_observations.shape == (8, 3, 4, 4)
@@ -62,11 +65,11 @@ def test_uniform_sample_shapes_weights_and_indices() -> None:
     assert torch.equal(sample.weights, torch.ones(8)) and sample.indices.shape == (8,)
     assert np.all((0 <= sample.indices) & (sample.indices < 6))
     buffer.update_priorities(sample.indices, np.ones(8))  # a no-op for uniform sampling
-    again = UniformReplayBuffer(10, (3, 4, 4), np.random.default_rng(1))
+    again = UniformReplayBuffer(10, (3, 4, 4), np.random.default_rng(1), ONE_STEP)
     again.add(transitions(0, 6, shape=(3, 4, 4)))
     assert np.array_equal(again.sample(8, CPU).indices, sample.indices)  # same seed, same batches
     with pytest.raises(ValueError, match="empty"):
-        UniformReplayBuffer(4, (1,), np.random.default_rng(0)).sample(2, CPU)
+        UniformReplayBuffer(4, (1,), np.random.default_rng(0), ONE_STEP).sample(2, CPU)
 
 
 # --------------------------------------------------------------------------- transitions across auto-reset
@@ -213,6 +216,37 @@ def test_double_dqn_targets_and_loss_by_hand() -> None:
     assert float(terms.q_mean) == pytest.approx(2.0)
     terms.loss.backward()
     assert q_values.grad[:, 1].tolist()[1:] == [0.0, 0.0] and q_values.grad[0].tolist() == [0.0, 0.0]
+
+
+def test_huber_and_squared_error_by_hand() -> None:
+    values = torch.tensor([0.0, 0.5, 3.0, -2.0], requires_grad=True)
+    targets = torch.tensor([0.0, 0.0, 0.0, 0.0])
+    # Huber: 0.5 * error ** 2 below 1, |error| - 0.5 above. Squared error: error ** 2.
+    assert huber(values, targets).tolist() == [0.0, 0.125, 2.5, 1.5]
+    assert squared_error(values, targets).tolist() == [0.0, 0.25, 9.0, 4.0]
+    assert ERROR_LOSSES == {"huber": huber, "mse": squared_error}
+
+    q_values = torch.tensor([[1.0, 2.0], [0.0, 3.0], [4.0, 0.5]], requires_grad=True)
+    arguments = (q_values, torch.tensor([1, 0, 0]), torch.tensor([1.0, -1.0, 0.5]), torch.ones(3), torch.zeros(3, 2), None, 0.5, torch.tensor([1.0, 2.0, 0.5]))
+    # chosen = [2.0, 0.0, 4.0], targets = the rewards (all done): errors [1.0, 1.0, 3.5]
+    by_huber, by_mse = dqn_loss(*arguments), dqn_loss(*arguments, error_loss=squared_error)
+    assert float(by_huber.loss.detach()) == pytest.approx((0.5 + 2.0 * 0.5 + 0.5 * 3.0) / 3)
+    assert float(by_mse.loss.detach()) == pytest.approx((1.0 + 2.0 * 1.0 + 0.5 * 12.25) / 3)
+    assert torch.equal(by_huber.td_errors, by_mse.td_errors)  # the errors (and so the priorities) do not depend on the loss
+    by_mse.loss.backward()
+    assert q_values.grad[2, 0].item() == pytest.approx(0.5 * 2 * 3.5 / 3)  # grows with the error; Huber's is capped at 1
+    with pytest.raises(ValueError, match="loss must be one of: huber, mse"):
+        DqnConfig(loss="l1")
+
+
+def test_the_learner_uses_the_configured_loss() -> None:
+    losses = {}
+    for name in ("huber", "mse"):
+        dqn, _ = learner(num_envs=4, learning_starts=8, loss=name)
+        for i in range(3):
+            dqn.iterate(env_steps=4 * i)
+        losses[name] = dqn.report()["loss"]
+    assert losses["huber"] != losses["mse"]  # same seed, same batches at first: a different penalty
 
 
 # --------------------------------------------------------------------------- learner schedules

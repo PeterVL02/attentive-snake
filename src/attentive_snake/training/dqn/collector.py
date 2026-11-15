@@ -57,6 +57,7 @@ class EpsilonGreedyCollector:
             rewards=np.asarray(step.rewards, dtype=np.float32),
             next_observations=next_observations(step),
             dones=transition_dones(step, self._bootstrap_truncated),
+            ends=np.logical_or(step.terminated, step.truncated),
         )
         self._observations = np.asarray(step.observations, dtype=np.float32)
         return CollectedStep(transitions, tuple(step.finished_episodes))
