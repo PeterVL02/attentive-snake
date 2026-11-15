@@ -7,6 +7,7 @@ import { debounce, formatSteps, h, message, replace } from "../dom.js";
 import { attachServerError, descriptionField, fieldControl, readFields } from "../fields.js";
 import { currentGame, gameUrl } from "../game.js";
 import { modelPicker } from "../model_picker.js";
+import { parameterCount } from "../parameter_count.js";
 import { rewardTable } from "../reward_table.js";
 import { boardSize, rulesSummary } from "../rules_summary.js";
 import { loadAlgorithmDefaults, loadSchema } from "../schema.js";
@@ -46,13 +47,14 @@ let rewardValues = null;
 let formError;
 let startButton;
 let summary;
+let parameters; // the parameter-count line of the model panel
 
 function sectionWidgets(section, names) {
   return names.map((name) => {
     const spec = schema.sections[section].find((f) => f.name === name);
     const widget = fieldControl(spec, defaults[section]?.[name] ?? spec.default);
     widgets[`${section}.${name}`] = widget;
-    widget.onChange(updateSummary);
+    widget.onChange(formChanged);
     return widget;
   });
 }
@@ -100,7 +102,7 @@ function onKindChange() {
   widgets["env.history_length"].set(recommended.history_length);
   widgets["env.history_actions"].set(recommended.history_actions);
   explainState();
-  updateSummary();
+  formChanged();
 }
 
 /** Keep the model panel as tall as the kind with the most fields, so switching kinds does not shift the page. */
@@ -138,6 +140,12 @@ function updateSummary() {
   summary.textContent = `${picker.value()} trained with ${label} on ${game.title} (${rulesSummary(gameRules())}) for ${formatSteps(steps)} env steps.`;
 }
 
+/** Everything that follows from the form's values: the summary line and the parameter count. */
+function formChanged() {
+  updateSummary();
+  parameters.update();
+}
+
 function showAlgorithmPanel() {
   for (const [name, panelEl] of Object.entries(algorithmPanels)) panelEl.hidden = name !== algorithms.value();
 }
@@ -147,7 +155,7 @@ async function onAlgorithmChange() {
   const token = ++algorithmToken;
   const algorithm = algorithms.value();
   showAlgorithmPanel();
-  updateSummary();
+  formChanged();
   let values;
   try {
     values = algorithm === defaults.train.algorithm ? defaults : await loadAlgorithmDefaults(game.name, algorithm);
@@ -161,7 +169,7 @@ async function onAlgorithmChange() {
     const applies = section === "train" || section === algorithm || ALGORITHM_SHARED.includes(key);
     if (applies && values[section] && name in values[section]) widget.set(values[section][name]);
   }
-  updateSummary();
+  formChanged();
 }
 
 /** The form as experiment tables: {tables, errors}; field errors are shown inline. Null while loading. */
@@ -267,8 +275,9 @@ function build() {
   nameWidget = fieldControl(nameSpec, "");
   nameWidget.onChange(() => (nameEdited = true));
   description = descriptionField();
+  parameters = parameterCount(currentTables); // before any widget exists: their changes update it
 
-  picker = modelPicker(schema.model_kinds);
+  picker =modelPicker(schema.model_kinds);
   picker.set(defaults.model.kind);
   picker.onChange(onKindChange);
   const modelNames = schema.sections.model.map((f) => f.name).filter((n) => n !== "kind");
@@ -314,7 +323,7 @@ function build() {
     "div",
     {},
     panel("Run", h("div", { class: "fields" }, nameWidget.el), description.el),
-    panel("Model", picker.el, modelFields),
+    panel("Model", picker.el, parameters.el, modelFields),
     panel(
       "State representation",
       h("p", { class: "muted small", text: "What one observation contains. Set to the recommendation when you change the model; you can still edit it." }),
