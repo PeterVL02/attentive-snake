@@ -279,7 +279,7 @@ function build() {
   description = descriptionField();
   parameters = parameterCount(currentTables); // before any widget exists: their changes update it
 
-  picker =modelPicker(schema.model_kinds);
+  picker = modelPicker(schema.model_kinds);
   picker.set(defaults.model.kind);
   picker.onChange(onKindChange);
   const modelNames = schema.sections.model.map((f) => f.name).filter((n) => n !== "kind");
