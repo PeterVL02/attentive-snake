@@ -20,6 +20,7 @@ class TrainConfig:
     gamma: float = field(default=0.99, metadata={"help": "Discount factor: how much future reward counts compared with immediate reward. Close to 1 means far-sighted; lower values make the agent short-sighted."})
     bootstrap_truncated: bool = field(default=False, metadata={"help": "When a game is cut short by a limit (a time limit, a starvation limit) rather than ended by its rules, credit the last step with the value the network expects from where the game was cut, as if play had gone on. Off treats every cut like a real ending, so the values of states near the limit are underestimated."})
     learning_rate: float = field(default=2.5e-4, metadata={"help": "Step size of the Adam optimiser (its initial value when annealing). Too high makes learning unstable; too low makes it crawl."})
+    weight_decay: float = field(default=0.0, metadata={"help": "How strongly every optimiser step also shrinks the network's weights towards zero (decoupled weight decay, the AdamW optimiser). It keeps weights from growing without bound over a long run, which is one way a network slowly loses its ability to learn. 0 (the default) is off: plain Adam, exactly as before. Typical values are 0.0001 to 0.01; each step multiplies a weight by 1 - learning_rate x weight_decay. Only the weight matrices of the linear, convolution, attention and LSTM layers shrink: biases, normalisation layers and embeddings (positions, class token, actions) are left alone. May be changed when starting a new run from a checkpoint."})
     anneal_lr: bool = field(default=True, metadata={"help": "Linearly shrink the learning rate to zero over the run, which settles training towards the end."})
     device: str = field(default="auto", metadata={"help": "Where the network runs: 'auto' picks the GPU if there is one, otherwise 'cpu'. Any torch device string such as 'cuda:0' also works."})
     seed: int = field(default=0, metadata={"help": "Random seed for the network initialisation, the games and the algorithm's own randomness (minibatch shuffling, exploration, replay sampling). Change it to get an independent repeat of the experiment."})
@@ -41,3 +42,5 @@ class TrainConfig:
             raise ValueError("gamma must be in [0, 1].")
         if self.learning_rate <= 0.0:
             raise ValueError("learning_rate must be positive.")
+        if self.weight_decay < 0.0:
+            raise ValueError("weight_decay must be >= 0.")

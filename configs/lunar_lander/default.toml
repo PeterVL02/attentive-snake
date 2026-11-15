@@ -35,6 +35,7 @@ conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm, jepa
 conv_layers = 2               # cnn, resnet (residual blocks), hybrid, frame_attention, lstm, jepa, jepa_attention: number of those layers
 kernel_size = 3               # unused for vector observations
 residual = false             # hybrid, jepa_attention, frame_attention, lstm: build the stem (frame encoder) from residual blocks, as resnet does
+layer_norm = false            # every kind with a conv / MLP part (not transformer, temporal_transformer, jepa_temporal): a layer norm after each of its layers and in its readout
 predictor_layers = 1          # jepa_tokens only: transformer blocks of its per-token predictor (run once per action)
 prediction_coef = 0.0         # jepa kinds only: weight of the prediction loss (0 = off, the default; above 0 adds it)
 value_training = "predicted"  # jepa kinds with dqn only: the value decoder learns from the "predicted" or the "actual" next embedding
@@ -49,7 +50,8 @@ total_env_steps = 2000000     # summed over all envs; train.py --steps overrides
 gamma = 0.999                 # landing pays off hundreds of steps after the decisive actions
 bootstrap_truncated = true     # the time limit is not a landing or a crash: value the cut state, do not count it as an end
 learning_rate = 0.0003
-anneal_lr = true              # linear decay to 0 over total_env_steps
+weight_decay = 0.0            # 0 = plain Adam; above 0 = AdamW, shrinking the weight matrices (not biases, norms, embeddings) each step
+anneal_lr = true             # linear decay to 0 over total_env_steps
 device = "auto"               # "auto" = cuda if available, else cpu
 seed = 0
 log_interval = 40960          # env steps (one PPO update here is 8192)

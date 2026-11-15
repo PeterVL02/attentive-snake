@@ -4,7 +4,8 @@ Children of ``self.net``: encoder -> head (policy_head + value_head, or q_head: 
 
 ``encoder`` flattens the whole observation (all frames and action numbers; a grid is
 simply flattened) and applies ``num_layers`` fully connected layers ``d_model`` wide (the
-first widening, the rest residual), GELU after each. No attention, no structure assumed.
+first widening, the rest residual), GELU after each (with ``layer_norm`` a layer norm
+before each GELU). No attention, no structure assumed.
 """
 
 import math
@@ -21,7 +22,7 @@ class MlpPolicy(BasePolicy):
     def _build_net(self) -> dict[str, nn.Module]:
         c = self.config
         return {
-            "encoder": MlpEncoder(math.prod(self.observation_shape), c.d_model, c.num_layers),
+            "encoder": MlpEncoder(math.prod(self.observation_shape), c.d_model, c.num_layers, c.layer_norm),
         }
 
     def _pooled(self, obs: Tensor, need_weights: bool) -> tuple[Tensor, list[Tensor]]:

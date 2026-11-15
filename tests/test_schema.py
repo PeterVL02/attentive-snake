@@ -96,6 +96,7 @@ SIZE_CHANGES = {
     "conv_layers": 2,
     "kernel_size": 5,
     "residual": True,
+    "layer_norm": True,
 }
 
 

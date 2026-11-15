@@ -11,6 +11,7 @@ from attentive_snake.training.checkpoint import checkpoint_path, prune_checkpoin
 from attentive_snake.training.config import TrainConfig
 from attentive_snake.training.hooks import UpdateEnd, UpdateHook
 from attentive_snake.training.metrics import ConsoleLogger, EpisodeStatsWindow, MetricsLogger
+from attentive_snake.training.optimizer_state import restore_optimizer
 from attentive_snake.training.schedule import crossed_multiple, linear_decay
 
 
@@ -110,11 +111,12 @@ class Trainer:
         """Load the policy, optimizer and learner state of a checkpoint; returns its env steps.
 
         ``keep_step_count`` continues the checkpoint's run (resume); otherwise the step
-        counter stays where it is (0 for a fork: a new run with its own schedule).
+        counter stays where it is (0 for a fork: a new run with its own schedule). The
+        optimizer gets the checkpoint's moments and keeps its own settings (``optimizer_state``).
         """
         state = read_checkpoint(path, map_location=self.device)
         self.policy.load_state_dict(state["policy"])
-        self.learner.optimizer.load_state_dict(state["optimizer"])
+        restore_optimizer(self.learner.optimizer, state["optimizer"], self.policy)
         self.learner.load_extra_state(state.get("learner", {}))
         steps = int(state["env_steps"])
         if keep_step_count:

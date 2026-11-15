@@ -1237,6 +1237,63 @@ def test_a_residual_hybrid_trains_is_drawn_and_cannot_change_on_fork(client: Tes
     assert refused.status_code == 422 and "model.residual" in refused.text
 
 
+LAYER_NORM_KINDS = {"cnn", "resnet", "mlp", "jepa", "hybrid", "jepa_attention", "jepa_tokens", "frame_attention", "lstm"}
+
+
+@pytest.mark.parametrize("game", ["snake", "lunar_lander"])
+def test_layer_norm_and_weight_decay_are_in_the_schema(client: TestClient, game: str):
+    schema = client.get("/api/schema", params={"game": game}).json()
+    assert {kind for kind, info in schema["model_kinds"].items() if "layer_norm" in info["fields"]} == LAYER_NORM_KINDS
+    layer_norm = next(row for row in schema["sections"]["model"] if row["name"] == "layer_norm")
+    assert layer_norm["type"] == "bool" and layer_norm["default"] is False and "group norm" in layer_norm["description"]
+    weight_decay = next(row for row in schema["sections"]["train"] if row["name"] == "weight_decay")
+    assert weight_decay["type"] == "float" and weight_decay["default"] == 0.0 and "AdamW" in weight_decay["description"]
+    locked = client.get("/api/fork-rules", params={"game": game}).json()["locked"]
+    assert "model.layer_norm" in locked and "train.weight_decay" not in locked
+    for algorithm in ("ppo", "dqn") if game == "snake" else ():  # the defaults the forms are filled with leave both off (this fixture has Snake's files only)
+        defaults = client.get("/api/defaults", params={"game": game, "algorithm": algorithm}).json()
+        assert defaults["model"]["layer_norm"] is False and defaults["train"]["weight_decay"] == 0.0
+
+
+def test_the_parameter_count_reflects_layer_norm_for_the_kinds_that_read_it(client: TestClient):
+    for kind in ("cnn", "mlp", "hybrid", "transformer"):
+        tables = tiny_tables(kind)
+        plain = parameters_for(client, tables)
+        tables["model"]["layer_norm"] = True
+        normed = parameters_for(client, tables)
+        assert (normed > plain) == (kind in LAYER_NORM_KINDS), kind
+        tables["train"]["weight_decay"] = 0.01  # an optimizer setting: no parameters
+        assert parameters_for(client, tables) == normed
+    cnn = tiny_tables("cnn")  # one conv (8 channels) and the readout (16 wide): a scale and a shift each
+    cnn["model"]["layer_norm"] = True
+    assert parameters_for(client, cnn) - parameters_for(client, tiny_tables("cnn")) == 2 * 8 + 2 * 16
+
+
+@pytest.mark.parametrize("algorithm", ["ppo", "dqn"])
+def test_a_run_with_layer_norm_and_weight_decay_trains_is_drawn_and_forks_with_another_weight_decay(client: TestClient, algorithm: str):
+    tables = tiny_tables("cnn", algorithm=algorithm, weight_decay=0.01)
+    tables["model"]["layer_norm"] = True
+    drawn = client.post("/api/architecture", json=tables).json()
+    assert "GroupNorm" in drawn["text"] and "LayerNorm" in drawn["text"]
+    assert client.post("/api/runs", json={"name": "normed", "config": tables}).status_code == 201
+    detail = wait_until_done(client, "normed")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert detail["config"]["model"]["layer_norm"] is True and detail["config"]["train"]["weight_decay"] == 0.01
+    assert "GroupNorm" in client.get("/api/runs/normed/architecture").json()["text"]
+
+    for name, weight_decay in (("normed-off", 0.0), ("normed-more", 0.1)):  # AdamW -> Adam, and another strength
+        tables["train"]["weight_decay"] = weight_decay
+        forked = client.post("/api/runs/normed/fork", json={"name": name, "config": tables})
+        assert forked.status_code == 201, forked.text
+        child = wait_until_done(client, name)
+        assert child["status"]["state"] == "finished", child["log"]
+        assert child["config"]["train"]["weight_decay"] == weight_decay and child["parent"]["run"] == "normed"
+
+    tables["model"]["layer_norm"] = False
+    refused = client.post("/api/runs/normed/fork", json={"name": "normed-plain", "config": tables})
+    assert refused.status_code == 422 and "model.layer_norm" in refused.text
+
+
 def test_jepa_tokens_is_offered_for_both_games_trained_and_watched_with_attention(client: TestClient):
     jepa = client.get("/api/schema").json()["model_kinds"]["jepa"]
     for game in ("snake", "lunar_lander"):

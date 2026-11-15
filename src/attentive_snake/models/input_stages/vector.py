@@ -2,6 +2,8 @@
 
 A list of numbers has no neighbourhoods, so where grids use convolutions these use
 fully connected layers (``conv_channels`` wide, ``conv_layers`` deep; ``kernel_size`` is unused).
+``config.layer_norm`` adds a layer norm after the plain layers and in the readout
+(``blocks.norm``); the residual blocks (``blocks.residual``) are layer-normalised either way.
 """
 
 from torch import nn
@@ -20,14 +22,21 @@ from attentive_snake.models.input_stages.stage import Stage, StageInput
 
 def _encoder(source: StageInput, config: ModelConfig, residual: bool) -> nn.Module:
     """The MLP over all numbers: plain layers, or an embedding and residual blocks (same shapes)."""
-    encoder = ResidualMlpEncoder if residual else MlpEncoder
-    return encoder(source.values * source.channels, config.conv_channels, config.conv_layers)
+    if residual:
+        return ResidualMlpEncoder(source.values * source.channels, config.conv_channels, config.conv_layers)
+    return MlpEncoder(source.values * source.channels, config.conv_channels, config.conv_layers, config.layer_norm)
 
 
 def _element_stem(source: StageInput, config: ModelConfig, residual: bool) -> nn.Module:
     """The per-element MLP making one token per element: plain layers, or residual blocks (same shapes)."""
-    stem = ResidualElementStem if residual else ElementMlpStem
-    return stem(source.values, source.channels, config.conv_channels, config.conv_layers)
+    if residual:
+        return ResidualElementStem(source.values, source.channels, config.conv_channels, config.conv_layers)
+    return ElementMlpStem(source.values, source.channels, config.conv_channels, config.conv_layers, config.layer_norm)
+
+
+def _readout(config: ModelConfig) -> nn.Module:
+    """The encoder's features -> one ``d_model`` vector."""
+    return LinearReadout(config.conv_channels, config.d_model, config.layer_norm)
 
 
 def token_stage(source: StageInput, config: ModelConfig) -> Stage:
@@ -43,22 +52,12 @@ def token_stage(source: StageInput, config: ModelConfig) -> Stage:
 
 def feature_stage(source: StageInput, config: ModelConfig) -> Stage:
     """An MLP over all numbers, then a linear readout to one ``d_model`` vector."""
-    return Stage(
-        {
-            "encoder": _encoder(source, config, residual=False),
-            "readout": LinearReadout(config.conv_channels, config.d_model),
-        }
-    )
+    return Stage({"encoder": _encoder(source, config, residual=False), "readout": _readout(config)})
 
 
 def frame_stage(source: StageInput, config: ModelConfig) -> Stage:
     """Like ``feature_stage`` for one frame; residual blocks with ``config.residual``."""
-    return Stage(
-        {
-            "encoder": _encoder(source, config, config.residual),
-            "readout": LinearReadout(config.conv_channels, config.d_model),
-        }
-    )
+    return Stage({"encoder": _encoder(source, config, config.residual), "readout": _readout(config)})
 
 
 def hybrid_stage(source: StageInput, config: ModelConfig) -> Stage:
@@ -74,9 +73,4 @@ def hybrid_stage(source: StageInput, config: ModelConfig) -> Stage:
 
 def residual_stage(source: StageInput, config: ModelConfig) -> Stage:
     """An embedding and ``conv_layers`` residual MLP blocks over all numbers, then a linear readout to one ``d_model`` vector."""
-    return Stage(
-        {
-            "encoder": _encoder(source, config, residual=True),
-            "readout": LinearReadout(config.conv_channels, config.d_model),
-        }
-    )
+    return Stage({"encoder": _encoder(source, config, residual=True), "readout": _readout(config)})

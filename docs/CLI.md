@@ -72,6 +72,9 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/p
 # DQN with 3-step targets, a dueling head and a squared-error loss (each is its own switch; all off by default)
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/dqn-3step --set train.algorithm=dqn \
     --set dqn.n_step=3 --set dqn.dueling=true --set dqn.loss=mse
+# Normalisation layers in the network and weight decay in the optimizer (two separate switches, both off by default; PPO or DQN)
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/dqn-norm-decay --set train.algorithm=dqn \
+    --set model.layer_norm=true --set train.weight_decay=0.01
 ```
 
 - `--game NAME` (new runs only) picks `configs/<NAME>/default.toml` and the default run directory `runs/<NAME>/default`.
@@ -94,6 +97,13 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/d
   of its rules, with its own reward); a config without the key (every run made before it existed) is `false`. It
   can be changed when continuing a run under a new name (fork), not with `--resume`. Logged scores and returns are
   the game's own in both cases.
+- `train.weight_decay` (default 0, both algorithms) makes every optimizer step also shrink the network's weights a
+  little towards zero. 0 is plain Adam, exactly as before the setting existed; above 0 the optimizer is AdamW
+  (decoupled weight decay: a weight is multiplied by `1 - learning_rate x weight_decay` each step; 0.0001 to 0.01
+  are usual values). Only the weight matrices of the linear, convolution, attention and LSTM layers shrink; biases,
+  normalisation layers and embeddings (positions, class token, actions) do not. It can be changed (switched on, off
+  or to another value) when continuing a run under a new name (fork): the optimizer's moment estimates are carried
+  over parameter by parameter. Not with `--resume`, which takes no training settings.
 - `--no-keep-checkpoints` deletes the older checkpoints of the run each time a new one is saved, so only the
   latest remains (saved as `train.keep_checkpoints = false`). Deleted checkpoints can no longer be watched,
   continued from or re-evaluated. `--keep-checkpoints` (the default) keeps them all.
@@ -148,7 +158,8 @@ uv run python scripts/train.py --run-dir runs/snake/8x8-variant --fork runs/snak
 - The new run loads the parent's weights and optimizer state (for DQN also the target network), then counts its own
   env steps from 0 up to its own `total_env_steps` (by default the parent's), with its own learning-rate schedule
   starting from `learning_rate`. Adam's moment estimates are carried over even when the learning rate changes (they
-  do not depend on it). A DQN fork starts with an empty replay buffer and its exploration starts again from
+  do not depend on it), and also when `train.weight_decay` is switched on, off or changed (the new run's optimizer
+  is built from its own settings and every parameter gets its own moments back). A DQN fork starts with an empty replay buffer and its exploration starts again from
   `dqn.epsilon_start` (lower it with `--set dqn.epsilon_start=0.1` to explore less).
 - Its settings are the parent's `config.toml` (or `--config`) plus `--set`, `--steps`, `--num-envs`, `--seed`,
   `--keep-checkpoints`. Everything under `[reward]`, `[train]` (but `train.algorithm`) and the algorithm's section
@@ -340,6 +351,18 @@ residual blocks) and, on boards, `kernel_size`; `lstm` uses those plus `num_laye
 `model.residual = true` (`hybrid`, `jepa_attention`, `jepa_tokens`, `frame_attention`, `lstm`; off by default, locked when forking) builds their convolutional
 stem (an MLP on numbers; for the other two the per-frame encoder) from `resnet`'s residual blocks instead of plain layers, e.g.
 `--set model.kind=hybrid --set model.residual=true`. Other kinds ignore it.
+
+`model.layer_norm = true` (`cnn`, `resnet`, `mlp`, `jepa`, `hybrid`, `jepa_attention`, `jepa_tokens`, `frame_attention`, `lstm`;
+off by default, locked when forking) adds a normalisation layer after every convolution or fully connected layer of the
+part that reads the observation (the conv / MLP trunk, the stem in front of a transformer, the per-frame encoder) and in
+its readout, each before the activation. On numbers it is a layer norm; on boards it is a group norm with one group,
+which normalises each board's whole feature map at once (the layer-norm equivalent for convolutions; no batch statistics,
+so playing, training batches and DQN's target network compute the same function). With it off the network and its
+checkpoints are exactly those from before the switch. What it does not touch: the transformer blocks (they have layer
+norms already, so `transformer`, `temporal_transformer` and `jepa_temporal` ignore it), the jepa predictor, the LSTM
+itself and the heads. Residual blocks on numbers (`resnet` on a vector game, `residual = true`) have layer norms of
+their own, so there only the readout gains one, and a `hybrid`-style stem with `residual = true` on a vector game does not change.
+E.g. `--set model.kind=cnn --set model.layer_norm=true`.
 
 Memory only matters when the observation hides something. Lunar Lander's `game.hide_velocities = true` shows the model zeros
 instead of its three velocity numbers (the physics, score and reward still use the true state), so it has to infer them from

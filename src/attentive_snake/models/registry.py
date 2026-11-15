@@ -107,7 +107,7 @@ KIND_INFO: dict[str, KindInfo] = {
         },
     ),
     "cnn": KindInfo(
-        ("d_model", *CONV_FIELDS),
+        ("d_model", *CONV_FIELDS, "layer_norm"),
         False,
         None,
         {
@@ -126,7 +126,7 @@ KIND_INFO: dict[str, KindInfo] = {
         },
     ),
     "resnet": KindInfo(
-        ("d_model", *CONV_FIELDS),
+        ("d_model", *CONV_FIELDS, "layer_norm"),
         False,
         None,
         {
@@ -144,7 +144,7 @@ KIND_INFO: dict[str, KindInfo] = {
         },
     ),
     "hybrid": KindInfo(
-        (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual"),
+        (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual", "layer_norm"),
         False,
         "grid",
         {
@@ -179,7 +179,7 @@ KIND_INFO: dict[str, KindInfo] = {
         },
     ),
     "frame_attention": KindInfo(
-        (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual"),
+        (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual", "layer_norm"),
         True,
         "weights",
         {
@@ -197,7 +197,7 @@ KIND_INFO: dict[str, KindInfo] = {
         },
     ),
     "lstm": KindInfo(
-        ("d_model", "num_layers", *CONV_FIELDS, "residual"),
+        ("d_model", "num_layers", *CONV_FIELDS, "residual", "layer_norm"),
         True,
         None,
         {
@@ -218,7 +218,7 @@ KIND_INFO: dict[str, KindInfo] = {
         },
     ),
     "jepa": KindInfo(
-        ("d_model", "num_layers", *CONV_FIELDS, *_JEPA_FIELDS),
+        ("d_model", "num_layers", *CONV_FIELDS, "layer_norm", *_JEPA_FIELDS),
         False,
         None,
         {
@@ -236,7 +236,7 @@ KIND_INFO: dict[str, KindInfo] = {
         JEPA_METRICS + ROLLOUT_METRICS,
     ),
     "jepa_attention": KindInfo(
-        (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual", *_JEPA_FIELDS),
+        (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual", "layer_norm", *_JEPA_FIELDS),
         False,
         "grid",
         {
@@ -255,7 +255,7 @@ KIND_INFO: dict[str, KindInfo] = {
         JEPA_METRICS + ROLLOUT_METRICS,
     ),
     "jepa_tokens": KindInfo(
-        (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual", "predictor_layers", *_JEPA_FIELDS),
+        (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual", "layer_norm", "predictor_layers", *_JEPA_FIELDS),
         False,
         "grid",
         {
@@ -294,7 +294,7 @@ KIND_INFO: dict[str, KindInfo] = {
         JEPA_METRICS + ROLLOUT_METRICS,
     ),
     "mlp": KindInfo(
-        ("d_model", "num_layers"),
+        ("d_model", "num_layers", "layer_norm"),
         False,
         None,
         {
