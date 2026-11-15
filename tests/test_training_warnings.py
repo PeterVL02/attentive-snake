@@ -16,8 +16,12 @@ def warnings_for(gamma: float = 0.99, **reward) -> tuple[str, ...]:
     return step_cost_warnings(None, SnakeRewardConfig(**reward), gamma)
 
 
-def test_default_reward_warns_with_the_numbers():
-    (text,) = warnings_for()
+def test_default_reward_does_not_warn():
+    assert warnings_for() == ()
+
+
+def test_a_step_cost_at_the_limit_warns_with_the_numbers():
+    (text,) = warnings_for(step=-0.01)
     assert "step cost of -0.01" in text and "gamma 0.99" in text
     assert "-1.00 against a death penalty of -1.00" in text and "-0.001" in text
 
@@ -31,15 +35,15 @@ def test_no_warning(gamma: float, reward: dict):
 
 
 def test_gamma_closer_to_one_warns():
-    assert warnings_for(0.999, death=-2.0)  # 0.01 / 0.001 = 10 >= 2
+    assert warnings_for(0.999, death=-2.0)  # 0.005 / 0.001 = 5 >= 2
     assert warnings_for(1.0, step=-0.0001)
     assert warnings_for(1.0, step=0.0) == ()
 
 
 def test_generic_lookup_per_game():
     snake = experiment_from_tables({})
-    assert len(training_warnings(snake)) == 1
-    assert training_warnings(dataclasses.replace(snake, reward=SnakeRewardConfig(step=-0.001))) == ()
+    assert training_warnings(snake) == ()
+    assert len(training_warnings(dataclasses.replace(snake, reward=SnakeRewardConfig(step=-0.01)))) == 1
     assert training_warnings(experiment_from_tables({"game": {"name": "lunar_lander"}})) == ()
 
 

@@ -149,6 +149,18 @@ gravity = -10.0
 dataclass defaults (flat, no header). `tests/test_config.py` checks both files for
 every registered game, so a new game fails the suite until they exist.
 
+**Refine the living cost against the terminal penalties.** If the reward has a cost per
+step and a penalty for losing, compare the two before trusting the defaults. A cost of
+`c` on every step adds up to `c / (1 - gamma)` over the discounted horizon; once that
+reaches the penalty for losing, an agent that has not yet found the game's positive
+reward loses nothing by ending the episode at once, and early training shows it doing
+exactly that (Snake with step -0.01, death -1 and gamma 0.99 ran straight into the wall,
+for a long time on large boards where apples are rarely found by chance). Keep the
+per-step cost well below that limit (Snake's default is -0.005), remember that the
+limit moves with `train.gamma`, and if a configuration can still cross it, say so
+through `GameSpec.training_warnings` (section 2; Snake's rule is `games/snake/warnings.py`)
+so the app and the CLI warn before such a run starts.
+
 ## 5. Watching: the view payloads (`views/`)
 
 `GameEnv.view()` returns the payload of the game's `view_kind`. Both have `width` and

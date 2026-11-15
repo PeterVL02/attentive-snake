@@ -89,8 +89,8 @@ def test_builder_add_custom_term():
 def test_build_reward_skips_zero_terms_and_defaults():
     default = build_reward(SnakeRewardConfig())
     assert [t.name for t in default.terms] == ["food", "death", "win", "starvation", "step_cost"]
-    assert default(PREV, res(StepEvent.ATE_FOOD)) == pytest.approx(0.99)
-    assert default(PREV, res(StepEvent.MOVED)) == pytest.approx(-0.01)
+    assert default(PREV, res(StepEvent.ATE_FOOD)) == pytest.approx(0.995)
+    assert default(PREV, res(StepEvent.MOVED)) == pytest.approx(-0.005)
     assert default(PREV, res(StepEvent.WON)) == 1.0
     sparse = build_reward(SnakeRewardConfig(food=1.0, death=0, win=0, starved=0, step=0))
     assert [t.name for t in sparse.terms] == ["food"]

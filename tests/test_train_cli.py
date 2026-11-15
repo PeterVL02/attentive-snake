@@ -161,13 +161,14 @@ def test_dqn_trains_resumes_and_forks_through_the_script(tmp_path: Path):
 
 
 def test_training_warnings_go_to_stderr_for_new_runs_and_forks_only(tmp_path: Path):
-    parent = new_run(tmp_path)  # tiny config with the default reward: step -0.01, death -1, gamma 0.99
-    fresh = train("--run-dir", tmp_path / "again", "--config", tmp_path / "tiny.toml", "--steps", 16)
+    parent = new_run(tmp_path)  # tiny config with the default reward (step -0.005, death -1) and gamma 0.99: no warning
+    high = ("--set", "reward.step=-0.01")  # |step| / (1 - gamma) reaches the death penalty
+    fresh = train("--run-dir", tmp_path / "again", "--config", tmp_path / "tiny.toml", *high, "--steps", 16)
     assert fresh.returncode == 0 and "warning: With a step cost of -0.01" in fresh.stderr
     assert "warning" not in fresh.stdout
-    forked = train("--run-dir", tmp_path / "child", "--fork", parent, "--steps", 16)
+    forked = train("--run-dir", tmp_path / "child", "--fork", parent, *high, "--steps", 16)
     assert forked.returncode == 0 and "warning: With a step cost of -0.01" in forked.stderr
     resumed = train("--resume", parent, "--steps", 80)
     assert resumed.returncode == 0 and "warning" not in resumed.stderr
-    lowered = train("--run-dir", tmp_path / "low", "--config", tmp_path / "tiny.toml", "--set", "reward.step=-0.001", "--steps", 16)
-    assert lowered.returncode == 0 and "warning" not in lowered.stderr
+    default = train("--run-dir", tmp_path / "low", "--config", tmp_path / "tiny.toml", "--steps", 16)
+    assert default.returncode == 0 and "warning" not in default.stderr

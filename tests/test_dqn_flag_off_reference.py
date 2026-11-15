@@ -20,6 +20,7 @@ REFERENCE = Path(__file__).resolve().parent / "data" / "dqn_flag_off_reference_w
 TABLES = {
     "game": {"name": "snake", "width": 5, "height": 5, "max_steps_without_food": 20},
     "model": {"kind": "mlp", "d_model": 16, "num_layers": 1},
+    "reward": {"step": -0.01},  # the default when the reference weights were recorded
     "train": {"algorithm": "dqn", "total_env_steps": 400, "device": "cpu", "seed": 3, "log_interval": 1},
     "dqn": {"buffer_size": 120, "batch_size": 8, "learning_starts": 16, "target_update_interval": 40},
     "env": {"num_envs": 4},

@@ -42,7 +42,7 @@ uv run python scripts/train.py --run-dir runs/snake/lr-test --set train.learning
 
 New and forked runs print the game's warnings about their config to stderr before training (never a prompt, so scripts
 are not blocked). Snake warns when the step cost times the discounted horizon, `|step| / (1 - gamma)`, is at least
-the death penalty (the default reward does): early on the snake may run into a wall because nothing rewards staying
+the death penalty (the default step cost of -0.005 stays below it; -0.01 with gamma 0.99 and death -1 reaches it): early on the snake may run into a wall because nothing rewards staying
 alive. The app shows the same warning in a dialog before starting.
 
 ```bash
