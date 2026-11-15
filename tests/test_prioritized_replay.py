@@ -9,11 +9,11 @@ from attentive_snake.training.dqn.config import DqnConfig
 from attentive_snake.training.dqn.prioritized_replay import PrioritizedReplayBuffer
 from attentive_snake.training.dqn.replay_storage import ReplayStorage
 from attentive_snake.training.dqn.uniform_replay import UniformReplayBuffer
-from test_dqn_parts import CPU, transitions
+from test_dqn_parts import CPU, ONE_STEP, transitions
 
 
 def buffer(capacity: int = 8, alpha: float = 1.0, beta: float = 1.0, epsilon: float = 1e-6, seed: int = 0) -> PrioritizedReplayBuffer:
-    return PrioritizedReplayBuffer(capacity, (2,), np.random.default_rng(seed), alpha, epsilon, lambda: beta)
+    return PrioritizedReplayBuffer(capacity, (2,), np.random.default_rng(seed), alpha, epsilon, lambda: beta, ONE_STEP)
 
 
 def test_new_transitions_get_the_largest_priority_so_far() -> None:
@@ -97,7 +97,7 @@ def test_statistics_report_beta_and_priorities() -> None:
     replay = buffer(capacity=4, alpha=1.0, beta=0.7)
     replay.add(transitions(0, 2))
     assert replay.statistics() == {"priority_beta": 0.7, "priority_mean": 1.0, "priority_max": 1.0}
-    assert UniformReplayBuffer(4, (2,), np.random.default_rng(0)).statistics() == {}
+    assert UniformReplayBuffer(4, (2,), np.random.default_rng(0), ONE_STEP).statistics() == {}
 
 
 def test_linear_beta_rises_to_one_at_the_end() -> None:
@@ -106,7 +106,7 @@ def test_linear_beta_rises_to_one_at_the_end() -> None:
 
 
 def test_storage_writes_a_ring_and_returns_the_slots() -> None:
-    storage = ReplayStorage(4, (2,))
+    storage = ReplayStorage(4, (2,), ONE_STEP)
     assert storage.write(transitions(0, 3)).tolist() == [0, 1, 2]
     assert storage.write(transitions(3, 3)).tolist() == [3, 0, 1] and len(storage) == 4
 

@@ -7,7 +7,8 @@ training metrics its auxiliary objective logs). ``[game]`` and
 ``[reward]`` rows are the chosen game's own fields (``[game] name`` is not a row: it is
 the top-level ``"game"`` of the schema). Every algorithm's section is listed (``"ppo"``,
 ``"dqn"``: a UI shows the one ``train.algorithm`` selects), and ``"algorithms"`` tells, per
-algorithm, its label, description, section, policy head and the training metrics it logs.
+algorithm, its label, description, section, policy head (with its default settings; a
+setting may choose another, e.g. ``dqn.dueling``) and the training metrics it logs.
 """
 
 import dataclasses
@@ -50,7 +51,7 @@ def _algorithm_row(algorithm: Algorithm) -> dict[str, Any]:
         "label": algorithm.label,
         "description": algorithm.description,
         "section": algorithm.name,
-        "head": algorithm.head,
+        "head": algorithm.head(algorithm.settings_type()),
         "metrics": [dataclasses.asdict(metric) for metric in algorithm.metrics],
     }
 

@@ -3,7 +3,7 @@
 A head contributes named, initialised modules to the policy's ``self.net`` (so the
 architecture diagram shows them) and turns pooled features into the output contract of
 ``models.types``. The trunk (everything before the head) is the same for every head.
-Adding one (e.g. a dueling head) = a class here and an entry in ``HEADS``.
+Adding one = a class here and an entry in ``HEADS``.
 
 A kind whose output is not a linear readout of one pooled vector (``jepa``: values of
 predicted next-state embeddings) keeps its own table with the same names
@@ -15,7 +15,8 @@ from typing import Protocol
 
 from torch import Tensor, nn
 
-from attentive_snake.models.blocks.heads import PolicyHead, QHead, ValueHead
+from attentive_snake.models.blocks.heads import DuelingStream, PolicyHead, QHead, ValueHead
+from attentive_snake.models.dueling import dueling_q_values
 from attentive_snake.models.types import PolicyOutput, QValues
 
 POLICY_INIT_GAIN = 0.01  # near-uniform initial policy
@@ -63,7 +64,21 @@ class QValueHead:
         return QValues(q_values=net["q_head"](pooled))
 
 
-HEADS: dict[str, Head] = {"actor_critic": ActorCriticHead(), "q_values": QValueHead()}
+class DuelingHead:
+    """``dueling_value`` (state value) and ``dueling_advantage`` (one advantage per action), each a stream with its own
+    hidden layer -> ``QValues`` with ``Q = V + A - mean(A)``; trained by DQN with ``dqn.dueling``."""
+
+    def modules(self, d_model: int, num_actions: int) -> dict[str, nn.Module]:
+        value, advantage = DuelingStream(d_model, 1), DuelingStream(d_model, num_actions)
+        init_head(value.linear, VALUE_INIT_GAIN)
+        init_head(advantage.linear, Q_INIT_GAIN)
+        return {"dueling_value": value, "dueling_advantage": advantage}
+
+    def output(self, net: Mapping[str, nn.Module], pooled: Tensor) -> QValues:
+        return QValues(q_values=dueling_q_values(net["dueling_value"](pooled).squeeze(-1), net["dueling_advantage"](pooled)))
+
+
+HEADS: dict[str, Head] = {"actor_critic": ActorCriticHead(), "q_values": QValueHead(), "dueling": DuelingHead()}
 DEFAULT_HEAD = "actor_critic"
 
 

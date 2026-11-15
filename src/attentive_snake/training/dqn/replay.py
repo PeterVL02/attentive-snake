@@ -6,6 +6,12 @@ returns a ``ReplaySample`` with the buffer ``indices`` it drew and importance ``
 reports the TD errors back with ``update_priorities`` (a no-op for uniform sampling). A prioritized
 buffer takes what it needs of the training progress (the importance-sampling exponent beta) as a
 callable at construction (``prioritized_replay.py``), so this contract stays free of schedules.
+
+What is stored is always what happened in one step. What is sampled is a target window of up
+to n steps starting there (``n_step.py``; n = 1: the step itself): ``rewards`` is the window's
+discounted return, ``bootstrap_observations`` / ``dones`` are the observation after its last
+step and whether nothing is bootstrapped from it, ``discounts`` is gamma ** (its steps).
+``next_observations`` stays the observation one step after ``observations``.
 """
 
 from dataclasses import dataclass
@@ -30,6 +36,7 @@ class Transitions:
     rewards: np.ndarray  # float32 (N,)
     next_observations: np.ndarray  # float32 (N, *obs_shape)
     dones: np.ndarray  # float32 (N,)
+    ends: np.ndarray  # bool (N,), the episode ended with this step (by its rules or by a limit, bootstrapped or not)
 
 
 @dataclass(frozen=True)
@@ -38,9 +45,11 @@ class ReplaySample:
 
     observations: Tensor  # float32 (B, *obs_shape)
     actions: Tensor  # int64 (B,)
-    rewards: Tensor  # float32 (B,)
-    next_observations: Tensor  # float32 (B, *obs_shape)
-    dones: Tensor  # float32 (B,)
+    rewards: Tensor  # float32 (B,), the discounted return of the target window (one step: that step's reward)
+    next_observations: Tensor  # float32 (B, *obs_shape), one step after ``observations``
+    bootstrap_observations: Tensor  # float32 (B, *obs_shape), after the window's last step (one step: ``next_observations``)
+    dones: Tensor  # float32 (B,), 1.0 = nothing is bootstrapped from ``bootstrap_observations``
+    discounts: Tensor  # float32 (B,), gamma ** (steps in the window): what the bootstrap value is scaled by
     weights: Tensor  # float32 (B,), importance-sampling weights (ones for uniform sampling)
     indices: np.ndarray  # int64 (B,), buffer slots, for update_priorities
 

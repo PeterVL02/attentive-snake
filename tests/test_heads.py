@@ -47,9 +47,9 @@ def test_every_kind_builds_with_either_head_on_the_same_trunk(kind: str, observa
 
 
 def test_an_unknown_head_is_refused() -> None:
-    with pytest.raises(ValueError, match="unknown policy head 'dueling'"):
-        make("mlp", "vector", "dueling")
-    assert set(HEADS) == {"actor_critic", "q_values"}
+    with pytest.raises(ValueError, match="unknown policy head 'noisy'"):
+        make("mlp", "vector", "noisy")
+    assert set(HEADS) == {"actor_critic", "q_values", "dueling"}  # the dueling head: tests/test_dueling.py
 
 
 def test_greedy_actions_take_the_argmax_of_logits_or_q_values() -> None:

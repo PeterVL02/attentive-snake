@@ -139,7 +139,10 @@ def test_no_objective_without_the_coefficient_and_actual_needs_one():
 
 def _sample(policy, size=8):
     data = batch(policy, size)
-    return ReplaySample(data.observations, data.actions, torch.rand(size), data.next_observations, torch.zeros(size), torch.ones(size), None)
+    return ReplaySample(
+        data.observations, data.actions, torch.rand(size), data.next_observations, data.next_observations,
+        torch.zeros(size), torch.full((size,), 0.9), torch.ones(size), None,
+    )
 
 
 @pytest.mark.parametrize("value_training", ["predicted", "actual"])
@@ -149,7 +152,7 @@ def test_the_td_loss_reaches_the_predictor_only_when_it_trains_predicted_values(
     assert set(target.state_dict()) == set(policy.state_dict())  # a copy of the policy: no EMA encoder inside
     sample = _sample(policy)
     optimizer = torch.optim.SGD(policy.parameters(), lr=0.0)
-    dqn_gradient_step(policy, target, optimizer, sample, 0.9, True, 10.0)  # no auxiliary objective passed
+    dqn_gradient_step(policy, target, optimizer, sample, True, 10.0)  # no auxiliary objective passed
     predictor_grad = sum(float(p.grad.abs().sum()) for p in policy.predictor.parameters() if p.grad is not None)
     decoder_grad = float(policy.net["value_decoder"].linear.weight.grad.abs().sum())
     assert decoder_grad > 0
@@ -314,7 +317,7 @@ def test_the_td_errors_for_the_priorities_are_those_of_the_trained_values(value_
             trained = policy.net["value_decoder"](policy.encode(sample.next_observations))
         else:  # Q(s, a) as acted on
             trained = policy(sample.observations).q_values.gather(1, sample.actions[:, None]).squeeze(1)
-    stats = dqn_gradient_step(policy, target, torch.optim.SGD(policy.parameters(), lr=0.0), sample, 0.9, True, 10.0)
+    stats = dqn_gradient_step(policy, target, torch.optim.SGD(policy.parameters(), lr=0.0), sample, True, 10.0)
     assert torch.allclose(stats.td_errors, trained - targets, atol=1e-6)
 
 

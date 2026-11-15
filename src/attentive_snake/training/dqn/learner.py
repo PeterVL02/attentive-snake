@@ -13,6 +13,7 @@ from attentive_snake.training.dqn.beta import linear_beta
 from attentive_snake.training.dqn.build_replay import build_replay
 from attentive_snake.training.dqn.collector import EpsilonGreedyCollector
 from attentive_snake.training.dqn.epsilon import linear_epsilon
+from attentive_snake.training.dqn.loss import ERROR_LOSSES
 from attentive_snake.training.dqn.replay import ReplayBuffer
 from attentive_snake.training.dqn.target import TargetNetwork
 from attentive_snake.training.dqn.update import dqn_gradient_step
@@ -27,7 +28,8 @@ class DqnLearner:
     Per iteration (``num_envs`` env steps): epsilon from ``linear_epsilon``, one collector
     step into the buffer, then ``gradient_steps`` per multiple of ``train_frequency`` passed
     (once the buffer holds ``max(learning_starts, batch_size)`` transitions), then a target
-    sync if a multiple of ``target_update_interval`` was passed. Random numbers come from
+    sync if a multiple of ``target_update_interval`` was passed. The buffer hands out targets that
+    look ``n_step`` steps ahead (``n_step.py``); the loss is ``settings.loss``. Random numbers come from
     numpy generators seeded from ``train.seed`` only, so periodic evaluation cannot change them.
     """
 
@@ -44,6 +46,7 @@ class DqnLearner:
             tuple(env.observation_shape),
             np.random.default_rng([train.seed, REPLAY_STREAM]),
             lambda: linear_beta(settings.priority_beta_start, self._env_steps, train.total_env_steps),
+            train.gamma,
         )
         self._collector = EpsilonGreedyCollector(
             env,
@@ -101,10 +104,10 @@ class DqnLearner:
             self._target,
             self.optimizer,
             sample,
-            self._train.gamma,
             self._settings.double,
             self._settings.max_grad_norm,
             self._auxiliary,
+            ERROR_LOSSES[self._settings.loss],
         )
         self._replay.update_priorities(sample.indices, stats.td_errors.abs().cpu().numpy())
         self._gradient_steps += 1

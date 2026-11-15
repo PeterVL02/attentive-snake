@@ -3,15 +3,16 @@
 import numpy as np
 import torch
 
+from attentive_snake.training.dqn.n_step import Horizon
 from attentive_snake.training.dqn.replay import ReplaySample, Transitions
 from attentive_snake.training.dqn.replay_storage import ReplayStorage
 
 
 class UniformReplayBuffer:
-    """Holds the latest ``capacity`` transitions (see ``ReplayStorage`` for the memory) and samples slots uniformly with replacement from ``rng``, so a seeded generator gives reproducible batches."""
+    """Holds the latest ``capacity`` transitions (see ``ReplayStorage`` for the memory) and samples slots uniformly with replacement from ``rng``, so a seeded generator gives reproducible batches; ``horizon`` is how far the sampled targets look ahead."""
 
-    def __init__(self, capacity: int, observation_shape: tuple[int, ...], rng: np.random.Generator) -> None:
-        self._storage = ReplayStorage(capacity, observation_shape)
+    def __init__(self, capacity: int, observation_shape: tuple[int, ...], rng: np.random.Generator, horizon: Horizon) -> None:
+        self._storage = ReplayStorage(capacity, observation_shape, horizon)
         self._rng = rng
 
     def __len__(self) -> int:

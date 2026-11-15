@@ -1008,6 +1008,55 @@ def test_prioritized_replay_settings_are_in_the_schema_and_a_prioritized_run_log
     assert wait_until_done(client, "per-v2")["config"]["dqn"]["priority_alpha"] == 0.3
 
 
+def test_n_step_dueling_and_loss_are_in_the_schema_and_reach_a_started_run(client: TestClient, paths: AppPaths):
+    schema = client.get("/api/schema").json()
+    fields = {row["name"]: row for row in schema["sections"]["dqn"]}
+    assert (fields["n_step"]["type"], fields["n_step"]["default"], fields["n_step"]["choices"]) == ("int", 1, None)
+    assert (fields["dueling"]["type"], fields["dueling"]["default"]) == ("bool", False)
+    assert (fields["loss"]["default"], fields["loss"]["choices"]) == ("huber", ["huber", "mse"])  # a dropdown in the form
+    assert all(len(fields[name]["description"]) > 80 for name in ("n_step", "dueling", "loss"))
+    assert schema["algorithms"]["dqn"]["head"] == "q_values"  # with the default settings
+    defaults = client.get("/api/defaults", params={"algorithm": "dqn"}).json()["dqn"]
+    assert (defaults["n_step"], defaults["dueling"], defaults["loss"]) == (1, False, "huber")
+    assert "dqn.dueling" in client.get("/api/fork-rules").json()["locked"]  # the fork dialog shows it locked
+    assert not {"dqn.n_step", "dqn.loss"} & set(client.get("/api/fork-rules").json()["locked"])
+
+    tables = tiny_tables("cnn", algorithm="dqn")
+    plain_parameters = parameters_for(client, tables)
+    tables["dqn"] |= {"n_step": 3, "dueling": True, "loss": "mse"}
+    assert parameters_for(client, tables) > plain_parameters  # the two streams' hidden layers
+    drawn = client.post("/api/architecture", json=tables).json()
+    assert drawn["head"] == "dueling" and "dueling_advantage" in drawn["text"] and "q_head" not in drawn["text"]
+    assert client.post("/api/runs", json={"name": "rainbowish", "config": tables}).status_code == 201
+    detail = wait_until_done(client, "rainbowish")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert detail["config"]["dqn"] | {"n_step": 3, "dueling": True, "loss": "mse"} == detail["config"]["dqn"]
+    assert 'loss = "mse"' in config_path(paths.runs_dir / "snake" / "rainbowish").read_text()
+    assert "loss" in detail["metrics"][-1]
+    assert client.get("/api/runs/rainbowish/architecture").json()["head"] == "dueling"
+    watch = client.post("/api/watch", json={"run": "rainbowish"}).json()
+    assert watch["info"]["algorithm"] == "dqn" and len(watch["frame"]["action_values"]["values"]) == 4  # Q-values, as without it
+
+    changed = tiny_tables("cnn", total_env_steps=32, algorithm="dqn")
+    changed["dqn"] |= {"n_step": 1, "dueling": True, "loss": "huber"}  # n_step and loss may change on fork
+    forked = client.post("/api/runs/rainbowish/fork", json={"name": "rainbowish-v2", "config": changed})
+    assert forked.status_code == 201, forked.text
+    assert wait_until_done(client, "rainbowish-v2")["status"]["state"] == "finished"
+    changed["dqn"]["dueling"] = False
+    refused = client.post("/api/runs/rainbowish/fork", json={"name": "undueled", "config": changed})
+    assert refused.status_code == 422 and "dqn.dueling" in refused.text
+    resumed = client.post("/api/runs/rainbowish/resume", json={"total_env_steps": 96})
+    assert resumed.status_code == 200, resumed.text
+    assert wait_until_done(client, "rainbowish")["status"]["state"] == "finished"  # the dueling weights load again
+
+    jepa = tiny_tables("jepa", algorithm="dqn")
+    jepa["dqn"]["dueling"] = True
+    assert "advantage_decoder" in client.post("/api/architecture", json=jepa).json()["text"]
+    jepa["model"] |= {"value_training": "actual", "prediction_coef": 1.0}
+    refused = client.post("/api/parameters", params={"game": "snake"}, json={"config": jepa})  # what the New-training form asks while it is filled in
+    assert refused.status_code == 422 and "dueling" in refused.text
+
+
 def test_jepa_is_offered_drawn_trained_watched_and_forked_through_the_api(client: TestClient):
     schema = client.get("/api/schema").json()
     kind = schema["model_kinds"]["jepa"]

@@ -30,3 +30,6 @@ prioritized = false           # prioritized experience replay (the three priorit
 priority_alpha = 0.6
 priority_beta_start = 0.4     # rises to 1 at the end of total_env_steps
 priority_epsilon = 1e-6
+n_step = 1                    # steps a target looks ahead before bootstrapping (1 = plain DQN; 3-5 is common)
+dueling = false               # dueling head: Q = V + A - mean(A) (locked when continuing from a checkpoint)
+loss = "huber"                # or "mse" (squared error)

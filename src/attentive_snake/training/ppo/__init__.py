@@ -22,7 +22,7 @@ ALGORITHM = Algorithm(
         "and a value head; it learns from rollouts it has just played, a few epochs each, and then discards them."
     ),
     settings_type=PpoConfig,
-    head="actor_critic",
+    head=lambda settings: "actor_critic",
     metrics=METRICS,
     build=PpoLearner,
 )
