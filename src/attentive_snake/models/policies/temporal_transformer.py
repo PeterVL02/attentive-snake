@@ -14,17 +14,17 @@ position token embeds the frame's game channels there (``TOKEN_STAGES`` of one f
 When frames carry action channels there is one action token per frame: the embedding of
 that frame's action (a learned "no action" entry for all-zero channels) plus the same
 per-frame embedding. Without action channels there are no action tokens (and no action
-parameters). Frames before the episode began are all-zero, not masked.
+parameters). Frames before the episode began are all-zero, not masked. The tokens are built by
+``policies.temporal_tokens`` (shared with ``jepa_temporal``'s embedding encoder).
 """
 
-import torch
 from torch import Tensor, nn
 
 from attentive_snake.models.blocks.temporal import ActionEmbedding, TemporalEmbedding
-from attentive_snake.models.frames import action_ids, base_planes, split_frames
 from attentive_snake.models.input_stages.catalog import TOKEN_STAGES, readable_kinds
-from attentive_snake.models.input_stages.stage import one_frame, run_stage
+from attentive_snake.models.input_stages.stage import one_frame
 from attentive_snake.models.policies.base import AttentivePolicy, require_action_layout
+from attentive_snake.models.policies.temporal_tokens import temporal_tokens
 from attentive_snake.models.token_layout import TokenLayout
 
 
@@ -42,16 +42,7 @@ class TemporalTransformerPolicy(AttentivePolicy):
         return front
 
     def _tokens(self, obs: Tensor) -> Tensor:
-        net = self.net
-        frames = split_frames(obs, self.observation_spec)  # (B, K, F, *spatial)
-        batch = frames.shape[0]
-        positions = run_stage(net, self._stage_names, base_planes(frames, self.observation_spec).flatten(0, 1))  # (B*K, P, D)
-        positions = net["temporal"](positions.unflatten(0, (batch, self.history_length)))
-        tokens = positions.flatten(1, 2)  # (B, K*P, D)
-        if self.observation_spec.has_actions:
-            actions = net["temporal"](net["action_embed"](action_ids(frames, self.observation_spec, self.num_actions)))
-            tokens = torch.cat([tokens, actions], dim=1)
-        return tokens
+        return temporal_tokens(self.net, self._stage_names, self.observation_spec, self.num_actions, obs)
 
     @property
     def token_layout(self) -> TokenLayout:

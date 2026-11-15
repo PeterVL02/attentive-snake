@@ -6,7 +6,7 @@ the policy; it is never registered on the policy, so the policy's state dict is 
 
 * ``TokenSetEncoder``: observation -> the encoded token set (B, 1 + N, D), class token first
   (``jepa_tokens``: its state embedding is every token).
-* ``TokenEncoder``: the same, then the class-token pool -> (B, D) (``jepa_attention``).
+* ``TokenEncoder``: the same, then the class-token pool -> (B, D) (``jepa_attention``, ``jepa_temporal``).
 """
 
 from collections.abc import Mapping, Sequence

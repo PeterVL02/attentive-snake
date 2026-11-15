@@ -26,13 +26,14 @@ max_steps_without_food = 128  # starvation limit; comment out for no limit (None
 #       "lstm" (CNN per frame, LSTM across the frames), "jepa" (CNN encoder + action-conditioned predictor of the
 #       next embedding + value decoder: acts on the value of predicted next states), "jepa_attention" (the same
 #       with hybrid's attention encoder), "jepa_tokens" (jepa_attention predicting every cell's token instead of
-#       one vector), "mlp" (flattened board; weak baseline).
-# Only temporal_transformer, frame_attention and lstm treat env.history_length as time; the others
+#       one vector), "jepa_temporal" (the jepa world model on temporal_transformer's encoder: attention over
+#       the cells of all frames), "mlp" (flattened board; weak baseline).
+# Only temporal_transformer, jepa_temporal, frame_attention and lstm treat env.history_length as time; the others
 # see stacked frames as extra channels. They use board channels plus, if present, action planes.
 kind = "transformer"
 d_model = 64
 num_heads = 4
-num_layers = 3                # attention kinds: transformer blocks; mlp: layers; lstm: LSTM layers; jepa: predictor layers; jepa_attention: both; jepa_tokens: encoder blocks
+num_layers = 3                # attention kinds: transformer blocks; mlp: layers; lstm: LSTM layers; jepa: predictor layers; jepa_attention, jepa_temporal: both; jepa_tokens: encoder blocks
 mlp_ratio = 4
 dropout = 0.0
 conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm, jepa, jepa_attention: width of the conv layers
