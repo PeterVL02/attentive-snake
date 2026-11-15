@@ -21,6 +21,8 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from attentive_snake.models.auxiliary import TransitionSequences
+
 
 @dataclass(frozen=True)
 class RolloutBuffer:
@@ -110,6 +112,7 @@ class TrainingBatch:
     advantages: Tensor  # (B,)
     returns: Tensor  # (B,)
     next_observations: Tensor | None = None  # (B, *obs_shape), when the rollout kept them
+    sequences: TransitionSequences | None = None  # the steps from each row on, when an auxiliary objective reads several
 
     def __len__(self) -> int:
         return self.actions.shape[0]
@@ -123,11 +126,14 @@ class TrainingBatch:
             advantages=self.advantages[indices],
             returns=self.returns[indices],
             next_observations=None if self.next_observations is None else self.next_observations[indices],
+            sequences=None if self.sequences is None else self.sequences.select(indices),
         )
 
 
-def flatten_rollout(buffer: RolloutBuffer, advantages: Tensor, returns: Tensor) -> TrainingBatch:
-    """Merge the step and env dimensions of a rollout into one batch dimension."""
+def flatten_rollout(
+    buffer: RolloutBuffer, advantages: Tensor, returns: Tensor, sequences: TransitionSequences | None = None
+) -> TrainingBatch:
+    """Merge the step and env dimensions of a rollout into one batch dimension (``sequences``: already one row per flattened step)."""
     return TrainingBatch(
         observations=buffer.observations.flatten(0, 1),
         actions=buffer.actions.flatten(),
@@ -136,4 +142,5 @@ def flatten_rollout(buffer: RolloutBuffer, advantages: Tensor, returns: Tensor) 
         advantages=advantages.flatten(),
         returns=returns.flatten(),
         next_observations=None if buffer.next_observations is None else buffer.next_observations.flatten(0, 1),
+        sequences=sequences,
     )

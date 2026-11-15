@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 
-from attentive_snake.models.auxiliary import TransitionBatch
+from attentive_snake.models.auxiliary import TransitionBatch, TransitionSequences
 from attentive_snake.models.value_training import trained_values
 from attentive_snake.training.auxiliary import AuxiliaryTraining
 from attentive_snake.training.dqn.loss import DqnLoss, ErrorLoss, dqn_loss, huber, td_loss
@@ -29,6 +29,7 @@ def dqn_gradient_step(
     max_grad_norm: float,
     auxiliary: AuxiliaryTraining | None = None,
     error_loss: ErrorLoss = huber,
+    sequences: TransitionSequences | None = None,
 ) -> StepStats:
     """Minimise the loss on ``sample`` once; the policy is in ``train()`` mode meanwhile and its mode is restored.
 
@@ -36,13 +37,14 @@ def dqn_gradient_step(
     scaled by ``sample.discounts``). With ``auxiliary`` (the policy's auxiliary objective) its
     weighted loss on the one-step transitions of the same sample is added (every one counts: a
     stored next observation always followed its action, also when the episode ended there) and
-    it is told after the optimizer step.
+    it is told after the optimizer step. ``sequences`` (the steps that followed the sample's
+    transitions, for an objective that reads more than one) are passed on to it.
     """
     was_training = policy.training
     policy.train()
     try:
         terms = _loss(policy, target, sample, double, error_loss)
-        total = terms.loss if auxiliary is None else terms.loss + auxiliary.loss(_transitions(sample))
+        total = terms.loss if auxiliary is None else terms.loss + auxiliary.loss(_transitions(sample, sequences))
         optimizer.zero_grad(set_to_none=True)
         total.backward()
         nn.utils.clip_grad_norm_(policy.parameters(), max_grad_norm)
@@ -54,8 +56,8 @@ def dqn_gradient_step(
     return StepStats(loss=float(terms.loss.detach()), q_mean=float(terms.q_mean), td_errors=terms.td_errors)
 
 
-def _transitions(sample: ReplaySample) -> TransitionBatch:
-    return TransitionBatch(sample.observations, sample.actions, sample.next_observations, torch.ones_like(sample.rewards))
+def _transitions(sample: ReplaySample, sequences: TransitionSequences | None) -> TransitionBatch:
+    return TransitionBatch(sample.observations, sample.actions, sample.next_observations, torch.ones_like(sample.rewards), sequences)
 
 
 def _loss(policy: nn.Module, target: TargetNetwork, sample: ReplaySample, double: bool, error_loss: ErrorLoss) -> DqnLoss:

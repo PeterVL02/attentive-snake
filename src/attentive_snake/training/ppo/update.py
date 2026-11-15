@@ -121,4 +121,5 @@ def _transitions(minibatch: TrainingBatch) -> TransitionBatch:
     """Every rollout step has its next observation (the final one where the episode ended)."""
     if minibatch.next_observations is None:
         raise ValueError("an auxiliary objective needs a rollout that kept its next observations.")
-    return TransitionBatch(minibatch.observations, minibatch.actions, minibatch.next_observations, torch.ones_like(minibatch.returns))
+    valid = torch.ones_like(minibatch.returns)
+    return TransitionBatch(minibatch.observations, minibatch.actions, minibatch.next_observations, valid, minibatch.sequences)

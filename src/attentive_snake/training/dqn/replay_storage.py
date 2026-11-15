@@ -2,14 +2,17 @@
 
 Shared by every ``ReplayBuffer`` (uniform and prioritized): they differ only in which slots they sample.
 The slots hold one-step transitions; a batch is read back as target windows of the storage's
-``Horizon`` (``n_step.py``), which for n = 1 are the stored transitions themselves.
+``Horizon`` (``n_step.py``), which for n = 1 are the stored transitions themselves; ``sequences``
+reads the steps that followed given slots one by one.
 """
 
 import numpy as np
 import torch
 
+from attentive_snake.models.auxiliary import TransitionSequences
 from attentive_snake.training.dqn.n_step import Horizon, n_step_windows
 from attentive_snake.training.dqn.replay import ReplaySample, Transitions
+from attentive_snake.training.slot_sequences import later_steps_in_ring, slot_sequences
 
 
 class ReplayStorage:
@@ -20,6 +23,7 @@ class ReplayStorage:
 
     With ``horizon.n`` above 1 every ``write`` must bring the same number of transitions (one
     per env of a vector step, in env order): that is how a later step of an env is found.
+    ``sequences`` needs the same and refuses a storage that was written otherwise.
     """
 
     def __init__(self, capacity: int, observation_shape: tuple[int, ...], horizon: Horizon) -> None:
@@ -32,6 +36,7 @@ class ReplayStorage:
         self._dones = np.zeros(capacity, dtype=np.float32)
         self._ends = np.zeros(capacity, dtype=bool)
         self._stride = 1  # transitions per write: the slot distance between two steps of one env
+        self._even_writes = True  # every write so far brought ``_stride`` transitions
         self._next = 0  # slot written next
         self._size = 0
 
@@ -43,6 +48,7 @@ class ReplayStorage:
         count = len(transitions.actions)
         if self._horizon.n > 1 and self._size > 0 and count != self._stride:
             raise ValueError(f"n-step replay needs the same number of transitions in every write ({self._stride}), got {count}.")
+        self._even_writes &= self._size == 0 or count == self._stride
         self._stride = count
         slots = (self._next + np.arange(count)) % self._capacity
         self._observations[slots] = transitions.observations
@@ -61,8 +67,7 @@ class ReplayStorage:
         def tensor(array: np.ndarray) -> torch.Tensor:
             return torch.as_tensor(array, device=device)
 
-        later_steps = ((self._next - 1 - indices) % self._capacity) // self._stride
-        windows = n_step_windows(self._rewards, self._ends, indices, later_steps, self._stride, self._horizon)
+        windows = n_step_windows(self._rewards, self._ends, indices, self._later_steps(indices), self._stride, self._horizon)
         following = tensor(self._next_observations[indices])
         one_step = self._horizon.n == 1
         return ReplaySample(
@@ -76,3 +81,22 @@ class ReplayStorage:
             weights=torch.as_tensor(weights, dtype=torch.float32, device=device),
             indices=indices,
         )
+
+    def sequences(self, indices: np.ndarray, length: int, device: torch.device) -> TransitionSequences:
+        """The ``length`` stored steps of the same env from each slot of ``indices`` on, as one batch on ``device``.
+
+        Column 0 is the slot's own transition (always valid: a stored next observation followed
+        its action); a later column is valid while the episode went on and the step is stored.
+        """
+        if not self._even_writes:
+            raise ValueError("sequences need the same number of transitions in every write (one per env).")
+        found = slot_sequences(self._ends, indices, self._later_steps(indices), self._stride, length)
+        return TransitionSequences(
+            actions=torch.as_tensor(self._actions[found.slots], device=device),
+            next_observations=torch.as_tensor(self._next_observations[found.slots], device=device),
+            valid=torch.as_tensor(found.present.astype(np.float32), device=device),
+            terminal=torch.as_tensor(self._dones[found.slots], device=device),
+        )
+
+    def _later_steps(self, indices: np.ndarray) -> np.ndarray:
+        return later_steps_in_ring(indices, self._next, self._capacity, self._stride)

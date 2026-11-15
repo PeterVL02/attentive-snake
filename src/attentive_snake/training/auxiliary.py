@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 from torch import Tensor, nn
 
-from attentive_snake.models.auxiliary import AuxiliaryObjective, TransitionBatch, auxiliary_objective
+from attentive_snake.models.auxiliary import AuxiliaryObjective, TransitionBatch, auxiliary_objective, sequence_length
 
 STATE_KEY = "auxiliary"  # where the objective's state sits in a learner's extra_state
 
@@ -26,6 +26,11 @@ class AuxiliaryTraining:
     def of(cls, policy: nn.Module) -> "AuxiliaryTraining | None":
         objective = auxiliary_objective(policy)
         return None if objective is None else cls(objective)
+
+    @property
+    def sequence_length(self) -> int:
+        """Steps per transition the objective reads: above 1 the learner must fill ``TransitionBatch.sequences``."""
+        return sequence_length(self._objective)
 
     def loss(self, batch: TransitionBatch) -> Tensor:
         """The weighted loss term to add before ``backward``; its metrics are kept for ``report``."""

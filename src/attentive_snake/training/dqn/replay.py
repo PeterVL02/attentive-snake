@@ -12,6 +12,10 @@ to n steps starting there (``n_step.py``; n = 1: the step itself): ``rewards`` i
 discounted return, ``bootstrap_observations`` / ``dones`` are the observation after its last
 step and whether nothing is bootstrapped from it, ``discounts`` is gamma ** (its steps).
 ``next_observations`` stays the observation one step after ``observations``.
+
+``sequences`` reads the steps that really followed sampled slots (for a policy's auxiliary
+objective that unrolls a model along them, ``models.auxiliary``); it needs every ``add`` to
+bring one transition per env, in env order.
 """
 
 from dataclasses import dataclass
@@ -20,6 +24,8 @@ from typing import Protocol
 import numpy as np
 import torch
 from torch import Tensor
+
+from attentive_snake.models.auxiliary import TransitionSequences
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,13 @@ class ReplayBuffer(Protocol):
     def add(self, transitions: Transitions) -> None: ...
 
     def sample(self, batch_size: int, device: torch.device) -> ReplaySample: ...
+
+    def sequences(self, indices: np.ndarray, length: int, device: torch.device) -> TransitionSequences:
+        """The ``length`` steps of the same env from each slot of ``indices`` on (column 0: the slot's own transition).
+
+        Called with a sample's ``indices`` before anything is added again.
+        """
+        ...
 
     def update_priorities(self, indices: np.ndarray, td_errors: np.ndarray) -> None:
         """Tell the buffer the absolute TD errors of the sampled slots (prioritized replay uses them)."""

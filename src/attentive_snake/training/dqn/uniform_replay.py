@@ -3,6 +3,7 @@
 import numpy as np
 import torch
 
+from attentive_snake.models.auxiliary import TransitionSequences
 from attentive_snake.training.dqn.n_step import Horizon
 from attentive_snake.training.dqn.replay import ReplaySample, Transitions
 from attentive_snake.training.dqn.replay_storage import ReplayStorage
@@ -26,6 +27,9 @@ class UniformReplayBuffer:
             raise ValueError("cannot sample from an empty replay buffer.")
         indices = self._rng.integers(0, len(self._storage), size=batch_size)
         return self._storage.gather(indices, np.ones(batch_size, dtype=np.float32), device)
+
+    def sequences(self, indices: np.ndarray, length: int, device: torch.device) -> TransitionSequences:
+        return self._storage.sequences(indices, length, device)
 
     def update_priorities(self, indices: np.ndarray, td_errors: np.ndarray) -> None:
         """Uniform sampling has no priorities."""

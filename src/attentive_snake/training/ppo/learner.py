@@ -11,6 +11,7 @@ from attentive_snake.training.algorithm import LearnerSetup
 from attentive_snake.training.auxiliary import AuxiliaryTraining
 from attentive_snake.training.ppo.collector import RolloutCollector
 from attentive_snake.training.ppo.rollout import RolloutBuffer, compute_gae, flatten_rollout
+from attentive_snake.training.ppo.sequences import rollout_sequences
 from attentive_snake.training.ppo.truncation import TruncationBootstrap
 from attentive_snake.training.ppo.update import UpdateStats, ppo_update
 
@@ -51,7 +52,9 @@ class PpoLearner:
             self._train.gamma,
             self._settings.gae_lambda,
         )
-        batch = flatten_rollout(self._buffer, advantages, returns)
+        steps = 1 if self._auxiliary is None else self._auxiliary.sequence_length
+        sequences = rollout_sequences(self._buffer, steps) if steps > 1 else None  # K copies of the next observations
+        batch = flatten_rollout(self._buffer, advantages, returns, sequences)
         self._last = ppo_update(self.policy, self.optimizer, batch, self._settings, self._shuffle_generator, self._auxiliary)
         return collected.finished_episodes
 
