@@ -16,6 +16,30 @@ that ties it all together.
 | `snake` (default) | grid | The whole board: one cell per position, channels head / body / food. |
 | `lunar_lander` | vector | 8 numbers: x, y, vx, vy, angle, angular velocity, left and right leg contact (Gymnasium's `LunarLander-v3`, discrete actions). Watched as the game's own picture. |
 
+### Snake rules
+
+`[game]` in a Snake config (`configs/snake/default.toml`) sets the rules; besides the board size,
+`initial_length` and the starvation limit there are two optional apple rules, both off by default (the
+observation keeps its shape, the food channel marks every apple):
+
+- `food_count = N` keeps up to N apples on the board; eating one spawns one new apple on a free cell, and the
+  game is won when the snake fills the board.
+- `food_distribution = "center"` draws each new apple from the free cells weighted by
+  `exp(-d^2 / (2 * food_spread^2))`, d being the distance to the board's centre (`food_spread` in cells,
+  default 2); `"uniform"` (the default) is the classic rule and plays exactly the games it always did for a seed.
+
+Neither rule is locked on fork, so a run trained with several or centred apples can be continued on the standard game
+(a curriculum): `--fork runs/snake/PARENT --set game.food_count=1 --set game.food_distribution=uniform`. Scores under
+different apple rules are not comparable (more apples is easier points). Human play takes `--food-count N` and
+`--center-food`.
+
+A single-seed check (8x8, PPO, 819,200 env steps each, greedy evaluation of 100 games, not a benchmark): the default
+`transformer` learned nothing in that budget with any of the apple rules (greedy mean score 0.05 standard and centred,
+0.14 with 3 apples). `jepa_attention` with 3 apples reached a greedy mean score of 36.5. Forking that run onto the standard
+game (`food_count = 1`) gave 18.7 / 26.7 / 31.9 at 82k / 164k / 246k steps, where `jepa_attention` trained from scratch on
+the standard game was still at 0.05 (the apple-rule curriculum got it going); the same fork from the 3-apple
+`transformer` run had nothing to carry over (0.05 / 0.05 / 0.13).
+
 A game is one directory under `src/attentive_snake/games/` plus its configs;
 nothing else is edited. See [docs/ADDING_A_GAME.md](docs/ADDING_A_GAME.md).
 

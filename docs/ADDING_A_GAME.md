@@ -168,14 +168,14 @@ so the app and the CLI warn before such a run starts.
 event done heatmap frame_weights element_weights caption episode view_kind`), because the watch frame
 merges the payload into its top level.
 
-`"board"` (`views/board.py`, build with `board_payload(width, height, body, target)`):
+`"board"` (`views/board.py`, build with `board_payload(width, height, body, targets)`):
 
 ```json
-{"width": 8, "height": 8, "snake": [[3, 4], [2, 4]], "food": [6, 1]}
+{"width": 8, "height": 8, "snake": [[3, 4], [2, 4]], "foods": [[6, 1]]}
 ```
 
 Cells are `[x, y]`, x to the right, y down. `snake` is the player body, head first;
-`food` the single target cell or `null`. The app and `scripts/watch.py` draw this.
+`foods` the target cells (any number, possibly none). The app and `scripts/watch.py` draw this.
 
 `"image"` (`views/image.py`, build with `image_payload(rgb)` from an `(H, W, 3)` uint8
 array, e.g. Gymnasium's `render_mode="rgb_array"`):
