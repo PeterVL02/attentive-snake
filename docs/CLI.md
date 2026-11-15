@@ -154,7 +154,7 @@ uv run python scripts/train.py --run-dir runs/snake/8x8-variant --fork runs/snak
   `--keep-checkpoints`. Everything under `[reward]`, `[train]` (but `train.algorithm`) and the algorithm's section
   (`[ppo]` / `[dqn]`), `env.num_envs` and the game rules the game does not lock (Snake:
   `game.max_steps_without_food`, `game.food_count`, `game.food_distribution`, `game.food_spread`) may change. The game (`game.name`), the algorithm (`train.algorithm`: the weights
-  end in its head), all of `[model]` except jepa's `prediction_coef`, `value_training`, `prediction_trains_encoder` and `target_ema` (they
+  end in its head), all of `[model]` except jepa's `prediction_coef`, `value_training`, `prediction_trains_encoder`, `target_ema`, `rollout_steps` and `rollout_value_coef` (they
   change how it is trained, not the network), `env.history_length`, `env.history_actions` and the rules the game locks (Snake: `game.width`, `game.height`,
   `game.initial_length`) must equal the parent's (the weights would not fit, or the input would change meaning);
   a change is rejected naming the field, before anything is written.
@@ -387,15 +387,27 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/b
     --set model.kind=jepa_temporal --set env.history_length=8 --set env.history_actions=true
 ```
 
-Four `[model]` settings belong to them, and unlike the rest of `[model]` they may change when forking a run:
+Six `[model]` settings belong to them, and unlike the rest of `[model]` they may change when forking a run:
 
 - `prediction_coef` (default 0.0 = off): weight of the prediction loss, which makes the embedding predicted for the action
   taken match a slowly updated (EMA) copy of the encoder's embedding of the real next state. Above 0 it is on; measurements
-  so far showed it does not beat leaving it off and costs 20-35% of the speed. The other three settings below only matter then. The run then logs no `prediction_loss` / `embedding_std` / `value_gap`.
+  so far showed it does not beat leaving it off and costs 20-35% of the speed. The other settings below only matter then. The run then logs no `prediction_loss` / `embedding_std` / `value_gap`.
 - `prediction_trains_encoder` (default false): whether that loss also trains the encoder. Off, it trains the predictor
   only and the encoder learns from the reinforcement-learning loss alone (it matters only with `prediction_coef > 0`). On was the old default; in a single-seed DQN
   test on Lunar Lander it made the agent end up flying off (README, Caveats).
 - `target_ema` (default 0.99): how slowly that target encoder follows the trained one (per gradient step).
+- `rollout_steps` (default 1): how many steps in a row the prediction loss follows. 1 is the plain loss (predict the
+  next state from the real current one). With K above 1 the predictor is also fed its own prediction, along the K
+  actions that were really taken, and every one of those predictions is compared with the state the game really
+  reached; a sequence stops where its episode ended (and, with PPO, at the end of the rollout; with DQN at the newest
+  step in the replay buffer). This is practice for looking several steps ahead. It costs speed: 3 steps trained about a
+  fifth slower than 1 (jepa_tokens, Snake 6x6, DQN, one run).
+- `rollout_value_coef` (default 1.0; DQN without `dqn.dueling`, and only with `rollout_steps > 1`): weight of a second
+  part of that loss. From every predicted state the model reads the value of each action exactly as a lookahead would
+  (the predictor applied to its own prediction, then the value decoder), and this part pulls those values to the ones
+  the model gives the real state. It trains only the predictor's step from a predicted state; the encoder, the value
+  decoder and the predicted embedding itself get no gradient from it. 0 switches it off. PPO and the dueling head
+  ignore it (their value decoder reads the current state, so there are no such action values).
 - `value_training` (DQN only, default `predicted`): `predicted` trains the decoded predicted embedding of the action
   taken with the TD loss; `actual` trains the decoded embedding of the next state that really happened (the value of
   arriving there, its reward included) and leaves the predictor to the prediction loss, which then matches whole
@@ -411,12 +423,16 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/j
     --set model.kind=jepa --set model.prediction_coef=1 --set model.value_training=actual
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/jepa-per --set train.algorithm=dqn \
     --set model.kind=jepa --set dqn.prioritized=true
+uv run python scripts/train.py --run-dir runs/snake/jepa-rollout --set train.algorithm=dqn \
+    --set model.kind=jepa_tokens --set model.prediction_coef=1 --set model.rollout_steps=3
 ```
 
 The target encoder is saved with the checkpoint's training state (not with the policy weights), so resuming and forking
 keep it; watching and evaluating do not need it. The Runs chart offers `prediction loss`, `embedding spread` (near 0
 would mean every state gets the same embedding) and `value gap` (how far the value of the predicted next state is from
-that of the real one; it matters for `actual`, which acts on it) for jepa runs with `prediction_coef > 0`. Prioritized
+that of the real one; it matters for `actual`, which acts on it) for jepa runs with `prediction_coef > 0`, and with `rollout_steps > 1` also `rollout last-step loss` (the
+prediction loss at the last step of the rollout alone) and, under DQN, `chained value gap` (how far the action values
+read from a predicted state are from those of the real state: the error a lookahead through the predictor makes). Prioritized
 replay (`dqn.prioritized = true`) works with every `value_training`: the priorities are the TD errors of the values the
 TD loss trains (Q(s, a) for `predicted`, the real next state's value for `actual`); the prediction loss is not
 importance-weighted and does not change the priorities.
