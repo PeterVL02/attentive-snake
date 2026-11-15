@@ -12,6 +12,7 @@ from attentive_snake.models.policies.frame_attention import FrameAttentionPolicy
 from attentive_snake.models.policies.hybrid import HybridPolicy
 from attentive_snake.models.policies.jepa import JepaPolicy
 from attentive_snake.models.policies.jepa_attention import JepaAttentionPolicy
+from attentive_snake.models.policies.jepa_tokens import JepaTokensPolicy
 from attentive_snake.models.policies.lstm import LstmPolicy
 from attentive_snake.models.policies.mlp import MlpPolicy
 from attentive_snake.models.policies.resnet import ResnetPolicy
@@ -30,6 +31,7 @@ _BUILDERS: dict[str, Callable[..., nn.Module]] = {
     "lstm": LstmPolicy,
     "jepa": JepaPolicy,
     "jepa_attention": JepaAttentionPolicy,
+    "jepa_tokens": JepaTokensPolicy,
     "mlp": MlpPolicy,
 }
 
@@ -57,6 +59,18 @@ _JEPA_FIELDS = ("prediction_coef", "value_training", "prediction_trains_encoder"
 _JEPA_ATTENTION_HOW = (
     "The class token's output is the embedding (num_layers sets both the number of transformer blocks and the predictor's depth); "
     "from there it is the jepa kind: " + _JEPA_HOW + " The attention shown is the encoder's, as for hybrid. With residual = true the stem is built from residual blocks."
+)
+
+_JEPA_TOKENS_HOW = (
+    "Unlike jepa_attention, the model's picture of a state is not one summary vector but the whole set of tokens the transformer produces: "
+    "the class token plus one token per {position}. The predictor (a small transformer, predictor_layers blocks, num_layers being the encoder's) "
+    "takes that set and an action and predicts the token set of the next state, {position} by {position}; since one step changes only a few {positions}, "
+    "it mostly has to copy and learns only what changes. The value decoder reads the class token of a token set: with DQN, Q(s, a) is the value of the class token "
+    "predicted for action a, so it plays the action whose predicted next state is worth most; with PPO the policy scores the predicted class tokens and the value decoder "
+    "values the current one. The prediction loss (prediction_coef > 0, off by default) compares the predicted tokens with a slowly updated (EMA) copy of the encoder's tokens "
+    "of the state that really followed, token by token; by default it trains the predictor only (prediction_trains_encoder). value_training (DQN) as for jepa. "
+    "The predictor runs once per action, so it is slower than jepa_attention. The attention shown is the encoder's, as for hybrid. "
+    "With residual = true the stem is built from residual blocks. Experimental."
 )
 
 KIND_INFO: dict[str, KindInfo] = {
@@ -220,6 +234,27 @@ KIND_INFO: dict[str, KindInfo] = {
             "vector": InputReading(
                 "The jepa world model with an attention encoder: as in hybrid, a small MLP turns every number into a token "
                 "(conv_channels wide, conv_layers deep) and a transformer attends over these tokens. " + _JEPA_ATTENTION_HOW,
+                False,
+                NO_KERNEL,
+            ),
+        },
+        JEPA_METRICS,
+    ),
+    "jepa_tokens": KindInfo(
+        (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual", "predictor_layers", *_JEPA_FIELDS),
+        False,
+        "grid",
+        {
+            "grid": InputReading(
+                "A world model that predicts the next board cell by cell. As in hybrid, a convolutional stem summarises each cell's neighbourhood "
+                "and a transformer attends over the cells (trained from scratch). "
+                + _JEPA_TOKENS_HOW.format(position="board cell", positions="cells"),
+                False,
+            ),
+            "vector": InputReading(
+                "A world model that predicts the next observation number by number. As in hybrid, a small MLP turns every number into a token "
+                "(conv_channels wide, conv_layers deep) and a transformer attends over these tokens (trained from scratch). "
+                + _JEPA_TOKENS_HOW.format(position="number", positions="numbers"),
                 False,
                 NO_KERNEL,
             ),

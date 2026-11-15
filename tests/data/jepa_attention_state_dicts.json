@@ -1,0 +1,1352 @@
+{
+  "grid/actor_critic": {
+    "net.stem.stem.0.weight": [
+      [
+        8,
+        3,
+        3,
+        3
+      ],
+      -1.9917137860320508,
+      20.45939524145797
+    ],
+    "net.stem.stem.0.bias": [
+      [
+        8
+      ],
+      -0.0006558485329151154,
+      0.8421560097485781
+    ],
+    "net.stem.blocks.0.conv.weight": [
+      [
+        8,
+        8,
+        3,
+        3
+      ],
+      0.6240202996814332,
+      35.218374754284014
+    ],
+    "net.stem.blocks.0.conv.bias": [
+      [
+        8
+      ],
+      0.1685075752902776,
+      0.5711764239240438
+    ],
+    "net.project.weight": [
+      [
+        16,
+        8,
+        1,
+        1
+      ],
+      3.476734534604475,
+      21.822606064612046
+    ],
+    "net.project.bias": [
+      [
+        16
+      ],
+      -1.601781539618969,
+      3.1407832130789757
+    ],
+    "net.positional.row": [
+      [
+        5,
+        1,
+        16
+      ],
+      -0.040072835370665416,
+      1.2508294530853163
+    ],
+    "net.positional.col": [
+      [
+        1,
+        5,
+        16
+      ],
+      0.20076096126285847,
+      1.1846998042747146
+    ],
+    "net.cls.token": [
+      [
+        1,
+        1,
+        16
+      ],
+      0.09180589258903638,
+      0.14961076801409945
+    ],
+    "net.blocks.0.norm1.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.0.norm1.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.attention.attn.in_proj_weight": [
+      [
+        48,
+        16
+      ],
+      -0.1656033901454066,
+      114.85983669409325
+    ],
+    "net.blocks.0.attention.attn.in_proj_bias": [
+      [
+        48
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.attention.attn.out_proj.weight": [
+      [
+        16,
+        16
+      ],
+      -0.18110910058021545,
+      34.01526615023613
+    ],
+    "net.blocks.0.attention.attn.out_proj.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.norm2.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.0.norm2.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.feed_forward.fc1.weight": [
+      [
+        64,
+        16
+      ],
+      -2.2749907076358795,
+      122.12682327628136
+    ],
+    "net.blocks.0.feed_forward.fc1.bias": [
+      [
+        64
+      ],
+      1.007855862379074,
+      7.794030994176865
+    ],
+    "net.blocks.0.feed_forward.fc2.weight": [
+      [
+        16,
+        64
+      ],
+      -3.926294445991516,
+      63.77221256494522
+    ],
+    "net.blocks.0.feed_forward.fc2.bias": [
+      [
+        16
+      ],
+      0.009348750114440918,
+      0.7064735889434814
+    ],
+    "net.blocks.1.norm1.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.1.norm1.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.attention.attn.in_proj_weight": [
+      [
+        48,
+        16
+      ],
+      -3.0270705837610876,
+      116.50479325001652
+    ],
+    "net.blocks.1.attention.attn.in_proj_bias": [
+      [
+        48
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.attention.attn.out_proj.weight": [
+      [
+        16,
+        16
+      ],
+      1.3417570292949677,
+      31.78397235274315
+    ],
+    "net.blocks.1.attention.attn.out_proj.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.norm2.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.1.norm2.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.feed_forward.fc1.weight": [
+      [
+        64,
+        16
+      ],
+      4.019280761480331,
+      128.37643894553185
+    ],
+    "net.blocks.1.feed_forward.fc1.bias": [
+      [
+        64
+      ],
+      -0.006561070680618286,
+      7.698157578706741
+    ],
+    "net.blocks.1.feed_forward.fc2.weight": [
+      [
+        16,
+        64
+      ],
+      2.1264689713716507,
+      63.45871062576771
+    ],
+    "net.blocks.1.feed_forward.fc2.bias": [
+      [
+        16
+      ],
+      -0.07651391625404358,
+      1.2563891410827637
+    ],
+    "net.norm.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.norm.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.predictor.action_embedding.weight": [
+      [
+        4,
+        16
+      ],
+      -15.2099221739918,
+      52.0269466098398
+    ],
+    "net.predictor.body.0.weight": [
+      [
+        16,
+        32
+      ],
+      0.42637840534735005,
+      44.83735103144136
+    ],
+    "net.predictor.body.0.bias": [
+      [
+        16
+      ],
+      0.005497424863278866,
+      1.6380103090777993
+    ],
+    "net.predictor.body.2.linear.weight": [
+      [
+        16,
+        16
+      ],
+      -1.890148550271988,
+      31.955499202013016
+    ],
+    "net.predictor.body.2.linear.bias": [
+      [
+        16
+      ],
+      0.5006720721721649,
+      2.179771214723587
+    ],
+    "net.predictor.body.3.weight": [
+      [
+        16,
+        16
+      ],
+      3.3480802178382874,
+      32.77691489458084
+    ],
+    "net.predictor.body.3.bias": [
+      [
+        16
+      ],
+      -0.4188620150089264,
+      2.0148786008358
+    ],
+    "net.policy_decoder.linear.weight": [
+      [
+        1,
+        16
+      ],
+      -0.002545743656810373,
+      0.034513032354880124
+    ],
+    "net.policy_decoder.linear.bias": [
+      [
+        1
+      ],
+      0.0,
+      0.0
+    ],
+    "net.value_decoder.linear.weight": [
+      [
+        1,
+        16
+      ],
+      -1.759592454880476,
+      3.525382075458765
+    ],
+    "net.value_decoder.linear.bias": [
+      [
+        1
+      ],
+      0.0,
+      0.0
+    ]
+  },
+  "grid/q_values": {
+    "net.stem.stem.0.weight": [
+      [
+        8,
+        3,
+        3,
+        3
+      ],
+      -1.9917137860320508,
+      20.45939524145797
+    ],
+    "net.stem.stem.0.bias": [
+      [
+        8
+      ],
+      -0.0006558485329151154,
+      0.8421560097485781
+    ],
+    "net.stem.blocks.0.conv.weight": [
+      [
+        8,
+        8,
+        3,
+        3
+      ],
+      0.6240202996814332,
+      35.218374754284014
+    ],
+    "net.stem.blocks.0.conv.bias": [
+      [
+        8
+      ],
+      0.1685075752902776,
+      0.5711764239240438
+    ],
+    "net.project.weight": [
+      [
+        16,
+        8,
+        1,
+        1
+      ],
+      3.476734534604475,
+      21.822606064612046
+    ],
+    "net.project.bias": [
+      [
+        16
+      ],
+      -1.601781539618969,
+      3.1407832130789757
+    ],
+    "net.positional.row": [
+      [
+        5,
+        1,
+        16
+      ],
+      -0.040072835370665416,
+      1.2508294530853163
+    ],
+    "net.positional.col": [
+      [
+        1,
+        5,
+        16
+      ],
+      0.20076096126285847,
+      1.1846998042747146
+    ],
+    "net.cls.token": [
+      [
+        1,
+        1,
+        16
+      ],
+      0.09180589258903638,
+      0.14961076801409945
+    ],
+    "net.blocks.0.norm1.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.0.norm1.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.attention.attn.in_proj_weight": [
+      [
+        48,
+        16
+      ],
+      -0.1656033901454066,
+      114.85983669409325
+    ],
+    "net.blocks.0.attention.attn.in_proj_bias": [
+      [
+        48
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.attention.attn.out_proj.weight": [
+      [
+        16,
+        16
+      ],
+      -0.18110910058021545,
+      34.01526615023613
+    ],
+    "net.blocks.0.attention.attn.out_proj.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.norm2.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.0.norm2.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.feed_forward.fc1.weight": [
+      [
+        64,
+        16
+      ],
+      -2.2749907076358795,
+      122.12682327628136
+    ],
+    "net.blocks.0.feed_forward.fc1.bias": [
+      [
+        64
+      ],
+      1.007855862379074,
+      7.794030994176865
+    ],
+    "net.blocks.0.feed_forward.fc2.weight": [
+      [
+        16,
+        64
+      ],
+      -3.926294445991516,
+      63.77221256494522
+    ],
+    "net.blocks.0.feed_forward.fc2.bias": [
+      [
+        16
+      ],
+      0.009348750114440918,
+      0.7064735889434814
+    ],
+    "net.blocks.1.norm1.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.1.norm1.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.attention.attn.in_proj_weight": [
+      [
+        48,
+        16
+      ],
+      -3.0270705837610876,
+      116.50479325001652
+    ],
+    "net.blocks.1.attention.attn.in_proj_bias": [
+      [
+        48
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.attention.attn.out_proj.weight": [
+      [
+        16,
+        16
+      ],
+      1.3417570292949677,
+      31.78397235274315
+    ],
+    "net.blocks.1.attention.attn.out_proj.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.norm2.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.1.norm2.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.feed_forward.fc1.weight": [
+      [
+        64,
+        16
+      ],
+      4.019280761480331,
+      128.37643894553185
+    ],
+    "net.blocks.1.feed_forward.fc1.bias": [
+      [
+        64
+      ],
+      -0.006561070680618286,
+      7.698157578706741
+    ],
+    "net.blocks.1.feed_forward.fc2.weight": [
+      [
+        16,
+        64
+      ],
+      2.1264689713716507,
+      63.45871062576771
+    ],
+    "net.blocks.1.feed_forward.fc2.bias": [
+      [
+        16
+      ],
+      -0.07651391625404358,
+      1.2563891410827637
+    ],
+    "net.norm.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.norm.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.predictor.action_embedding.weight": [
+      [
+        4,
+        16
+      ],
+      -15.2099221739918,
+      52.0269466098398
+    ],
+    "net.predictor.body.0.weight": [
+      [
+        16,
+        32
+      ],
+      0.42637840534735005,
+      44.83735103144136
+    ],
+    "net.predictor.body.0.bias": [
+      [
+        16
+      ],
+      0.005497424863278866,
+      1.6380103090777993
+    ],
+    "net.predictor.body.2.linear.weight": [
+      [
+        16,
+        16
+      ],
+      -1.890148550271988,
+      31.955499202013016
+    ],
+    "net.predictor.body.2.linear.bias": [
+      [
+        16
+      ],
+      0.5006720721721649,
+      2.179771214723587
+    ],
+    "net.predictor.body.3.weight": [
+      [
+        16,
+        16
+      ],
+      3.3480802178382874,
+      32.77691489458084
+    ],
+    "net.predictor.body.3.bias": [
+      [
+        16
+      ],
+      -0.4188620150089264,
+      2.0148786008358
+    ],
+    "net.value_decoder.linear.weight": [
+      [
+        1,
+        16
+      ],
+      -0.2545743100345135,
+      3.4513033144176006
+    ],
+    "net.value_decoder.linear.bias": [
+      [
+        1
+      ],
+      0.0,
+      0.0
+    ]
+  },
+  "vector/actor_critic": {
+    "net.stem.embed.proj.weight": [
+      [
+        8,
+        1
+      ],
+      -0.3739480972290039,
+      3.5689289569854736
+    ],
+    "net.stem.embed.proj.bias": [
+      [
+        8
+      ],
+      -2.3157200813293457,
+      2.919032335281372
+    ],
+    "net.stem.positional.element": [
+      [
+        6,
+        8
+      ],
+      0.15682944055879489,
+      0.819022789655719
+    ],
+    "net.stem.blocks.0.linear.weight": [
+      [
+        8,
+        8
+      ],
+      -0.4703836441040039,
+      11.685318687930703
+    ],
+    "net.stem.blocks.0.linear.bias": [
+      [
+        8
+      ],
+      -0.44482259824872017,
+      1.1021541990339756
+    ],
+    "net.project.weight": [
+      [
+        16,
+        8
+      ],
+      -1.9544462828198448,
+      22.162472403026186
+    ],
+    "net.project.bias": [
+      [
+        16
+      ],
+      -0.5609240345656872,
+      2.775227438658476
+    ],
+    "net.cls.token": [
+      [
+        1,
+        1,
+        16
+      ],
+      -0.10183694656006992,
+      0.26349702780134976
+    ],
+    "net.blocks.0.norm1.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.0.norm1.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.attention.attn.in_proj_weight": [
+      [
+        48,
+        16
+      ],
+      -2.4698715294653084,
+      121.28748936255579
+    ],
+    "net.blocks.0.attention.attn.in_proj_bias": [
+      [
+        48
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.attention.attn.out_proj.weight": [
+      [
+        16,
+        16
+      ],
+      1.6905432641506195,
+      33.84228155016899
+    ],
+    "net.blocks.0.attention.attn.out_proj.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.norm2.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.0.norm2.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.feed_forward.fc1.weight": [
+      [
+        64,
+        16
+      ],
+      3.3604244887828827,
+      124.08354595303535
+    ],
+    "net.blocks.0.feed_forward.fc1.bias": [
+      [
+        64
+      ],
+      -1.5202283263206482,
+      8.235387802124023
+    ],
+    "net.blocks.0.feed_forward.fc2.weight": [
+      [
+        16,
+        64
+      ],
+      -0.7921920418739319,
+      61.7619343996048
+    ],
+    "net.blocks.0.feed_forward.fc2.bias": [
+      [
+        16
+      ],
+      -0.5773938745260239,
+      1.0818272978067398
+    ],
+    "net.blocks.1.norm1.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.1.norm1.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.attention.attn.in_proj_weight": [
+      [
+        48,
+        16
+      ],
+      0.8551734546490479,
+      115.7746238708205
+    ],
+    "net.blocks.1.attention.attn.in_proj_bias": [
+      [
+        48
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.attention.attn.out_proj.weight": [
+      [
+        16,
+        16
+      ],
+      -5.973870128393173,
+      31.513317435979843
+    ],
+    "net.blocks.1.attention.attn.out_proj.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.norm2.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.1.norm2.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.feed_forward.fc1.weight": [
+      [
+        64,
+        16
+      ],
+      -2.974343925714493,
+      127.56041219830513
+    ],
+    "net.blocks.1.feed_forward.fc1.bias": [
+      [
+        64
+      ],
+      1.5900613963603973,
+      7.512903720140457
+    ],
+    "net.blocks.1.feed_forward.fc2.weight": [
+      [
+        16,
+        64
+      ],
+      0.6182310581207275,
+      65.18679237365723
+    ],
+    "net.blocks.1.feed_forward.fc2.bias": [
+      [
+        16
+      ],
+      -0.16956350207328796,
+      1.042917400598526
+    ],
+    "net.norm.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.norm.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.predictor.action_embedding.weight": [
+      [
+        4,
+        16
+      ],
+      -6.389403790235519,
+      59.8412783741951
+    ],
+    "net.predictor.body.0.weight": [
+      [
+        16,
+        32
+      ],
+      1.9483453210850712,
+      42.937914733745856
+    ],
+    "net.predictor.body.0.bias": [
+      [
+        16
+      ],
+      -0.5680026956833899,
+      1.6550908940844238
+    ],
+    "net.predictor.body.2.linear.weight": [
+      [
+        16,
+        16
+      ],
+      1.6745578348636627,
+      32.63363513350487
+    ],
+    "net.predictor.body.2.linear.bias": [
+      [
+        16
+      ],
+      0.9329282641410828,
+      2.080514907836914
+    ],
+    "net.predictor.body.3.weight": [
+      [
+        16,
+        16
+      ],
+      -3.744036614894867,
+      31.18206626176834
+    ],
+    "net.predictor.body.3.bias": [
+      [
+        16
+      ],
+      0.18024039268493652,
+      1.9043509364128113
+    ],
+    "net.policy_decoder.linear.weight": [
+      [
+        1,
+        16
+      ],
+      -0.01821624824515311,
+      0.030718259724380914
+    ],
+    "net.policy_decoder.linear.bias": [
+      [
+        1
+      ],
+      0.0,
+      0.0
+    ],
+    "net.value_decoder.linear.weight": [
+      [
+        1,
+        16
+      ],
+      0.6456843977794051,
+      3.0655340990051627
+    ],
+    "net.value_decoder.linear.bias": [
+      [
+        1
+      ],
+      0.0,
+      0.0
+    ]
+  },
+  "vector/q_values": {
+    "net.stem.embed.proj.weight": [
+      [
+        8,
+        1
+      ],
+      -0.3739480972290039,
+      3.5689289569854736
+    ],
+    "net.stem.embed.proj.bias": [
+      [
+        8
+      ],
+      -2.3157200813293457,
+      2.919032335281372
+    ],
+    "net.stem.positional.element": [
+      [
+        6,
+        8
+      ],
+      0.15682944055879489,
+      0.819022789655719
+    ],
+    "net.stem.blocks.0.linear.weight": [
+      [
+        8,
+        8
+      ],
+      -0.4703836441040039,
+      11.685318687930703
+    ],
+    "net.stem.blocks.0.linear.bias": [
+      [
+        8
+      ],
+      -0.44482259824872017,
+      1.1021541990339756
+    ],
+    "net.project.weight": [
+      [
+        16,
+        8
+      ],
+      -1.9544462828198448,
+      22.162472403026186
+    ],
+    "net.project.bias": [
+      [
+        16
+      ],
+      -0.5609240345656872,
+      2.775227438658476
+    ],
+    "net.cls.token": [
+      [
+        1,
+        1,
+        16
+      ],
+      -0.10183694656006992,
+      0.26349702780134976
+    ],
+    "net.blocks.0.norm1.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.0.norm1.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.attention.attn.in_proj_weight": [
+      [
+        48,
+        16
+      ],
+      -2.4698715294653084,
+      121.28748936255579
+    ],
+    "net.blocks.0.attention.attn.in_proj_bias": [
+      [
+        48
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.attention.attn.out_proj.weight": [
+      [
+        16,
+        16
+      ],
+      1.6905432641506195,
+      33.84228155016899
+    ],
+    "net.blocks.0.attention.attn.out_proj.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.norm2.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.0.norm2.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.0.feed_forward.fc1.weight": [
+      [
+        64,
+        16
+      ],
+      3.3604244887828827,
+      124.08354595303535
+    ],
+    "net.blocks.0.feed_forward.fc1.bias": [
+      [
+        64
+      ],
+      -1.5202283263206482,
+      8.235387802124023
+    ],
+    "net.blocks.0.feed_forward.fc2.weight": [
+      [
+        16,
+        64
+      ],
+      -0.7921920418739319,
+      61.7619343996048
+    ],
+    "net.blocks.0.feed_forward.fc2.bias": [
+      [
+        16
+      ],
+      -0.5773938745260239,
+      1.0818272978067398
+    ],
+    "net.blocks.1.norm1.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.1.norm1.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.attention.attn.in_proj_weight": [
+      [
+        48,
+        16
+      ],
+      0.8551734546490479,
+      115.7746238708205
+    ],
+    "net.blocks.1.attention.attn.in_proj_bias": [
+      [
+        48
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.attention.attn.out_proj.weight": [
+      [
+        16,
+        16
+      ],
+      -5.973870128393173,
+      31.513317435979843
+    ],
+    "net.blocks.1.attention.attn.out_proj.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.norm2.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.blocks.1.norm2.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.blocks.1.feed_forward.fc1.weight": [
+      [
+        64,
+        16
+      ],
+      -2.974343925714493,
+      127.56041219830513
+    ],
+    "net.blocks.1.feed_forward.fc1.bias": [
+      [
+        64
+      ],
+      1.5900613963603973,
+      7.512903720140457
+    ],
+    "net.blocks.1.feed_forward.fc2.weight": [
+      [
+        16,
+        64
+      ],
+      0.6182310581207275,
+      65.18679237365723
+    ],
+    "net.blocks.1.feed_forward.fc2.bias": [
+      [
+        16
+      ],
+      -0.16956350207328796,
+      1.042917400598526
+    ],
+    "net.norm.weight": [
+      [
+        16
+      ],
+      16.0,
+      16.0
+    ],
+    "net.norm.bias": [
+      [
+        16
+      ],
+      0.0,
+      0.0
+    ],
+    "net.predictor.action_embedding.weight": [
+      [
+        4,
+        16
+      ],
+      -6.389403790235519,
+      59.8412783741951
+    ],
+    "net.predictor.body.0.weight": [
+      [
+        16,
+        32
+      ],
+      1.9483453210850712,
+      42.937914733745856
+    ],
+    "net.predictor.body.0.bias": [
+      [
+        16
+      ],
+      -0.5680026956833899,
+      1.6550908940844238
+    ],
+    "net.predictor.body.2.linear.weight": [
+      [
+        16,
+        16
+      ],
+      1.6745578348636627,
+      32.63363513350487
+    ],
+    "net.predictor.body.2.linear.bias": [
+      [
+        16
+      ],
+      0.9329282641410828,
+      2.080514907836914
+    ],
+    "net.predictor.body.3.weight": [
+      [
+        16,
+        16
+      ],
+      -3.744036614894867,
+      31.18206626176834
+    ],
+    "net.predictor.body.3.bias": [
+      [
+        16
+      ],
+      0.18024039268493652,
+      1.9043509364128113
+    ],
+    "net.value_decoder.linear.weight": [
+      [
+        1,
+        16
+      ],
+      -1.8216248508542776,
+      3.0718260165303946
+    ],
+    "net.value_decoder.linear.bias": [
+      [
+        1
+      ],
+      0.0,
+      0.0
+    ]
+  }
+}

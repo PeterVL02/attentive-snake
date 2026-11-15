@@ -1,6 +1,8 @@
 """The jepa_attention kind: jepa's predictor, heads and objective on the hybrid trunk (attention encoder)."""
 
 import dataclasses
+import json
+from pathlib import Path
 
 import pytest
 import torch
@@ -172,3 +174,23 @@ def test_ppo_trains_the_prediction_loss():
     trainer = make_trainer(config, make_policy(config, env), env, NullLogger())
     records = trainer.train()
     assert {"prediction_loss", "embedding_std"} <= set(records[-1]) and set(trainer.learner.extra_state()) == {STATE_KEY}
+
+
+# The jepa_attention kind's state-dict keys, shapes and seeded initial weights (sum and absolute
+# sum of every tensor), recorded before jepa_tokens reused its encoder and jepa's shared code:
+# saved runs must keep loading, and seed 0 must keep building the same network.
+RECORDED = json.loads((Path(__file__).parent / "data" / "jepa_attention_state_dicts.json").read_text())
+RECORDED_CONFIG = dict(d_model=16, num_heads=2, num_layers=2, conv_channels=8, conv_layers=2)
+
+
+@pytest.mark.parametrize("entry", sorted(RECORDED))
+def test_jepa_attention_keys_shapes_and_seeded_weights_never_change(entry):
+    observation, head = entry.split("/")
+    torch.manual_seed(0)
+    policy = build_policy(ModelConfig(kind="jepa_attention", **RECORDED_CONFIG), SPECS[observation], A, head)
+    state = policy.state_dict()
+    assert list(state) == list(RECORDED[entry])
+    for key, (shape, total, absolute) in RECORDED[entry].items():
+        tensor = state[key].double()
+        assert list(tensor.shape) == shape, key
+        assert float(tensor.sum()) == pytest.approx(total, abs=1e-9) and float(tensor.abs().sum()) == pytest.approx(absolute, rel=1e-12), key

@@ -77,6 +77,7 @@ Chosen with `kind` in the `[model]` section of a config (or the dropdown in the 
 | `lstm` | A CNN (or MLP) turns each of the last K frames into one vector and an LSTM reads them oldest to newest. | None |
 | `jepa` | A world model: an encoder, a predictor of each action's next-state embedding, a value decoder; plays the action whose predicted next state is worth most. Experimental. | None |
 | `jepa_attention` | `jepa` with `hybrid`'s attention encoder: the class token's output is the embedding the predictor works on. Experimental. | Board heatmap |
+| `jepa_tokens` | `jepa_attention` with a per-cell predictor: the embedding is every token (class token + one per cell), a small transformer predicts the next state's tokens cell by cell, the decoders read the class token. Experimental. | Board heatmap |
 | `mlp` | A plain multilayer perceptron on the flattened observation. Baseline for vector games. | None |
 
 Every kind reads both grids and vectors; only the input stage changes. On a
@@ -95,7 +96,7 @@ step to the next and never stored in the DQN replay buffer. Its memory is exactl
 are already single-convolution residual layers) in using the standard two-convolution residual block
 (`conv_layers` of them; on vectors, layer-normalised residual MLP blocks as in SimBa).
 
-`hybrid` (and `jepa_attention`, which uses its trunk), `frame_attention` and `lstm` have a convolutional stem (an MLP on numbers) in front of
+`hybrid` (and `jepa_attention` and `jepa_tokens`, which use its trunk), `frame_attention` and `lstm` have a convolutional stem (an MLP on numbers) in front of
 their attention or recurrent part. `[model] residual = true` builds that stem (for the other two:
 the encoder of each frame) from the same residual blocks as `resnet` instead of plain layers, so
 you get the kind you chose with a deeper-trainable stem rather than a new kind. The other kinds
@@ -192,6 +193,45 @@ the predictor; it was well ahead of `hybrid` early (12.3 against 6.9 at 50k) and
 So most of the gain over `jepa` is the attention encoder; what the predictor adds on top of it
 was faster early learning in this one run, not a better end result. The prediction loss again
 changed nothing measurable and cost about 30% of the speed. `cnn` and `jepa` were level, as before.
+
+`jepa_tokens` keeps every token of that encoder: the state embedding is the class token plus
+one token per cell (per number on vectors), and the predictor is a small transformer
+(`predictor_layers` blocks, default 1; `num_layers` is the encoder's) that adds the action's
+embedding to every token and predicts the next state's whole token set, residually
+(`tokens + f(tokens, a)`). A Snake step changes two or three cells, so the predictor mostly
+has to copy. The decoders read the class token of a token set, so the heads are those of the
+other two jepa kinds; the prediction loss compares the predicted and target token sets token
+by token (cosine distance per token, averaged). The predictor runs once per action.
+
+Single-seed check, same setup as the table above (those rows are from the earlier run and
+were not repeated); the three `jepa_tokens` runs shared the GPU with each other (and with
+another agent's work), so speeds compare only roughly. Mean score (apples); win rate at 200k:
+
+| run | parameters | 50k | 100k | 150k | 200k | won | env steps/s |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `jepa_attention` (earlier run) | 252k | 12.3 | 14.8 | 18.0 | 19.8 | 2% | 219 |
+| `hybrid` (earlier run) | 231k | 6.9 | 14.1 | 16.2 | 19.5 | 2% | 237 |
+| `jepa_tokens`, `prediction_coef = 0` | 285k | 11.1 | 14.9 | 16.1 | 19.0 | 4% | about 190 |
+| `jepa_tokens`, `prediction_coef = 1` (predictor only) | 285k | 12.1 | 15.8 | 16.5 | 18.1 | 0% | 115 (3 runs) to 170 (2 runs) |
+| `jepa_tokens`, `prediction_coef = 1`, loss also trains the encoder | 285k | 11.4 | 14.7 | 17.1 | stopped at 180k by the time cap | | 97 (3 runs) to 155 (2 runs) |
+
+The prediction metrics (training log, 20k / 100k / 200k env steps; the third run's last is 180k):
+
+| run | `prediction_loss` | `embedding_std` | `value_gap` |
+| --- | --- | --- | --- |
+| predictor only | 0.19 / 0.13 / 0.14 | 0.080 / 0.086 / 0.091 | 0.89 / 1.56 / 2.59 |
+| also trains the encoder | 0.020 / 0.009 / 0.006 | 0.022 / 0.060 / 0.062 | 1.16 / 1.64 / 2.36 |
+
+Reading: `jepa_tokens` was level with `jepa_attention` and `hybrid` (within a point or so at
+every evaluation, which is about the noise of 50 games and one seed), not better; it has 13%
+more parameters (the predictor) and was somewhat slower. The prediction loss again changed
+nothing measurable in the score and cost 35-50% of the speed. With the loss on the predictor
+only, the per-token cosine distance stalled at about 0.14 after 50k steps although most cells
+do not change: the encoder, trained by the TD loss alone, keeps moving its tokens, and the
+target follows it. Letting the loss train the encoder made the tokens 20 times easier to
+predict (0.006) with somewhat less spread (0.06 against 0.09; no collapse), and still did not
+change the score. The value gap grows in both (the value decoder is trained on predictions
+only with `value_training = "predicted"`, so that is expected and harmless).
 
 Lunar Lander can hide part of what the model sees: `game.hide_velocities = true` replaces
 the three velocity numbers by zeros (the physics, score and reward still use the true

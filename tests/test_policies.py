@@ -14,7 +14,7 @@ from attentive_snake.viz import diagram
 
 H, W, A = 5, 6, 4
 BASE = {"grid": 3, "vector": 5}  # game channels per frame: board planes / numbers
-ATTENTIVE = ["transformer", "hybrid", "temporal_transformer", "frame_attention", "jepa_attention"]
+ATTENTIVE = ["transformer", "hybrid", "temporal_transformer", "frame_attention", "jepa_attention", "jepa_tokens"]
 TEMPORAL = ["temporal_transformer", "frame_attention", "lstm"]
 NO_ATTENTION = ["cnn", "resnet", "lstm", "jepa", "mlp"]
 OBSERVATIONS = ["grid", "vector"]
@@ -258,7 +258,7 @@ def test_registry_rejects_unknown_kind():
 
     with pytest.raises(ValueError, match="unknown model kind"):
         build_policy(SimpleNamespace(kind="gru"), spec(), A)
-    assert set(POLICY_KINDS) == {"transformer", "cnn", "resnet", "hybrid", "temporal_transformer", "frame_attention", "lstm", "jepa", "jepa_attention", "mlp"}
+    assert set(POLICY_KINDS) == {"transformer", "cnn", "resnet", "hybrid", "temporal_transformer", "frame_attention", "lstm", "jepa", "jepa_attention", "jepa_tokens", "mlp"}
 
 
 def test_cnn_config_validation():

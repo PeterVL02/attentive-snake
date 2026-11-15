@@ -46,11 +46,17 @@ def transformer_tail(config: ModelConfig) -> dict[str, nn.Module]:
     }
 
 
-def pool_tokens(tail: Mapping[str, nn.Module], tokens: Tensor, need_weights: bool) -> tuple[Tensor, list[Tensor]]:
-    """``transformer_tail``'s modules (looked up by name in ``tail``) over ``tokens`` (B, N, D):
-    pooled features (B, D) and per-block attention maps (empty unless ``need_weights``)."""
+def encode_tokens(tail: Mapping[str, nn.Module], tokens: Tensor, need_weights: bool) -> tuple[Tensor, list[Tensor]]:
+    """``transformer_tail``'s cls -> blocks -> norm (looked up by name in ``tail``) over ``tokens`` (B, N, D):
+    the encoded token set (B, 1 + N, D), class token first, and per-block attention maps (empty unless ``need_weights``)."""
     out, maps = run_blocks(tail["blocks"], tail["cls"](tokens), need_weights)
-    return tail["pool"](tail["norm"](out)), maps
+    return tail["norm"](out), maps
+
+
+def pool_tokens(tail: Mapping[str, nn.Module], tokens: Tensor, need_weights: bool) -> tuple[Tensor, list[Tensor]]:
+    """``encode_tokens``, then ``tail["pool"]``: pooled features (B, D) and per-block attention maps."""
+    encoded, maps = encode_tokens(tail, tokens, need_weights)
+    return tail["pool"](encoded), maps
 
 
 def require_action_layout(spec: ObservationSpec, num_actions: int) -> None:

@@ -178,7 +178,7 @@ The window shows the run's game (it reads the game from the run's `config.toml`)
 
 | model kind | `--attention` shows (board games) | (vector games such as Lunar Lander) |
 | --- | --- | --- |
-| `transformer`, `hybrid`, `jepa_attention` | heatmap of what the class token attends to on the board (`--layer` applies, `--frame` must stay -1/0) | one weight per input number in the window title, e.g. `x 0.12, y 1.00, ...` |
+| `transformer`, `hybrid`, `jepa_attention`, `jepa_tokens` | heatmap of what the class token attends to on the board (`--layer` applies, `--frame` must stay -1/0) | one weight per input number in the window title, e.g. `x 0.12, y 1.00, ...` |
 | `temporal_transformer` | heatmap for one of the history frames (`--layer`, `--frame`) | one weight per number of one history frame (`--frame`) |
 | `frame_attention` | one weight per history frame, printed in the window title (`--layer`) | the same |
 | `cnn`, `resnet`, `lstm`, `jepa`, `mlp` | nothing: there is no attention, so `--attention` is refused | the same |
@@ -311,6 +311,7 @@ Set `kind` in `[model]` and `history_length` / `history_actions` in `[env]`.
 | `lstm` | CNN per frame, an LSTM over the frames | MLP per frame, an LSTM over the frames | `history_length = 4` or more, `history_actions = true` |
 | `jepa` | CNN encoder, a predictor of each action's next-state embedding, a value decoder; acts on the predicted values | the same with an MLP encoder | `history_length = 1` |
 | `jepa_attention` | `jepa` with `hybrid`'s encoder (conv stem, transformer over cells, class token = the embedding) | the same with hybrid's per-number stem | `history_length = 1` |
+| `jepa_tokens` | `jepa_attention` whose predictor predicts every cell's token of the next state (a small transformer, `predictor_layers` blocks) | the same, one token per number | `history_length = 1` |
 | `mlp` | flattened board, weak baseline | plain MLP; recommended | `history_length = 1` |
 
 The non-temporal kinds see stacked frames only as extra input channels (extra values per number). Which `[model]` fields each kind uses
@@ -325,7 +326,7 @@ from one env step to the next and is not stored in the DQN replay buffer. `kind 
 attention, so Watch shows no attention panel for them. `resnet` uses `d_model`, `conv_channels`, `conv_layers` (the number of
 residual blocks) and, on boards, `kernel_size`; `lstm` uses those plus `num_layers` (LSTM layers) with `conv_*` building its per-frame encoder.
 
-`model.residual = true` (`hybrid`, `jepa_attention`, `frame_attention`, `lstm`; off by default, locked when forking) builds their convolutional
+`model.residual = true` (`hybrid`, `jepa_attention`, `jepa_tokens`, `frame_attention`, `lstm`; off by default, locked when forking) builds their convolutional
 stem (an MLP on numbers; for the other two the per-frame encoder) from `resnet`'s residual blocks instead of plain layers, e.g.
 `--set model.kind=hybrid --set model.residual=true`. Other kinds ignore it.
 
@@ -352,10 +353,19 @@ decoder) and the value decoder values the current embedding.
 `kind = "jepa_attention"` is the same world model with `hybrid`'s encoder: a conv stem (an MLP per number on vectors),
 a transformer over the cells (numbers) and the class token's output as the embedding. Its `num_layers` sets both the
 number of transformer blocks and the predictor's depth; `num_heads`, `mlp_ratio`, `dropout` and `residual` work as for
-`hybrid`, and `watch.py --attention` / the Watch tab show its encoder's attention. Everything below applies to both kinds:
+`hybrid`, and `watch.py --attention` / the Watch tab show its encoder's attention.
+
+`kind = "jepa_tokens"` keeps every token of that encoder instead of only the class token: the state embedding is the class
+token plus one token per cell (per number). Its predictor is a small transformer (`model.predictor_layers` blocks, default 1;
+`num_layers` is the encoder's) that adds the action's embedding to every token and predicts the whole token set of the next
+state, cell by cell; the decoders read the class token of a (predicted or current) token set, so the heads below work as for
+the other two. The prediction loss compares the token sets token by token. The predictor runs once per action, so it is
+slower than `jepa_attention`. `predictor_layers` is read by no other kind and is locked when forking. Everything below
+applies to all three kinds:
 
 ```bash
 uv run python scripts/train.py --run-dir runs/snake/jepa-attention --set train.algorithm=dqn --set model.kind=jepa_attention
+uv run python scripts/train.py --run-dir runs/snake/jepa-tokens --set train.algorithm=dqn --set model.kind=jepa_tokens
 ```
 
 Four `[model]` settings belong to them, and unlike the rest of `[model]` they may change when forking a run:

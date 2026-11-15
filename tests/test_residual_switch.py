@@ -1,4 +1,4 @@
-"""``[model] residual``: hybrid, jepa_attention, frame_attention and lstm swap their conv / MLP stem for residual blocks, same module names."""
+"""``[model] residual``: hybrid, jepa_attention, jepa_tokens, frame_attention and lstm swap their conv / MLP stem for residual blocks, same module names."""
 
 import dataclasses
 
@@ -16,9 +16,9 @@ from attentive_snake.training import NullLogger
 from attentive_snake.factory import make_trainer
 from attentive_snake.viz import diagram
 
-KINDS = ["hybrid", "jepa_attention", "frame_attention", "lstm"]
-ATTENTIVE = ["hybrid", "jepa_attention", "frame_attention"]
-STEM = {"hybrid": "stem", "jepa_attention": "stem", "frame_attention": "frame_encoder", "lstm": "frame_encoder"}  # the module that differs
+KINDS = ["hybrid", "jepa_attention", "jepa_tokens", "frame_attention", "lstm"]
+ATTENTIVE = ["hybrid", "jepa_attention", "jepa_tokens", "frame_attention"]
+STEM = {"hybrid": "stem", "jepa_attention": "stem", "jepa_tokens": "stem", "frame_attention": "frame_encoder", "lstm": "frame_encoder"}  # the module that differs
 OBSERVATIONS = ["grid", "vector"]
 A = 4
 SMALL = dict(d_model=16, num_heads=2, num_layers=1, conv_channels=8, conv_layers=2)
