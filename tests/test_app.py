@@ -1349,3 +1349,202 @@ def test_jepa_temporal_is_offered_for_both_games_with_history_trained_and_watche
     assert body["info"]["attention_view"] == "frames" and len(body["info"]["element_names"]) == 8
     frame = client.post(f"/api/watch/{body['id']}/step", json={"count": 2, "frames": "last"}).json()["frames"][-1]
     assert len(frame["element_weights"]) == 8 and frame["heatmap"] is None
+
+
+# --------------------------------------------------------------------------- the training queue
+
+LONG = 10_000_000  # env steps of a run that trains until it is stopped
+
+
+@pytest.fixture
+def queue_client(paths: AppPaths):
+    """A client whose app looks at the training queue often, so tests do not wait for it."""
+    with TestClient(create_app(paths, queue_interval=0.05)) as test_client:
+        yield test_client
+
+
+def enqueue(client: TestClient, name: str, total_env_steps: int = LONG, **body):
+    return client.post("/api/queue/runs", json={"name": name, "config": tiny_tables(total_env_steps=total_env_steps)} | body)
+
+
+def queue_runs(client: TestClient) -> tuple[list[str], list[str]]:
+    """(runs of the entries in the queue, in order; runs started from the queue that still train, sorted)."""
+    listed = client.get("/api/queue").json()
+    return [entry["run"] for entry in listed["entries"]], sorted(job["run"] for job in listed["running"])
+
+
+def wait_for_queue(client: TestClient, entries: list[str], running: list[str]) -> None:
+    deadline = time.monotonic() + JOB_TIMEOUT
+    while queue_runs(client) != (entries, running):
+        assert time.monotonic() < deadline, f"queue is {queue_runs(client)}, expected {(entries, running)}"
+        time.sleep(0.05)
+
+
+def test_queued_runs_start_one_after_another_and_their_names_are_reserved(queue_client: TestClient, paths: AppPaths):
+    client = queue_client
+    assert client.get("/api/queue").json() == {"max_parallel": 1, "entries": [], "running": []}
+    first = enqueue(client, "a", description="  first  ")
+    assert first.status_code == 201, first.text
+    assert first.json() | {"id": "", "queued_at": 0} == {
+        "id": "", "game": "snake", "run": "a", "kind": "new", "parent": None, "checkpoint": None, "description": "first",
+        "queued_at": 0, "state": "queued", "error": None, "model_kind": "transformer", "algorithm": "ppo",
+        "total_env_steps": LONG, "outcome": "running",  # nothing was running: it started at once
+    }
+    assert enqueue(client, "b").json()["outcome"] == "queued"
+    assert enqueue(client, "c").status_code == 201
+    assert queue_runs(client) == (["b", "c"], ["a"])
+    assert not (paths.runs_dir / "snake" / "b").exists()  # a queued run has no directory yet
+
+    # A started entry is an ordinary run.
+    started = client.get("/api/runs/a").json()
+    assert started["status"]["state"] == "running" and started["status"]["mode"] == "new"
+    assert started["config"]["train"]["total_env_steps"] == LONG
+
+    # Without HTTP: what became of an entry.
+    launcher = client.app.state.launcher
+    outcome = launcher.outcome(first.json()["id"])
+    assert outcome.state == "running" and outcome.run_dir == paths.runs_dir / "snake" / "a" and not outcome.done
+
+    # A queued name is taken, like an existing run's.
+    make_run(paths, "parent")
+    assert client.post("/api/runs", json={"name": "b", "config": tiny_tables()}).status_code == 409
+    assert client.post("/api/runs/parent/fork", json={"name": "b", "config": tiny_tables()}).status_code == 409
+    assert enqueue(client, "b").status_code == 409
+    assert enqueue(client, "a").status_code == 409  # the run exists
+    assert enqueue(client, "parent").status_code == 409
+
+    # Validated when queued, as a start would.
+    assert enqueue(client, "../escape").status_code == 422
+    tables = tiny_tables()
+    tables["train"]["learning_rate"] = -1.0
+    bad = client.post("/api/queue/runs", json={"name": "bad", "config": tables})
+    assert bad.status_code == 422 and "learning_rate" in bad.json()["detail"]
+    assert queue_runs(client) == (["b", "c"], ["a"])
+
+    assert client.post("/api/runs/a/stop").status_code == 200
+    wait_for_queue(client, ["c"], ["b"])
+    assert client.get("/api/runs/a").json()["status"]["state"] == "stopped"
+    assert client.post("/api/runs/b/stop").json()["status"]["state"] == "stopped"  # the usual stop button
+    wait_for_queue(client, [], ["c"])
+    assert launcher.outcome(first.json()["id"]).state == "stopped" and launcher.outcome(first.json()["id"]).done
+
+
+def test_queue_runs_max_parallel_at_once(queue_client: TestClient):
+    client = queue_client
+    assert client.get("/api/queue/settings").json() == {"max_parallel": 1}
+    assert client.put("/api/queue/settings", json={"max_parallel": 2}).json() == {"max_parallel": 2}
+    assert client.put("/api/queue/settings", json={"max_parallel": -1}).status_code == 422
+    for name in "abc":
+        assert enqueue(client, name).status_code == 201
+    assert queue_runs(client) == (["c"], ["a", "b"])
+    client.post("/api/runs/a/stop")
+    wait_for_queue(client, [], ["b", "c"])
+
+
+def test_run_now_jumps_the_queue_and_an_entry_can_be_removed(queue_client: TestClient, paths: AppPaths):
+    client = queue_client
+    ids = {name: enqueue(client, name).json()["id"] for name in "abcd"}
+    assert queue_runs(client) == (["b", "c", "d"], ["a"])
+    now = client.post(f"/api/queue/{ids['c']}/run")
+    assert now.status_code == 200, now.text
+    assert now.json()["name"] == "c" and now.json()["game"] == "snake" and now.json()["status"]["state"] == "running"
+    assert queue_runs(client) == (["b", "d"], ["a", "c"])
+    assert client.post(f"/api/queue/{ids['c']}/run").status_code == 404  # no longer queued
+
+    removed = client.delete(f"/api/queue/{ids['d']}")
+    assert removed.status_code == 200 and removed.json()["run"] == "d"
+    assert client.delete(f"/api/queue/{ids['d']}").status_code == 404
+    assert client.delete("/api/queue/no-such-entry").status_code == 404
+    assert queue_runs(client) == (["b"], ["a", "c"]) and not (paths.runs_dir / "snake" / "d").exists()
+    again = enqueue(client, "d")  # the name is free again
+    assert again.status_code == 201 and client.delete(f"/api/queue/{again.json()['id']}").status_code == 200
+
+    client.post("/api/runs/a/stop")  # c was started by hand, so it holds no slot: b starts while c trains
+    wait_for_queue(client, [], ["b", "c"])
+
+
+def test_a_queued_fork_that_cannot_start_is_kept_as_failed_and_the_queue_goes_on(queue_client: TestClient, paths: AppPaths):
+    client = queue_client
+    parent = make_run(paths, "parent")
+    client.put("/api/queue/settings", json={"max_parallel": 0})  # paused: entries wait
+
+    def fork(parent_name: str = "parent", **body):
+        body = {"name": "child", "checkpoint": "checkpoint_0000000016.pt", "config": tiny_tables(total_env_steps=32)} | body
+        return client.post(f"/api/queue/runs/{parent_name}/fork", json=body)
+
+    assert fork("missing").status_code == 404
+    assert fork(checkpoint="checkpoint_0000000099.pt").status_code == 404
+    locked = tiny_tables()
+    locked["model"]["d_model"] = 32
+    refused = fork(config=locked)
+    assert refused.status_code == 422 and "model.d_model" in refused.json()["detail"]
+    queued = fork()
+    assert queued.status_code == 201, queued.text
+    entry = queued.json()
+    assert (entry["kind"], entry["parent"], entry["checkpoint"], entry["outcome"]) == ("fork", "parent", "checkpoint_0000000016.pt", "queued")
+    assert enqueue(client, "after").json()["outcome"] == "queued"
+
+    (parent / "checkpoint_0000000016.pt").unlink()  # the parent's checkpoint goes away while the fork waits
+    client.put("/api/queue/settings", json={"max_parallel": 1})
+    wait_for_queue(client, ["child"], ["after"])
+    failed = client.get("/api/queue").json()["entries"][0]
+    assert failed["state"] == "failed" and "checkpoint_0000000016.pt" in failed["error"]
+    assert not (paths.runs_dir / "snake" / "child").exists()
+    outcome = client.app.state.launcher.outcome(entry["id"])
+    assert outcome.state == "failed_to_start" and outcome.done and "checkpoint" in outcome.error
+
+    retried = client.post(f"/api/queue/{entry['id']}/run")  # still impossible: the reason is the answer
+    assert retried.status_code == 404 and "checkpoint_0000000016.pt" in retried.json()["detail"]
+    assert client.get("/api/queue").json()["entries"][0]["state"] == "failed"
+    assert enqueue(client, "child").status_code == 201  # a failed entry does not hold its name
+    assert client.delete(f"/api/queue/{entry['id']}").status_code == 200
+    assert queue_runs(client) == (["child"], ["after"])
+
+
+def test_the_queue_survives_a_restart_and_a_queued_fork_and_resume_train(paths: AppPaths):
+    make_run(paths, "parent")
+    with TestClient(create_app(paths, queue_interval=0.05)) as first:
+        assert enqueue(first, "long").json()["outcome"] == "running"
+        fork = {"name": "child", "config": tiny_tables(total_env_steps=32), "description": "queued fork"}
+        assert first.post("/api/queue/runs/parent/fork", json=fork).status_code == 201
+        resumed = first.post("/api/queue/runs/parent/resume", json={"total_env_steps": 48})
+        assert resumed.status_code == 201, resumed.text
+        assert (resumed.json()["kind"], resumed.json()["total_env_steps"], resumed.json()["model_kind"]) == ("resume", 48, None)
+        assert first.post("/api/queue/runs/parent/resume", json={}).status_code == 409  # one entry per run
+        assert first.post("/api/queue/runs/missing/resume", json={}).status_code == 404
+        assert queue_runs(first) == (["child", "parent"], ["long"])
+    # The server stopped its job without starting the next entry; the queue is on disk.
+    saved = json.loads((paths.runs_dir / "queue.json").read_text())
+    assert [entry["request"]["run"] for entry in saved["entries"]] == ["child", "parent"] and saved["max_parallel"] == 1
+    assert not (paths.runs_dir / "snake" / "child").exists()
+
+    with TestClient(create_app(paths, queue_interval=0.05)) as second:  # the queue goes on by itself
+        wait_for_queue(second, [], [])
+        assert second.get("/api/runs/long").json()["status"] == {"state": "idle"}  # jobs die with their server
+        child = wait_until_done(second, "child")
+        assert child["status"]["state"] == "finished" and child["status"]["mode"] == "fork", child["log"]
+        assert child["checkpoints"][-1]["steps"] == 32 and child["description"] == "queued fork"
+        assert child["parent"] == {"run": "parent", "checkpoint": "checkpoint_0000000016.pt", "env_steps": 16}
+        assert [event["action"] for event in child["history"]] == ["fork"]
+        parent = wait_until_done(second, "parent")
+        assert parent["status"]["state"] == "finished" and parent["status"]["mode"] == "resume", parent["log"]
+        assert parent["checkpoints"][-1]["steps"] == 48 and parent["total_env_steps"] == 48
+        assert json.loads((paths.runs_dir / "queue.json").read_text())["entries"] == []
+
+
+def test_the_queue_is_one_for_all_games(multi_client: TestClient, multi_paths: AppPaths):
+    client = multi_client
+    client.put("/api/queue/settings", json={"max_parallel": 0})
+    tables = tiny_tables(total_env_steps=32)
+    tables["game"] = BEACON
+    beacon = client.post("/api/queue/runs", json={"name": "tiny", "config": tables})
+    assert beacon.status_code == 201 and beacon.json()["game"] == "beacon"
+    assert enqueue(client, "tiny").json()["game"] == "snake"  # the same name in another game is another run
+    assert [(e["game"], e["run"]) for e in client.get("/api/queue").json()["entries"]] == [("beacon", "tiny"), ("snake", "tiny")]
+    assert [e["game"] for e in client.get("/api/queue", params={"game": "beacon"}).json()["entries"]] == ["beacon"]
+    assert [e["game"] for e in client.get("/api/queue", params={"game": "snake"}).json()["entries"]] == ["snake"]
+    assert client.get("/api/queue", params={"game": "chess"}).status_code == 404
+    assert client.post("/api/queue/runs/tiny/resume", json={}, params={"game": "chess"}).status_code == 404
+    assert client.get("/api/runs", params={"game": "beacon"}).json() == []  # nothing started, nothing created
+    assert client.get("/api/games").status_code == 200  # the queue file in the runs root is not mistaken for a game
+    assert (multi_paths.runs_dir / "queue.json").is_file()
