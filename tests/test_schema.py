@@ -76,7 +76,7 @@ def test_model_kinds_follow_registry_order_with_documented_keys() -> None:
     assert SCHEMA["model_kinds"]["cnn"]["attention_view"] is None
     assert {k for k, i in SCHEMA["model_kinds"].items() if not i["recommended"]} == {"mlp", "lstm", "jepa", "jepa_attention", "jepa_tokens", "jepa_temporal"}  # Snake is a grid game
     assert {k for k, i in SCHEMA["model_kinds"].items() if i["metrics"]} == {"jepa", "jepa_attention", "jepa_tokens", "jepa_temporal"}
-    assert {m["setting"] for kind in ("jepa", "jepa_attention", "jepa_tokens", "jepa_temporal") for m in SCHEMA["model_kinds"][kind]["metrics"]} == {"model.prediction_coef"}
+    assert {m["setting"] for kind in ("jepa", "jepa_attention", "jepa_tokens", "jepa_temporal") for m in SCHEMA["model_kinds"][kind]["metrics"]} == {"model.prediction_coef", "model.rollout_steps"}
 
 
 def test_every_vector_reading_names_only_listed_fields() -> None:

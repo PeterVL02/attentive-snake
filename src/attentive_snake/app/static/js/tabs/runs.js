@@ -42,16 +42,16 @@ function algorithmInfo(name) {
   return algorithmInfos[name] ?? null;
 }
 
-/** Whether the run's config switches a metric on: its setting ("section.field") is true or a number above 0. */
-function settingOn(config, setting) {
+/** Whether the run's config switches a metric on: its setting ("section.field") is true or a number above `above` (0 unless the metric says otherwise). */
+function settingOn(config, setting, above = 0) {
   const [section, field] = setting.split(".");
   const value = config?.[section]?.[field];
-  return value === true || (typeof value === "number" && value > 0);
+  return value === true || (typeof value === "number" && value > above);
 }
 
 /** The metrics this run logs besides the shared ones: its algorithm's, then its model kind's (jepa's prediction loss); those tied to a setting only if the run has it on. */
 function ownMetrics(info, kindInfo, config) {
-  return [...(info?.metrics ?? []), ...(kindInfo?.metrics ?? [])].filter((m) => !m.setting || settingOn(config, m.setting));
+  return [...(info?.metrics ?? []), ...(kindInfo?.metrics ?? [])].filter((m) => !m.setting || settingOn(config, m.setting, m.above ?? 0));
 }
 
 /** Chart series: the shared metrics, then the algorithm's own (hidden until switched on in the legend). */

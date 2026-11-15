@@ -302,6 +302,29 @@ plain Q does (73%). The predictor is only ever trained on one real step, and the
 decoder on one-step predictions, so a second chained step is outside what either has seen:
 making search pay needs training on multi-step rollouts first (issue #38).
 
+That rollout training now exists (`model.rollout_steps`, docs/CLI.md): the prediction loss feeds
+the predictor its own output along the actions really taken, and under DQN also pulls the
+action values read from each predicted state to those of the real state. The same measurement
+on a model trained that way (`rollout_steps = 3`, otherwise identical, same seed; one seed,
+one checkpoint, 100 games per row):
+
+| | without rollout | `rollout_steps = 3` |
+| --- | --- | --- |
+| greedy on Q(s, a) | 16.5 | 12.1 |
+| depth 2, real game rules | 21.2 (+4.7 ± 0.6) | 22.0 (+9.8 ± 0.7) |
+| depth 2, learned predictor | 16.8 (+0.3 ± 0.6) | 12.5 (+0.3 ± 0.8) |
+| error of the value read from a chained prediction (mean, signed) | 1.56, +1.52 | 0.34, -0.12 |
+| value gap between the actions that survive the step (mean) | 0.56 | 0.53 |
+| depth 2 with the predictor picks the truly best action (plain Q) | 72.6% (72.4%) | 65.5% (65.2%) |
+
+Reading: the rollout did what it was built for, and it was not enough. The chained value error
+fell to a fifth and its constant overestimate is gone, but what is left (0.34) is still about
+the size of the difference between the surviving actions, and lookahead through the predictor
+again gains nothing (+0.3 ± 0.8) where the real rules gain almost ten apples. The greedy
+policy itself came out weaker (12.1 against 16.5); with one seed each that may be the rollout
+or chance, and it is why the real rules gain more here (a weaker policy leaves more to fix). Training was about a
+fifth slower (18.5 against 15.4 minutes).
+
 Lunar Lander can hide part of what the model sees: `game.hide_velocities = true` replaces
 the three velocity numbers by zeros (the physics, score and reward still use the true
 state), so a model has to infer them from several frames and memory can matter. The rule

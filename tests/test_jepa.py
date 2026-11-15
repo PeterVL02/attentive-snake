@@ -120,7 +120,7 @@ def test_the_prediction_loss_learns_and_never_trains_the_target_encoder(value_tr
         objective.after_step()
         losses.append(terms.metrics["prediction_loss"])
     assert losses[-1] < 0.5 * losses[0]
-    assert set(terms.metrics) == {key.key for key in KIND_INFO["jepa"].metrics}
+    assert set(terms.metrics) == {key.key for key in KIND_INFO["jepa"].metrics if key.setting == "model.prediction_coef"}  # one step: no rollout metrics
 
 
 def test_the_prediction_loss_is_off_by_default():

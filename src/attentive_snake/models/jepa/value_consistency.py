@@ -17,6 +17,21 @@ from torch.nn import functional as F
 from attentive_snake.models.jepa.readout import whole
 
 
+def frozen_decode(decoder: nn.Module, vectors: Tensor) -> Tensor:
+    """The decoder's value of each vector, (..., D) -> (...), with gradients into the vectors but not the decoder's weights."""
+    linear = decoder.linear
+    return F.linear(vectors, linear.weight.detach(), linear.bias.detach()).squeeze(-1)
+
+
+def embedding_value_gaps(
+    decoder: nn.Module, predictions: Tensor, real_embeddings: Tensor, readout: Callable[[Tensor], Tensor] = whole
+) -> Tensor:
+    """``decoder(prediction) - decoder(real embedding)`` per row (B,), with gradients into the predictions only."""
+    with torch.no_grad():
+        real = decoder(readout(real_embeddings))
+    return frozen_decode(decoder, readout(predictions)) - real
+
+
 def value_gaps(
     decoder: nn.Module,
     predictions: Tensor,
@@ -34,7 +49,5 @@ def value_gaps(
     gradients: the encoder the decoder is trained on, not the EMA target.
     """
     with torch.no_grad():
-        real = decoder(readout(encoder(next_observations)))
-    linear = decoder.linear
-    predicted = F.linear(readout(predictions), linear.weight.detach(), linear.bias.detach()).squeeze(-1)
-    return predicted - real
+        real_embeddings = encoder(next_observations)
+    return embedding_value_gaps(decoder, predictions, real_embeddings, readout)

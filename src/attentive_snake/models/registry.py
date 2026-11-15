@@ -47,6 +47,12 @@ JEPA_METRICS = (
     TrainingMetric("embedding_std", "embedding spread", "jepa: how different the encoder's embeddings of a batch of states are (mean per-dimension standard deviation of the unit-length embeddings). Near 0 means collapse: every state looks the same to the model; about 1/sqrt(d_model) means unrelated directions.", _JEPA_SWITCH),
     TrainingMetric("value_gap", "value gap", "jepa: mean absolute difference between the value of the embedding predicted for the action taken and the value of the real next state's embedding (both read by the value decoder). With value_training 'actual' the decoder is trained on real next states and the model acts on the values of its predictions, so this error must stay small next to the differences between actions; the prediction loss trains it down there. With 'predicted' the decoder is trained on predictions only, so a large gap is expected and does no harm.", _JEPA_SWITCH),
 )
+_ROLLOUT_SWITCH = "model.rollout_steps"  # on above 1 (1 = no rollout); these also need prediction_coef above 0
+ROLLOUT_METRICS = (
+    TrainingMetric("rollout_last_loss", "rollout last-step loss", "jepa with rollout_steps above 1 (and prediction_coef above 0): the prediction loss at the last step of the rollout alone, where the predictor has been fed its own output rollout_steps - 1 times. Compare it with the prediction loss (the mean over all steps): the closer the two, the less the error grows along the chain.", _ROLLOUT_SWITCH, above=1.0),
+    TrainingMetric("chained_value_gap", "chained value gap", "jepa with rollout_steps above 1 under DQN (not dueling; rollout_value_coef and prediction_coef above 0): mean absolute difference between the action values read from a predicted state (the predictor applied to its own prediction, then the value decoder) and the action values the model gives the real state. This is the error a lookahead through the predictor makes; it should fall well below the value differences between actions.", _ROLLOUT_SWITCH, above=1.0),
+)
+
 _JEPA_HOW = (
     "trained from scratch, no pretrained weights. The predictor then takes the embedding and each action and predicts the embedding of the next state "
     "(num_layers deep), and a value decoder turns embeddings into values: with DQN, Q(s, a) is the value of the embedding action a is predicted to lead to, "
@@ -57,7 +63,7 @@ _JEPA_HOW = (
     "value_training (DQN) chooses whether the value decoder learns from the predicted next embedding (recommended) or from the real one (did not learn in our tests). Experimental."
 )
 
-_JEPA_FIELDS = ("prediction_coef", "value_training", "prediction_trains_encoder", "target_ema")
+_JEPA_FIELDS = ("prediction_coef", "value_training", "prediction_trains_encoder", "target_ema", "rollout_steps", "rollout_value_coef")
 _JEPA_ATTENTION_HOW = (
     "The class token's output is the embedding (num_layers sets both the number of transformer blocks and the predictor's depth); "
     "from there it is the jepa kind: " + _JEPA_HOW + " The attention shown is the encoder's, as for hybrid. With residual = true the stem is built from residual blocks."
@@ -227,7 +233,7 @@ KIND_INFO: dict[str, KindInfo] = {
                 NO_KERNEL,
             ),
         },
-        JEPA_METRICS,
+        JEPA_METRICS + ROLLOUT_METRICS,
     ),
     "jepa_attention": KindInfo(
         (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual", *_JEPA_FIELDS),
@@ -246,7 +252,7 @@ KIND_INFO: dict[str, KindInfo] = {
                 NO_KERNEL,
             ),
         },
-        JEPA_METRICS,
+        JEPA_METRICS + ROLLOUT_METRICS,
     ),
     "jepa_tokens": KindInfo(
         (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual", "predictor_layers", *_JEPA_FIELDS),
@@ -267,7 +273,7 @@ KIND_INFO: dict[str, KindInfo] = {
                 NO_KERNEL,
             ),
         },
-        JEPA_METRICS,
+        JEPA_METRICS + ROLLOUT_METRICS,
     ),
     "jepa_temporal": KindInfo(
         (*TRANSFORMER_FIELDS, *_JEPA_FIELDS),
@@ -285,7 +291,7 @@ KIND_INFO: dict[str, KindInfo] = {
                 False,
             ),
         },
-        JEPA_METRICS,
+        JEPA_METRICS + ROLLOUT_METRICS,
     ),
     "mlp": KindInfo(
         ("d_model", "num_layers"),

@@ -5,6 +5,7 @@ from collections.abc import Callable
 import numpy as np
 import torch
 
+from attentive_snake.models.auxiliary import TransitionSequences
 from attentive_snake.training.dqn.n_step import Horizon
 from attentive_snake.training.dqn.replay import ReplaySample, Transitions
 from attentive_snake.training.dqn.replay_storage import ReplayStorage
@@ -54,6 +55,9 @@ class PrioritizedReplayBuffer:
         probabilities = self._tree[indices] / total
         weights = (len(self._storage) * probabilities) ** -self._beta()
         return self._storage.gather(indices, weights / weights.max(), device)
+
+    def sequences(self, indices: np.ndarray, length: int, device: torch.device) -> TransitionSequences:
+        return self._storage.sequences(indices, length, device)
 
     def update_priorities(self, indices: np.ndarray, td_errors: np.ndarray) -> None:
         """Give the slots ``(|td| + epsilon) ** alpha``; a TD error of 0 leaves them samplable (epsilon > 0)."""

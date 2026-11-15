@@ -29,7 +29,8 @@ class DqnLearner:
     step into the buffer, then ``gradient_steps`` per multiple of ``train_frequency`` passed
     (once the buffer holds ``max(learning_starts, batch_size)`` transitions), then a target
     sync if a multiple of ``target_update_interval`` was passed. The buffer hands out targets that
-    look ``n_step`` steps ahead (``n_step.py``); the loss is ``settings.loss``. Random numbers come from
+    look ``n_step`` steps ahead (``n_step.py``); the loss is ``settings.loss``. An auxiliary objective that reads
+    several steps in a row gets them from the buffer too (``ReplayBuffer.sequences``). Random numbers come from
     numpy generators seeded from ``train.seed`` only, so periodic evaluation cannot change them.
     """
 
@@ -99,6 +100,7 @@ class DqnLearner:
 
     def _gradient_step(self) -> None:
         sample = self._replay.sample(self._settings.batch_size, self._device)
+        steps = 1 if self._auxiliary is None else self._auxiliary.sequence_length
         stats = dqn_gradient_step(
             self.policy,
             self._target,
@@ -108,6 +110,7 @@ class DqnLearner:
             self._settings.max_grad_norm,
             self._auxiliary,
             ERROR_LOSSES[self._settings.loss],
+            self._replay.sequences(sample.indices, steps, self._device) if steps > 1 else None,
         )
         self._replay.update_priorities(sample.indices, stats.td_errors.abs().cpu().numpy())
         self._gradient_steps += 1

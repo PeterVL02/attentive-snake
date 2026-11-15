@@ -149,7 +149,7 @@ def test_the_prediction_loss_learns_and_never_trains_the_target_encoder(value_tr
         objective.after_step()
         losses.append(terms.metrics["prediction_loss"])
     assert losses[-1] < 0.5 * losses[0]
-    assert set(terms.metrics) == {metric.key for metric in KIND_INFO["jepa_temporal"].metrics}
+    assert set(terms.metrics) == {metric.key for metric in KIND_INFO["jepa_temporal"].metrics if metric.setting == "model.prediction_coef"}  # one step: no rollout metrics
 
 
 @pytest.mark.parametrize("trains_encoder", [True, False])

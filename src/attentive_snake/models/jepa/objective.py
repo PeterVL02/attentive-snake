@@ -23,6 +23,14 @@ The slowly moving target (as in BYOL / I-JEPA) is what keeps the encoder
 from the trivial solution of mapping every state to the same embedding; the embedding
 spread (``embedding_std``) is logged to show whether that happened anyway.
 
+With a ``Rollout`` of K steps above 1 (``models.jepa.rollout``) the predictor is unrolled on its
+own outputs along the K actions really taken and every step's prediction is compared with the
+target encoder's embedding of the state really reached; the loss is the mean over the steps
+that exist (a rollout stops where its episode ended). With a rollout value weight the
+Q-values read from each predicted embedding are also pulled to those of the real state
+(``models.jepa.chained_values``, which explains its gradient rules; Huber, so a few wild
+readings early on do not swamp the gradient it shares with the algorithm's loss).
+
 Shape-agnostic: an embedding may be one vector per state (B, D) or a token set (B, T, D)
 (``jepa_tokens``). Distances and spread are then taken per token and averaged over the tokens;
 the value gap reads ``readout`` of the embeddings (``models.jepa.readout``).
@@ -35,10 +43,12 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from attentive_snake.models.auxiliary import AuxiliaryLoss, TransitionBatch
+from attentive_snake.models.auxiliary import AuxiliaryLoss, TransitionBatch, TransitionSequences
+from attentive_snake.models.jepa.chained_values import chained_value_gaps
 from attentive_snake.models.jepa.ema import EmaCopy
 from attentive_snake.models.jepa.readout import whole
-from attentive_snake.models.jepa.value_consistency import value_gaps
+from attentive_snake.models.jepa.rollout import Rollout, steps_of, unroll
+from attentive_snake.models.jepa.value_consistency import embedding_value_gaps
 
 
 def per_row(values: Tensor) -> Tensor:
@@ -84,7 +94,10 @@ class PredictionObjective:
     value gap (``value_consistency.value_gaps``, the decoder reading ``readout`` of the
     embeddings) is reported, and with ``consistent_values`` (``"actual"``) its square is added
     to the loss. ``predictor`` is anything with ``step(embeddings, actions)`` that keeps the
-    embedding's shape (``blocks.predictor``, ``blocks.token_predictor``).
+    embedding's shape (``blocks.predictor``, ``blocks.token_predictor``). ``rollout`` is how many
+    steps the predictor is unrolled (learners read ``sequence_length`` and hand over that many
+    steps per transition) and the weight of the chained value consistency; that term assumes
+    the ``value_decoder`` of the predictor's output for every action is the policy's Q-values.
     """
 
     def __init__(
@@ -98,6 +111,7 @@ class PredictionObjective:
         value_decoder: nn.Module | None = None,
         consistent_values: bool = False,
         readout: Callable[[Tensor], Tensor] = whole,
+        rollout: Rollout = Rollout(),
     ) -> None:
         self._encoder = encoder
         self._readout = readout
@@ -107,22 +121,43 @@ class PredictionObjective:
         self._consistent_values = consistent_values
         self._predictor = predictor
         self._coefficient = coefficient
+        self._rollout = rollout
+        self.sequence_length = rollout.steps  # steps per transition a learner must hand over (``models.auxiliary``)
         self.target = EmaCopy(encoder, decay)
 
     def loss(self, batch: TransitionBatch) -> AuxiliaryLoss:
+        steps = steps_of(batch)
+        rows = steps.valid.shape  # (B, K)
         embeddings = self._encoder(batch.observations)
         if not self._trains_encoder:
             embeddings = embeddings.detach()
-        predictions = self._predictor.step(embeddings, batch.actions)
-        targets = self.target(batch.next_observations)
-        loss = masked_mean(self._distance(predictions, targets), batch.valid)
+        predictions = unroll(self._predictor, embeddings, steps.actions).flatten(0, 1)
+        following = steps.next_observations.flatten(0, 1)
+        distances = self._distance(predictions, self.target(following)).view(rows)
+        loss = masked_mean(distances, steps.valid)
         metrics = {"prediction_loss": float(loss.detach()), "embedding_std": float(embedding_spread(embeddings))}
+        if rows[1] > 1:
+            metrics["rollout_last_loss"] = float(masked_mean(distances[:, -1].detach(), steps.valid[:, -1]))
         if self._value_decoder is not None:
-            gaps = value_gaps(self._value_decoder, predictions, self._encoder, batch.next_observations, self._readout)
-            metrics["value_gap"] = float(masked_mean(gaps.detach().abs(), batch.valid))
+            with torch.no_grad():
+                real = self._encoder(following)
+            gaps = embedding_value_gaps(self._value_decoder, predictions, real, self._readout).view(rows)
+            metrics["value_gap"] = float(masked_mean(gaps.detach().abs(), steps.valid))
             if self._consistent_values:
-                loss = loss + masked_mean(gaps.pow(2), batch.valid)
+                loss = loss + masked_mean(gaps.pow(2), steps.valid)
+            if self._rollout.value_coefficient > 0.0:
+                chained_loss, chained_gap = self._chained_values(predictions, real, steps)
+                loss = loss + self._rollout.value_coefficient * chained_loss
+                metrics["chained_value_gap"] = chained_gap
         return AuxiliaryLoss(loss=self._coefficient * loss, metrics=metrics)
+
+    def _chained_values(self, predictions: Tensor, real: Tensor, steps: TransitionSequences) -> tuple[Tensor, float]:
+        """The Huber error of the Q-values read from every predicted embedding (rows flattened over the steps), and their mean absolute gap."""
+        gaps = chained_value_gaps(self._value_decoder, self._predictor, predictions, real, self._readout)  # (B * K, A)
+        went_on = steps.valid * (1.0 - steps.terminal)  # the real state is one the game went on from: only then do its Q-values mean something
+        errors = F.smooth_l1_loss(gaps, torch.zeros_like(gaps), reduction="none").mean(dim=-1).view(went_on.shape)
+        mean_gap = masked_mean(gaps.detach().abs().mean(dim=-1).view(went_on.shape), went_on)
+        return masked_mean(errors, went_on), float(mean_gap)
 
     def after_step(self) -> None:
         self.target.update()
