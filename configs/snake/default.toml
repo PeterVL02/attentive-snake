@@ -25,19 +25,21 @@ max_steps_without_food = 128  # starvation limit; comment out for no limit (None
 #       "frame_attention" (CNN per frame, attention across frames), "resnet" (residual conv blocks),
 #       "lstm" (CNN per frame, LSTM across the frames), "jepa" (CNN encoder + action-conditioned predictor of the
 #       next embedding + value decoder: acts on the value of predicted next states), "jepa_attention" (the same
-#       with hybrid's attention encoder), "mlp" (flattened board; weak baseline).
+#       with hybrid's attention encoder), "jepa_tokens" (jepa_attention predicting every cell's token instead of
+#       one vector), "mlp" (flattened board; weak baseline).
 # Only temporal_transformer, frame_attention and lstm treat env.history_length as time; the others
 # see stacked frames as extra channels. They use board channels plus, if present, action planes.
 kind = "transformer"
 d_model = 64
 num_heads = 4
-num_layers = 3                # attention kinds: transformer blocks; mlp: layers; lstm: LSTM layers; jepa: predictor layers; jepa_attention: both
+num_layers = 3                # attention kinds: transformer blocks; mlp: layers; lstm: LSTM layers; jepa: predictor layers; jepa_attention: both; jepa_tokens: encoder blocks
 mlp_ratio = 4
 dropout = 0.0
 conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm, jepa, jepa_attention: width of the conv layers
 conv_layers = 3               # cnn, hybrid, frame_attention, lstm, jepa, jepa_attention: number of conv layers; resnet: residual blocks
 kernel_size = 3               # odd; same-padded
 residual = false             # hybrid, jepa_attention, frame_attention, lstm: build the stem (frame encoder) from residual blocks, as resnet does
+predictor_layers = 1          # jepa_tokens only: transformer blocks of its per-token predictor (run once per action)
 prediction_coef = 0.0         # jepa kinds only: weight of the prediction loss (0 = off, the default; above 0 adds it)
 value_training = "predicted"  # jepa kinds with dqn only: the value decoder learns from the "predicted" or the "actual" next embedding
 prediction_trains_encoder = false  # jepa kinds only: true lets the prediction loss train the encoder too (false: the predictor only)

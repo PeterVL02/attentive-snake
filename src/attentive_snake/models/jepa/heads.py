@@ -1,4 +1,4 @@
-"""The two head forms of the ``jepa`` kind: what its encoder embedding ``z`` becomes, through the predictor.
+"""The two head forms of the jepa kinds: what the encoder's state embedding ``z`` becomes, through the predictor.
 
 Both use the trunk's ``predictor`` (``net["predictor"]``: ``z`` -> one predicted next-state
 embedding per action) and add their decoders to ``net``:
@@ -12,14 +12,21 @@ embedding per action) and add their decoders to ``net``:
   policy is near uniform) instead of the value decoder: logits are not values (their scale
   is the policy's temperature), and the policy gradient and entropy bonus would otherwise
   pull on the very decoder the critic is trained with.
+
+The decoders read one vector per state: a ``readout`` (``models.jepa.readout``) takes it from
+the embedding, current or predicted. ``JEPA_HEADS`` read the embedding whole (``jepa``,
+``jepa_attention``: ``z`` is (B, D)); ``CLASS_TOKEN_HEADS`` read the class token of a token set
+(``jepa_tokens``: ``z`` is (B, T, D), the predictor gives (B, A, T, D)). Either way the
+decoders see (B, D) and (B, A, D).
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from torch import Tensor, nn
 
 from attentive_snake.models.blocks.heads import EmbeddingScore, ValueHead
 from attentive_snake.models.heads import POLICY_INIT_GAIN, VALUE_INIT_GAIN, Head, init_head
+from attentive_snake.models.jepa.readout import class_token, whole
 from attentive_snake.models.types import PolicyOutput, QValues
 
 
@@ -29,18 +36,27 @@ def _value_decoder(d_model: int) -> ValueHead:
     return decoder
 
 
+type Readout = Callable[[Tensor], Tensor]
+
+
 class PredictedValueHead:
-    """``value_decoder`` applied to every action's predicted next embedding -> ``QValues``."""
+    """``value_decoder`` applied to (the readout of) every action's predicted next embedding -> ``QValues``."""
+
+    def __init__(self, readout: Readout = whole) -> None:
+        self._readout = readout
 
     def modules(self, d_model: int, num_actions: int) -> dict[str, nn.Module]:
         return {"value_decoder": _value_decoder(d_model)}
 
     def output(self, net: Mapping[str, nn.Module], pooled: Tensor) -> QValues:
-        return QValues(q_values=net["value_decoder"](net["predictor"](pooled)))
+        return QValues(q_values=net["value_decoder"](self._readout(net["predictor"](pooled))))
 
 
 class PredictedActorCriticHead:
     """``policy_decoder`` scores each action's predicted next embedding; ``value_decoder`` values ``z`` -> ``PolicyOutput``."""
+
+    def __init__(self, readout: Readout = whole) -> None:
+        self._readout = readout
 
     def modules(self, d_model: int, num_actions: int) -> dict[str, nn.Module]:
         policy = EmbeddingScore(d_model)
@@ -48,7 +64,14 @@ class PredictedActorCriticHead:
         return {"policy_decoder": policy, "value_decoder": _value_decoder(d_model)}
 
     def output(self, net: Mapping[str, nn.Module], pooled: Tensor) -> PolicyOutput:
-        return PolicyOutput(logits=net["policy_decoder"](net["predictor"](pooled)), value=net["value_decoder"](pooled))
+        read = self._readout
+        return PolicyOutput(logits=net["policy_decoder"](read(net["predictor"](pooled))), value=net["value_decoder"](read(pooled)))
 
 
-JEPA_HEADS: dict[str, Head] = {"actor_critic": PredictedActorCriticHead(), "q_values": PredictedValueHead()}
+def jepa_heads(readout: Readout) -> dict[str, Head]:
+    """Both head forms, their decoders reading ``readout`` of the embeddings."""
+    return {"actor_critic": PredictedActorCriticHead(readout), "q_values": PredictedValueHead(readout)}
+
+
+JEPA_HEADS: dict[str, Head] = jepa_heads(whole)
+CLASS_TOKEN_HEADS: dict[str, Head] = jepa_heads(class_token)

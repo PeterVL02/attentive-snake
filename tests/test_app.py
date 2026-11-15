@@ -994,7 +994,7 @@ def test_jepa_is_offered_drawn_trained_watched_and_forked_through_the_api(client
     assert [m["key"] for m in kind["metrics"]] == ["prediction_loss", "embedding_std", "value_gap"]
     assert all(m["label"] and m["description"] for m in kind["metrics"])
     assert all(m["setting"] == "model.prediction_coef" for m in kind["metrics"])
-    assert all(not row["metrics"] for name, row in schema["model_kinds"].items() if name not in ("jepa", "jepa_attention"))
+    assert all(not row["metrics"] for name, row in schema["model_kinds"].items() if name not in ("jepa", "jepa_attention", "jepa_tokens"))
     fields = {row["name"]: row for row in schema["sections"]["model"]}
     assert fields["value_training"]["choices"] == ["predicted", "actual"] and fields["value_training"]["description"]
     assert fields["prediction_trains_encoder"]["description"] and fields["prediction_trains_encoder"]["default"] is not None
@@ -1114,7 +1114,7 @@ def test_a_run_whose_config_cannot_be_read_is_listed_and_shown_not_a_server_erro
 @pytest.mark.parametrize("game", ["snake", "lunar_lander"])
 def test_residual_is_offered_for_the_kinds_with_a_stem_and_locked_on_fork(client: TestClient, game: str):
     schema = client.get("/api/schema", params={"game": game}).json()
-    assert {kind for kind, info in schema["model_kinds"].items() if "residual" in info["fields"]} == {"hybrid", "jepa_attention", "frame_attention", "lstm"}
+    assert {kind for kind, info in schema["model_kinds"].items() if "residual" in info["fields"]} == {"hybrid", "jepa_attention", "jepa_tokens", "frame_attention", "lstm"}
     field = next(row for row in schema["sections"]["model"] if row["name"] == "residual")
     assert field["type"] == "bool" and field["default"] is False and field["description"]
     assert "model.residual" in client.get("/api/fork-rules", params={"game": game}).json()["locked"]
@@ -1132,3 +1132,27 @@ def test_a_residual_hybrid_trains_is_drawn_and_cannot_change_on_fork(client: Tes
     tables["model"]["residual"] = False
     refused = client.post("/api/runs/res/fork", json={"name": "res-v2", "config": tables})
     assert refused.status_code == 422 and "model.residual" in refused.text
+
+
+def test_jepa_tokens_is_offered_for_both_games_trained_and_watched_with_attention(client: TestClient):
+    jepa = client.get("/api/schema").json()["model_kinds"]["jepa"]
+    for game in ("snake", "lunar_lander"):
+        schema = client.get("/api/schema", params={"game": game}).json()
+        kind = schema["model_kinds"]["jepa_tokens"]
+        assert {"num_heads", "num_layers", "predictor_layers", "residual", "prediction_coef", "value_training"} <= set(kind["fields"])
+        assert kind["attention_view"] == "grid" and not kind["recommended"] and kind["metrics"] == jepa["metrics"]
+        assert all("predictor_layers" not in row["fields"] for name, row in schema["model_kinds"].items() if name != "jepa_tokens")
+    assert "model.predictor_layers" in client.get("/api/fork-rules").json()["locked"]
+
+    tables = tiny_tables("jepa_tokens", algorithm="dqn")
+    tables["model"]["prediction_coef"] = 1.0
+    assert client.post("/api/runs", json={"name": "jepa-tokens", "config": tables}).status_code == 201
+    detail = wait_until_done(client, "jepa-tokens")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert detail["kind"] == "jepa_tokens" and {"prediction_loss", "embedding_std", "value_gap"} <= set(detail["metrics"][-1])
+
+    watch = client.post("/api/watch", json={"run": "jepa-tokens"}).json()
+    assert watch["info"]["attention_view"] == "grid" and watch["frame"]["action_values"]["kind"] == "q_values"
+    assert len(watch["frame"]["heatmap"]) == 4 and len(watch["frame"]["action_values"]["values"]) == 4
+    steps = client.post(f"/api/watch/{watch['id']}/step", json={"count": 2})
+    assert steps.status_code == 200 and all("heatmap" in frame for frame in steps.json()["frames"])

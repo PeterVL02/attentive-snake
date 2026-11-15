@@ -22,17 +22,19 @@ hide_velocities = false       # the model sees zeros for vx, vy and spin: it mus
 # The observation is 8 numbers. "mlp" (and "cnn", which is an MLP for numbers) are the
 # sensible baselines; "transformer", "hybrid" and "temporal_transformer" make one token
 # per number (attention over the inputs); "frame_attention" one token per past frame;
-# "jepa" predicts each action's next-state embedding and acts on their values; "jepa_attention" is jepa with hybrid's attention encoder.
+# "jepa" predicts each action's next-state embedding and acts on their values; "jepa_attention" is jepa with hybrid's attention encoder;
+# "jepa_tokens" is jepa_attention predicting every number's token instead of one vector.
 kind = "mlp"
 d_model = 64                  # mlp: layer width
 num_heads = 4                 # attention kinds only
-num_layers = 2                # mlp: fully connected layers; lstm: LSTM layers; jepa: predictor layers; jepa_attention: both; attention kinds: transformer blocks
+num_layers = 2                # mlp: fully connected layers; lstm: LSTM layers; jepa: predictor layers; jepa_attention: both; jepa_tokens: encoder blocks; attention kinds: transformer blocks
 mlp_ratio = 4                 # attention kinds only
 dropout = 0.0
 conv_channels = 64            # cnn, resnet, hybrid, frame_attention, lstm, jepa, jepa_attention: width of the layers that replace convolutions
 conv_layers = 2               # cnn, resnet (residual blocks), hybrid, frame_attention, lstm, jepa, jepa_attention: number of those layers
 kernel_size = 3               # unused for vector observations
 residual = false             # hybrid, jepa_attention, frame_attention, lstm: build the stem (frame encoder) from residual blocks, as resnet does
+predictor_layers = 1          # jepa_tokens only: transformer blocks of its per-token predictor (run once per action)
 prediction_coef = 0.0         # jepa kinds only: weight of the prediction loss (0 = off, the default; above 0 adds it)
 value_training = "predicted"  # jepa kinds with dqn only: the value decoder learns from the "predicted" or the "actual" next embedding
 prediction_trains_encoder = false  # jepa kinds only: true lets the prediction loss train the encoder too (false: the predictor only)
