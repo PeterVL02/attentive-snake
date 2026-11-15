@@ -428,6 +428,69 @@ though (about 600 steps/s against about 5,000 on the same CPU: 27 minutes
 against 3), because every step of the 16 games is followed by four gradient
 steps. See the Caveats for what this does and does not say.
 
+### Layer norm and weight decay
+
+Two optional switches against a network slowly losing its ability to learn over
+a long run. Both are off by default, work with PPO and DQN, and are in the app's
+forms; with both off, networks, checkpoints and training are exactly as before.
+
+- **`model.layer_norm`** adds a normalisation layer after every convolution or
+  fully connected layer of the part that reads the observation, and in its
+  readout, each before the activation: the conv / MLP trunk of `cnn`, `resnet`,
+  `mlp` and `jepa`, the stem in front of the transformer of `hybrid`,
+  `jepa_attention` and `jepa_tokens`, and the per-frame encoder of
+  `frame_attention` and `lstm`. On numbers it is a layer norm. On boards it is
+  a group norm with one group, which normalises each board's whole feature map
+  (all channels and cells) at once: the layer-norm equivalent for convolutions.
+  Neither uses statistics of the batch, so playing, training batches and DQN's
+  target network compute the same function. Not touched: the transformer blocks
+  (they have layer norms already, so `transformer`, `temporal_transformer` and
+  `jepa_temporal` do not read the switch), the jepa predictor, the LSTM itself
+  and the heads. Residual blocks on numbers already have layer norms, so there
+  only the readout gains one. It changes the network, so a fork must keep it.
+- **`train.weight_decay`** makes every optimizer step also shrink the weights
+  towards zero. 0 is plain Adam; above 0 the optimizer is AdamW (decoupled
+  decay: a weight is multiplied by `1 - learning_rate x weight_decay` per
+  step). Only the weight matrices of linear, convolution, attention and LSTM
+  layers shrink; biases, normalisation layers and embeddings (positions, class
+  token, actions) do not. A fork may switch it on, off or change it: every
+  parameter keeps its Adam moments. Resume takes no training settings.
+
+Measured once (seed 0, CPU with one thread per run, runs sharing the machine).
+Lunar Lander, DQN defaults (`mlp`), 500k env steps, greedy evaluation of 50
+games every 100k steps; mean score / share of games landed:
+
+| run | 100k | 200k | 300k | 400k | 500k | time |
+|---|---|---|---|---|---|---|
+| baseline | -38 / 0% | -64 / 0% | 108 / 68% | 165 / 66% | 212 / 78% | 155 s |
+| `layer_norm = true` | -242 / 16% | 85 / 28% | 81 / 28% | 72 / 38% | 141 / 64% | 178 s |
+| `weight_decay = 0.01` | 45 / 60% | -230 / 4% | 198 / 84% | 255 / 92% | 239 / 86% | 156 s |
+| both | 176 / 66% | 169 / 74% | 46 / 40% | 112 / 58% | 269 / 98% | 181 s |
+
+Snake 6x6, DQN defaults with the `cnn` kind, 200k env steps, greedy evaluation
+of 50 games every 50k steps; mean score (apples), no game won in either:
+
+| run | 50k | 100k | 150k | 200k | time |
+|---|---|---|---|---|---|
+| baseline | 9.4 | 11.6 | 14.5 | 17.3 | 805 s |
+| `layer_norm = true` | 1.5 | 11.0 | 13.9 | 17.1 | 857 s |
+
+One seed each, so this is an indication, not a ranking. On Lunar Lander every
+run swings by 100 points or more between evaluations, as much as the runs
+differ from each other; the two runs with weight decay ended above the
+baseline (239 and 269 against 212), the run with layer norm alone below it
+(141), and neither difference is larger than those swings. On Snake the
+layer-norm run started slower (1.5 apples at 50k against 9.4) and was level
+from 100k on (17.1 against 17.3 at 200k; the three-seed range of this baseline
+above is 16.2-17.3). What the runs do show: both switches train with DQN on a
+vector and a grid game and neither broke learning. Weight decay cost no time;
+layer norm made a run 15% slower on Lunar Lander (two extra layers in a
+two-layer network) and 6% slower on Snake (tests ran beside the runs, the whole
+suite beside the Snake pair, so times compare only within a table). The effect these
+switches are meant for, keeping a network trainable over millions of steps, is
+not something runs this short can show; weight decay 0.01 is AdamW's usual
+default, not a tuned value.
+
 ## Configs and runs
 
 Everything game-specific is per game: `[game] name` in a config says which game
@@ -524,6 +587,8 @@ A statistic that cannot be computed (steps to win when no game was won) is N/A.
   `history_actions` must match the parent, because its weights would not fit or
   would see a different input. It keeps the parent's Adam moments and starts its
   own learning-rate schedule from `learning_rate`, counting its steps from 0.
+  `train.weight_decay` may change on a fork (on, off, another value; the moments
+  are kept); `model.layer_norm` may not (it changes the network).
 - **Extending a run raises the learning rate.** The linear decay is re-stretched
   over the new total, so the rate jumps up at the resume point. A resumed run is
   not bit-identical to an uninterrupted one.
