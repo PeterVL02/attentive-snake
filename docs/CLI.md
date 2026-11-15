@@ -69,6 +69,9 @@ uv run python scripts/train.py --run-dir runs/snake/dqn-cnn --set train.algorith
 # DQN with prioritized experience replay (off by default; the priority_* settings apply only when it is on)
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/per --set train.algorithm=dqn \
     --set dqn.prioritized=true --set dqn.priority_alpha=0.6 --set dqn.priority_beta_start=0.4
+# DQN with 3-step targets, a dueling head and a squared-error loss (each is its own switch; all off by default)
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/dqn-3step --set train.algorithm=dqn \
+    --set dqn.n_step=3 --set dqn.dueling=true --set dqn.loss=mse
 ```
 
 - `--game NAME` (new runs only) picks `configs/<NAME>/default.toml` and the default run directory `runs/<NAME>/default`.
@@ -268,7 +271,7 @@ checkpoints likewise for `train.checkpoint_interval` (both count env steps, like
 both for short experiments. Every record has `env_steps`, `iteration`, the episode means (`mean_score`,
 `mean_length`, `mean_return`, `episodes`), `learning_rate` and `steps_per_second`, plus the algorithm's own:
 PPO `policy_loss`, `value_loss`, `entropy`, `approx_kl`, `clip_fraction`, `explained_variance`,
-`epochs_completed` (of the latest update); DQN `loss` (Huber), `q_mean`, `td_error` (means over the gradient
+`epochs_completed` (of the latest update); DQN `loss` (Huber, or squared error with `dqn.loss = "mse"`), `q_mean`, `td_error` (means over the gradient
 steps since the previous record), `epsilon`, `replay_size`, `gradient_steps` (with `dqn.prioritized` also `priority_beta`, `priority_mean`,
 `priority_max`). An iteration is one PPO update
 (`rollout_length * num_envs` env steps) or one DQN step of every game (`num_envs` env steps).
@@ -430,6 +433,24 @@ probability proportional to `(|TD error| + priority_epsilon) ** priority_alpha`,
 priority so far, and each sample's loss is scaled by an importance weight `(N x probability) ** -beta` (normalised
 by the batch maximum) with `beta` rising linearly from `priority_beta_start` to 1 over `train.total_env_steps`.
 It adds a little bookkeeping per step and can be forked with different priority settings.
+
+n-step targets (`dqn.n_step`, default 1): the target of a transition is the discounted sum of the next `n_step`
+rewards plus `gamma ** n_step` times the bootstrap value of the state reached after them. The window stops at an
+episode's end (a time-limit cut is bootstrapped from its own final state when `train.bootstrap_truncated` is true,
+otherwise it counts as an end) and at the newest step in the buffer. The buffer still stores single steps and joins
+them when a batch is sampled, so it needs no extra memory, works with prioritized replay (the priority is the TD
+error of the n-step target) and can be changed on fork. No correction is made for the later steps having been
+chosen by an older, exploring policy.
+
+Dueling head (`dqn.dueling`, default false): the head has a state-value stream and an advantage stream (one hidden
+layer of `d_model` units each) and outputs `Q = V + A - mean(A)`. Every model kind supports it; the jepa kinds read
+`V` from the current embedding and the advantages from their predicted embeddings, and refuse it together with
+`model.value_training = "actual"`. It changes the network, so it is fixed for a run: `--fork` with a different
+`dqn.dueling` is refused, `--resume` reads it from the run's `config.toml`.
+
+Loss (`dqn.loss`, `"huber"` by default or `"mse"`): how the error between Q(s, a) and its target is penalised.
+Huber is squared below an error of 1 and linear above; `mse` is squared throughout (twice Huber's gradient for
+small errors, unbounded for large ones). The optimizer is Adam either way.
 
 DQN's replay buffer lives in memory: about `2 x buffer_size x (numbers in one observation) x 4` bytes (Snake 8x8,
 100k transitions: ~150 MB; Lunar Lander: ~6 MB; history frames multiply it). It is not saved.
