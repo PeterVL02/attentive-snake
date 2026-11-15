@@ -6,7 +6,8 @@ the config schema, reward schemes, watching and the app's backend all work throu
 one contract, the `GameSpec`. The test `tests/test_games.py` proves this with a
 dummy game that lives only in `tests/dummy_games/walk/` (worth reading as a minimal
 example). Snake in `games/snake/` is a full grid game written from scratch; Lunar Lander
-in `games/lunar_lander/` is a Gymnasium game wrapped in a few small modules.
+in `games/lunar_lander/` is a Gymnasium game wrapped in a few small modules; Atari in
+`games/atari/` is one adapter for many titles with picture observations (section 8).
 
 ## 1. Files
 
@@ -53,12 +54,12 @@ GAME = GameSpec(
 
 | Field | Meaning |
 | --- | --- |
-| `observation_kind` | `"grid"`: a small board, shape `(F, H, W)`, every cell a token (Snake). `"vector"`: a flat list of numbers, shape `(F,)`. `"image"`: screen pixels, shape `(F, H, W)`. Policies declare which kinds they read (`BasePolicy.observation_kinds`); every policy reads `"grid"` and `"vector"` (each picks its input stage by kind, `models/input_stages/`); none reads `"image"` yet. |
+| `observation_kind` | `"grid"`: a small board, shape `(F, H, W)`, every cell a token (Snake). `"vector"`: a flat list of numbers, shape `(F,)`. `"image"`: screen pixels, shape `(F, H, W)`. Policies declare which kinds they read (`BasePolicy.observation_kinds`); every policy reads `"grid"` and `"vector"` (each picks its input stage by kind, `models/input_stages/`); all but `resnet` and `mlp` read `"image"` (section 8), and the app offers a game only the kinds that read its observations. |
 | `view_kind` | Which watch payload `GameEnv.view()` returns (section 5). |
 | `rules_type`, `reward_type` | Frozen, flat dataclasses (section 4). |
 | `make_env` | Builds one `GameEnv` (section 3). Called once per parallel env with a derived seed. |
 | `locked_rules` | Rules that change the observation's shape or meaning (Snake: `width`, `height`, `initial_length`). A continued run (fork) must keep them; `game.name`, all of `[model]`, `env.history_length` and `env.history_actions` are always locked. |
-| `action_labels` | Optional: one short name per action, in action-index order (Snake: `up`, `right`, `down`, `left`). Shown next to the action probabilities or Q-values in the Watch tab (`WatchSession.info["action_names"]`); without it `action 0`, .... The registry builds one default env to check the count. |
+| `action_labels` | Optional: one short name per action, in action-index order (Snake: `up`, `right`, `down`, `left`). Shown next to the action probabilities or Q-values in the Watch tab (`WatchSession.info["action_names"]`); without it `action 0`, .... The registry builds one default env to check the count. A game whose rules change the action set gives its `GameEnv` an `action_labels` attribute too (a tuple of `num_actions` names): the watch session prefers it (`watch/action_names.py`). |
 | `observation_labels` | Vector games only, optional: one short name per number of one frame, in order (Lunar Lander: `x`, `y`, `vx`, ...). Shown next to the attention over the numbers (`WatchSession.info["element_names"]`); without it they are called `number 0`, `number 1`, .... The registry builds one default env to check the count. |
 | `reward_table` | What a scheme pays in typical situations, for the app's Rewards tab: rows `{"situation": str, "reward": float, "breakdown": {term: float}}`. `None`: no preview (`/api/rewards/preview` answers 404). |
 | `episode_metrics` | Optional `GameMetrics`: the game's own evaluation statistics on top of the generic ones (section 6). `None`: only the generic ones. |
@@ -251,3 +252,45 @@ uv run python scripts/train.py --game <name> --run-dir runs/<name>/try --steps 2
 uv run python scripts/watch.py runs/<name>/try
 uv run python scripts/evaluate.py runs/<name>/try --games 20
 ```
+
+## 8. One adapter for many titles, and picture observations (Atari)
+
+`games/atari/` is one game, `atari`, whose rule `[game] title` picks the Atari 2600 title
+(`games/atari/titles.py`: one `Title(key, env_id, label)` row each; adding a title is adding a
+row). The rule's `metadata["choices"]` makes it a dropdown in the app. Do the same for any
+family of games that share an adapter and settings:
+
+- one `configs/<name>/default.toml` for the whole family (every `[model]` and `[train]` field
+  is listed once, not once per title);
+- the title is in `locked_rules`, so a fork cannot switch titles;
+- all titles share `runs/<name>/` and so the app's run lists; the run's detail and the Compare
+  tab's differences show the title.
+
+The other way is one package per title, each exposing its own `GAME` built by a shared
+factory. Choose it when titles need different defaults or should have separate run lists; the
+registry needs no change for either.
+
+Picture observations (`observation_kind="image"`):
+
+- One frame is `(C, H, W)` float32 in `[0, 1]` (`C` = 1 for grayscale, 3 for colour). The env
+  does its own preprocessing with numpy (`games/atari/screen.py` shrinks the screen by
+  averaging); history comes from `HistoryEnv` as for every game.
+- `models/input_stages/image.py` holds the stages: three strided convolutions (the DQN
+  paper's) for the kinds with a convolutional stage, 12-pixel patches for the token kinds. A
+  stage that makes tokens sets `Stage.token_grid` (rows, columns), which reaches the watch
+  heatmap through `TokenLayout.grid`, because tokens are no longer the observation's cells.
+- The height and width must be at least 36 (the convolutions need that much).
+- `view()` returns the raw colour screen with `image_payload`, not the preprocessed picture;
+  the Watch tab stretches the token heatmap over it.
+- Memory: an observation is `history_length x C x H x W` float32 numbers (112 KB at 4 x 84 x
+  84), and DQN's replay buffer stores two per transition. Choose `dqn.buffer_size` for it.
+
+What a second kind of game in the family would need (not built):
+
+- Two players (Combat, or PettingZoo's Atari games): a separate adapter whose env steps both
+  players. `GameEnv.step` takes one action, so either the opponent is part of the env (a
+  scripted player or a frozen checkpoint the env calls), or `GameEnv`, `VecEnv` and the
+  rollout storage gain a player axis. The first needs no contract change.
+- Continuous actions (ALE's `continuous=True`): `num_actions` and the heads in
+  `models/heads.py` are discrete. It needs an action-space description on the env contract, a
+  Gaussian policy head and the matching PPO log-probabilities; DQN does not apply.

@@ -1349,3 +1349,91 @@ def test_jepa_temporal_is_offered_for_both_games_with_history_trained_and_watche
     assert body["info"]["attention_view"] == "frames" and len(body["info"]["element_names"]) == 8
     frame = client.post(f"/api/watch/{body['id']}/step", json={"count": 2, "frames": "last"}).json()["frames"][-1]
     assert len(frame["element_weights"]) == 8 and frame["heatmap"] is None
+
+
+# --------------------------------------------------------------------------- Atari (image observations)
+
+
+def tiny_atari(kind: str = "cnn", algorithm: str = "ppo") -> dict:
+    """Pong on a 48 x 48 picture, games cut after 6 steps: trains in a few seconds on the CPU."""
+    tables = tiny_tables(kind, total_env_steps=32, algorithm=algorithm)
+    tables["game"] = {"name": "atari", "title": "pong", "screen_size": 48, "max_episode_steps": 6}
+    tables["env"]["history_length"] = 2
+    return tables
+
+
+def wait_for_evaluation_of(client: TestClient, name: str, game: str) -> dict:
+    deadline = time.monotonic() + JOB_TIMEOUT
+    while time.monotonic() < deadline:
+        status = client.get(f"/api/runs/{name}/evaluate", params={"game": game}).json()
+        if status["state"] != "running":
+            return status
+        time.sleep(0.1)
+    raise AssertionError(f"evaluation of {name} still running after {JOB_TIMEOUT}s")
+
+
+def test_atari_is_listed_with_its_titles_and_the_kinds_that_read_pictures(client: TestClient):
+    games = {game["name"]: game for game in client.get("/api/games").json()}
+    atari = games["atari"]
+    assert (atari["title"], atari["observation_kind"], atari["view_kind"], atari["has_reward_table"]) == ("Atari", "image", "image", False)
+    assert [metric["key"] for metric in atari["evaluation_metrics"]][:3] == ["timeout_rate", "mean_lives_lost", "mean_scoring_steps"]
+    schema = client.get("/api/schema", params={"game": "atari"}).json()
+    title = next(row for row in schema["sections"]["game"] if row["name"] == "title")
+    assert {"pong", "montezuma_revenge", "ms_pacman", "pitfall", "private_eye", "venture"} <= set(title["choices"])
+    assert "cnn" in schema["model_kinds"] and not {"resnet", "mlp"} & set(schema["model_kinds"])  # not offered: they cannot read pictures
+    assert set(client.get("/api/schema").json()["model_kinds"]) >= {"resnet", "mlp"}
+    locked = client.get("/api/fork-rules", params={"game": "atari"}).json()["locked"]
+    assert {"game.title", "game.screen_size", "game.grayscale", "game.full_action_space"} <= set(locked) and "game.frame_skip" not in locked
+    assert parameters_for(client, tiny_atari(), game="atari") > 0
+
+
+def test_train_watch_evaluate_and_compare_atari_through_the_api(client: TestClient, paths: AppPaths):
+    """The real emulator in a real training subprocess, then everything the tabs ask for."""
+    tables = tiny_atari()
+    tables["evaluation"] = {"interval": 32, "games": 2}
+    started = client.post("/api/runs", json={"name": "pong", "config": tables})
+    assert started.status_code == 201, started.text
+    assert started.json()["game"] == "atari"
+    detail = wait_until_done(client, "pong", game="atari")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert detail["rules"]["title"] == "pong" and detail["kind"] == "cnn" and detail["checkpoints"][-1]["steps"] == 32
+    assert (paths.runs_dir / "atari" / "pong" / "config.toml").is_file()
+    recorded = detail["evaluations"][-1]
+    assert recorded["statistics"]["games"] == 2 and recorded["statistics"]["timeout_rate"] == 1.0  # cut after 6 steps
+    assert "DownsamplingConvEncoder" in client.get("/api/runs/pong/architecture", params={"game": "atari"}).json()["text"]
+
+    watch = client.post("/api/watch", json={"game": "atari", "run": "pong", "seed": 0})
+    assert watch.status_code == 201, watch.text
+    body = watch.json()
+    assert (body["info"]["view_kind"], body["info"]["width"], body["info"]["height"]) == ("image", 160, 210)
+    assert len(body["info"]["action_names"]) == 18 and body["info"]["action_names"][:2] == ["nothing", "fire"]
+    assert base64.b64decode(body["frame"]["png"]).startswith(b"\x89PNG")
+    assert body["frame"]["action_values"]["kind"] == "probabilities" and len(body["frame"]["action_values"]["values"]) == 18
+    steps = client.post(f"/api/watch/{body['id']}/step", json={"count": 8, "frames": "last"}).json()["frames"]
+    assert "png" in steps[-1] and any(frame["event"] == "timeout" for frame in steps)
+
+    assert client.post("/api/runs/pong/evaluate", params={"game": "atari"}, json={"games": 2, "seed": 1000}).status_code == 202
+    status = wait_for_evaluation_of(client, "pong", "atari")
+    assert status["state"] == "finished", status
+    assert status["result"]["evaluation"]["statistics"] == recorded["statistics"]  # seeded: the training-time numbers again
+    assert status["result"]["reproduces"]["identical"] is True
+
+    make_run(paths, "eyes", kind="hybrid", game=tables["game"])
+    compared = client.post("/api/compare", json={"game": "atari", "runs": ["pong", "eyes"]}).json()
+    assert {run["config"]["game"]["title"] for run in compared["runs"]} == {"pong"}
+    assert ("model", "kind") in {(d["section"], d["field"]) for d in compared["differences"]}
+    eyes = client.post("/api/watch", json={"game": "atari", "run": "eyes", "seed": 0}).json()
+    assert [len(eyes["frame"]["heatmap"]), len(eyes["frame"]["heatmap"][0])] == [2, 2]  # the stem's 2 x 2 feature map of a 48 x 48 picture
+
+    other_title = {**tables, "game": {**tables["game"], "title": "venture"}}
+    refused = client.post("/api/runs/pong/fork", params={"game": "atari"}, json={"name": "pong-v2", "config": other_title})
+    assert refused.status_code == 422 and "game.title" in refused.text
+
+
+def test_atari_trains_with_dqn_through_the_api(client: TestClient):
+    started = client.post("/api/runs", json={"name": "pong-dqn", "config": tiny_atari(algorithm="dqn")})
+    assert started.status_code == 201, started.text
+    detail = wait_until_done(client, "pong-dqn", game="atari")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    watch = client.post("/api/watch", json={"game": "atari", "run": "pong-dqn"}).json()
+    assert watch["frame"]["action_values"]["kind"] == "q_values" and len(watch["frame"]["action_values"]["values"]) == 18
