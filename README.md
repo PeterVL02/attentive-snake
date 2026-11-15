@@ -258,6 +258,31 @@ predict (0.006) with somewhat less spread (0.06 against 0.09; no collapse), and 
 change the score. The value gap grows in both (the value decoder is trained on predictions
 only with `value_training = "predicted"`, so that is expected and harmless).
 
+Three seeds (0, 1, 2) of the same setup, to see what the single-seed tables above can carry:
+Snake 6x6, DQN with its Snake defaults, 200k env steps, `prediction_coef = 0`, greedy
+evaluation of 50 games every 50k env steps. Two things differ from the tables above: the step
+cost is the current default (-0.005; the earlier runs had -0.01), and all 15 runs ran at once
+on the CPU with one thread each, so no speeds are given. Mean score (apples) over the three
+seeds, with the lowest and highest seed in brackets:
+
+| run | 50k | 100k | 150k | 200k | games won at 200k (of 150) |
+| --- | --- | --- | --- | --- | --- |
+| `cnn` | 9.4 (8.7-10.0) | 10.4 (9.3-11.6) | 14.2 (13.3-14.8) | 16.9 (16.2-17.3) | 0 |
+| `jepa` | 8.7 (8.4-8.9) | 11.1 (10.6-11.5) | 13.5 (13.3-13.9) | 15.5 (15.3-15.9) | 0 |
+| `hybrid` | 8.5 (8.1-8.8) | 13.4 (12.3-14.0) | 16.4 (15.4-16.9) | 18.9 (18.6-19.3) | 5 |
+| `jepa_attention` | 8.8 (1.9-12.5) | 13.8 (11.8-15.3) | 16.0 (14.7-18.0) | 18.0 (17.6-18.7) | 0 |
+| `jepa_tokens` | 9.4 (6.1-12.0) | 13.4 (11.8-14.9) | 15.8 (14.6-17.9) | 16.6 (16.0-17.1) | 1 |
+
+Reading: at 200k the seeds of one kind lie within about a point of each other, so differences
+of two apples or more are real here and smaller ones are not. The attention encoder helps:
+`hybrid` and `jepa_attention` end 1-3 apples above `cnn` and `jepa`, and their seed ranges do
+not overlap those of `jepa`. The jepa predictor does not: `hybrid` (no predictor) is the best
+kind, `jepa_attention` is slightly below it, `jepa` slightly below `cnn`, and `jepa_tokens` ends
+level with `cnn`, below `hybrid` (ranges do not overlap), which the single-seed 19.0 above did
+not show. The early lead of `jepa_attention` in the single-seed table (12.3 against 6.9 at 50k)
+was seed noise: at 50k its three seeds span 1.9 to 12.5 and its mean equals `hybrid`'s. Three
+seeds are still few; treat this as "attention yes, predictor no gain so far", not as a ranking.
+
 Lunar Lander can hide part of what the model sees: `game.hide_velocities = true` replaces
 the three velocity numbers by zeros (the physics, score and reward still use the true
 state), so a model has to infer them from several frames and memory can matter. The rule
