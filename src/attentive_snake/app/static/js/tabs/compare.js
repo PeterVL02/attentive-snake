@@ -138,7 +138,7 @@ function tableEvaluationMetric() {
 function summaryTable() {
   const evaluated = tableEvaluationMetric();
   const evalHead = evaluated ? [`latest evaluation: ${evaluated.label}`, `best evaluation: ${evaluated.label}`] : [];
-  const head = ["", "run", "algorithm", "parameters", "rules", "final mean score (training)", "best mean score (training)", ...evalHead, "steps / s", "description"];
+  const head = ["", "run", "algorithm", "parameters", "rules", "metrics at step", "final mean score (training)", "best mean score (training)", ...evalHead, "steps / s", "description"];
   const numeric = (t, i) => (i >= 3 && i !== 4 && i < head.length - 1 ? "num" : null);
   return h(
     "table",
@@ -173,6 +173,7 @@ function runTableRow(run, i, evaluated) {
     h("td", { text: run.algorithm ?? "?", title: run.config_error ?? "" }),
     h("td", { class: "num", text: formatNumber(run.parameters) }),
     h("td", { text: rulesSummary(run.rules) }),
+    h("td", { class: "num", text: formatSteps(records.at(-1)?.env_steps) }),
     h("td", { class: "num", text: scores.length ? formatNumber(scores[scores.length - 1], 2) : "–" }),
     h("td", { class: "num", text: scores.length ? formatNumber(Math.max(...scores), 2) : "–" }),
     evaluated ? evaluationCells(run, evaluated) : null,
@@ -187,7 +188,7 @@ function evaluationCells(run, definition) {
   if (values.length === 0) return [h("td", { class: "num muted", text: "not evaluated" }), h("td", { class: "num muted", text: "–" })];
   const best = bestValue(definition, values);
   return [
-    h("td", { class: "num", text: formatMetric(definition, values.at(-1)) }),
+    h("td", { class: "num", text: formatMetric(definition, values.at(-1)), title: `evaluated at ${formatSteps(run.evaluations.at(-1).env_steps)} steps` }),
     h("td", { class: "num", text: definition.higher_is_better === null ? "–" : formatMetric(definition, best) }),
   ];
 }
