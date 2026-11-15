@@ -35,7 +35,7 @@ class TemporalTransformerPolicy(AttentivePolicy):
         require_action_layout(self.observation_spec, self.num_actions)
         d = self.config.d_model
         stage = self._input_stage(TOKEN_STAGES, one_frame(self.observation_spec))
-        self._stage_names, self._positions = tuple(stage.modules), stage.num_tokens
+        self._stage_names, self._positions, self._token_grid = tuple(stage.modules), stage.num_tokens, stage.token_grid
         front: dict[str, nn.Module] = {**stage.modules, "temporal": TemporalEmbedding(self.history_length, d)}
         if self.observation_spec.has_actions:
             front["action_embed"] = ActionEmbedding(self.num_actions, d)
@@ -50,4 +50,5 @@ class TemporalTransformerPolicy(AttentivePolicy):
             num_frames=self.history_length,
             tokens_per_frame=self._positions,
             num_action_tokens=self.history_length if self.observation_spec.has_actions else 0,
+            grid=self._token_grid,
         )

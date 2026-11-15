@@ -2,30 +2,30 @@
 
 Roles (each builder is ``(StageInput, ModelConfig) -> Stage``):
 
-* ``TOKEN_STAGES``: one token per position (grid cell / vector element), ``d_model`` wide.
+* ``TOKEN_STAGES``: one token per position (grid cell / vector element / image patch), ``d_model`` wide.
 * ``FEATURE_STAGES``: the whole input -> one ``d_model`` vector.
 * ``FRAME_STAGES``: one frame -> one ``d_model`` vector (same as ``FEATURE_STAGES`` but for
   the names grid checkpoints already use; residual blocks when ``ModelConfig.residual``).
 * ``RESIDUAL_STAGES``: like ``FEATURE_STAGES`` with residual blocks (two layers and a skip each).
 * ``HYBRID_STAGES``: a local/per-position stem (residual blocks when ``ModelConfig.residual``), then one token per position.
 
-Adding an observation kind (e.g. ``"image"``: patches as tokens, convolutions as stem)
-means one new module next to ``grid.py`` / ``vector.py`` and an entry in each table it serves.
+An observation kind is one module (``grid.py``, ``vector.py``, ``image.py``) and an entry in each
+table it serves. ``image`` has no residual stage, so the ``resnet`` kind does not read images.
 """
 
 from collections.abc import Callable, Mapping
 
 from attentive_snake.models.config import ModelConfig
-from attentive_snake.models.input_stages import grid, vector
+from attentive_snake.models.input_stages import grid, image, vector
 from attentive_snake.models.input_stages.stage import Stage, StageInput
 
 type StageBuilder = Callable[[StageInput, ModelConfig], Stage]
 
-TOKEN_STAGES: Mapping[str, StageBuilder] = {"grid": grid.token_stage, "vector": vector.token_stage}
-FEATURE_STAGES: Mapping[str, StageBuilder] = {"grid": grid.feature_stage, "vector": vector.feature_stage}
-FRAME_STAGES: Mapping[str, StageBuilder] = {"grid": grid.frame_stage, "vector": vector.frame_stage}
+TOKEN_STAGES: Mapping[str, StageBuilder] = {"grid": grid.token_stage, "vector": vector.token_stage, "image": image.token_stage}
+FEATURE_STAGES: Mapping[str, StageBuilder] = {"grid": grid.feature_stage, "vector": vector.feature_stage, "image": image.feature_stage}
+FRAME_STAGES: Mapping[str, StageBuilder] = {"grid": grid.frame_stage, "vector": vector.frame_stage, "image": image.frame_stage}
 RESIDUAL_STAGES: Mapping[str, StageBuilder] = {"grid": grid.residual_stage, "vector": vector.residual_stage}
-HYBRID_STAGES: Mapping[str, StageBuilder] = {"grid": grid.hybrid_stage, "vector": vector.hybrid_stage}
+HYBRID_STAGES: Mapping[str, StageBuilder] = {"grid": grid.hybrid_stage, "vector": vector.hybrid_stage, "image": image.hybrid_stage}
 
 
 def readable_kinds(*tables: Mapping[str, StageBuilder]) -> tuple[str, ...]:
