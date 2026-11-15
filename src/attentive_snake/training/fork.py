@@ -13,6 +13,9 @@ def fork_from_checkpoint(trainer: Trainer, path: Path) -> int:
     rate before every iteration from its own config, so a changed ``learning_rate`` (or
     ``anneal_lr``) takes effect from the first one. Adam's moment estimates are carried
     over in every case; they are running statistics of the gradients and do not depend on
-    the learning rate. Call after building the trainer and before ``trainer.train()``.
+    the learning rate. A changed ``weight_decay`` takes effect from the first step too (on,
+    off or another value; the optimizer is built from the new run's config and each
+    parameter gets its own saved moments back, ``training.optimizer_state``).
+    Call after building the trainer and before ``trainer.train()``.
     """
     return trainer.restore(path, keep_step_count=False)

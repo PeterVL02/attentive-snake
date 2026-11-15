@@ -48,6 +48,7 @@ total_env_steps = 2000000     # summed over all envs; train.py --steps overrides
 gamma = 0.999                 # landing pays off hundreds of steps after the decisive actions
 bootstrap_truncated = true     # the time limit is not a landing or a crash: value the cut state, do not count it as an end
 learning_rate = 0.0003
+weight_decay = 0.0            # 0 = plain Adam; above 0 = AdamW, shrinking the weight matrices (not biases, norms, embeddings) each step
 anneal_lr = true             # linear decay to 0 over total_env_steps
 device = "auto"               # "auto" = cuda if available, else cpu
 seed = 0

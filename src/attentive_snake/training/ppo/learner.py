@@ -9,6 +9,7 @@ import torch
 from attentive_snake.env.types import EpisodeSummary
 from attentive_snake.training.algorithm import LearnerSetup
 from attentive_snake.training.auxiliary import AuxiliaryTraining
+from attentive_snake.training.optimizer import build_optimizer
 from attentive_snake.training.ppo.collector import RolloutCollector
 from attentive_snake.training.ppo.rollout import RolloutBuffer, compute_gae, flatten_rollout
 from attentive_snake.training.ppo.truncation import TruncationBootstrap
@@ -26,7 +27,7 @@ class PpoLearner:
         train, settings, env = setup.train, setup.settings, setup.env
         self.policy = setup.policy
         self._train, self._settings = train, settings
-        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=train.learning_rate, eps=1e-5)
+        self.optimizer = build_optimizer(self.policy, train, eps=1e-5)
         self._shuffle_generator = torch.Generator().manual_seed(train.seed)
         self._auxiliary = AuxiliaryTraining.of(self.policy)
         self._buffer = RolloutBuffer.allocate(

@@ -4,7 +4,6 @@ from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
-import torch
 
 from attentive_snake.env.types import EpisodeSummary
 from attentive_snake.training.algorithm import LearnerSetup
@@ -17,6 +16,7 @@ from attentive_snake.training.dqn.loss import ERROR_LOSSES
 from attentive_snake.training.dqn.replay import ReplayBuffer
 from attentive_snake.training.dqn.target import TargetNetwork
 from attentive_snake.training.dqn.update import dqn_gradient_step
+from attentive_snake.training.optimizer import build_optimizer
 from attentive_snake.training.schedule import crossed_multiple
 
 EXPLORATION_STREAM, REPLAY_STREAM = 1, 2  # independent numpy streams derived from the seed
@@ -37,7 +37,7 @@ class DqnLearner:
         train, settings, env = setup.train, setup.settings, setup.env
         self.policy = setup.policy
         self._train, self._settings, self._device = train, settings, setup.device
-        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=train.learning_rate)
+        self.optimizer = build_optimizer(self.policy, train, eps=1e-8)
         self._target = TargetNetwork(self.policy)  # a copy of the policy only: an auxiliary objective's state is not in it
         self._auxiliary = AuxiliaryTraining.of(self.policy)
         self._env_steps = 0  # env steps taken so far, for the beta schedule
