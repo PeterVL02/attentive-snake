@@ -1,5 +1,5 @@
 // The "board" view kind: a watched frame drawn on a canvas as a grid with the attention heatmap,
-// the player body (distinct head) and the target cell (payload keys: see views/board.py).
+// the player body (distinct head) and the target cells (payload keys: see views/board.py).
 
 import { cssVar, h } from "./dom.js";
 
@@ -11,7 +11,7 @@ function roundedRect(ctx, x, y, w, h, r) {
   ctx.fill();
 }
 
-/** Draw `frame` ({width, height, snake, food, heatmap}) into `canvas`. */
+/** Draw `frame` ({width, height, snake, foods, heatmap}) into `canvas`. */
 export function drawBoard(canvas, frame) {
   const cell = Math.max(12, Math.floor(MAX_BOARD_PX / Math.max(frame.width, frame.height)));
   const width = cell * frame.width;
@@ -64,13 +64,12 @@ export function drawBoard(canvas, frame) {
     ctx.arc(hx * cell + cell / 2, hy * cell + cell / 2, cell * 0.11, 0, 2 * Math.PI);
     ctx.fill();
   }
-  if (frame.food) {
-    const [fx, fy] = frame.food;
-    ctx.fillStyle = cssVar("--food");
+  ctx.fillStyle = cssVar("--food");
+  frame.foods.forEach(([fx, fy]) => {
     ctx.beginPath();
     ctx.arc(fx * cell + cell / 2, fy * cell + cell / 2, cell * 0.3, 0, 2 * Math.PI);
     ctx.fill();
-  }
+  });
 }
 
 /** The board view for the Watch tab: {el, draw(frame)}. */

@@ -18,7 +18,8 @@ section) or `dqn` (the `[dqn]` section). `configs/<game>/default.toml` holds the
 uv run python -m attentive_snake.games.snake.play --width 10 --height 10 --fps 8 --cell-size 30
 ```
 
-Arrow keys or WASD steer, `R` restarts after a game over, `Esc` quits.
+Arrow keys or WASD steer, `R` restarts after a game over, `Esc` quits. `--food-count 3` puts several apples on the
+board and `--center-food` makes them appear near the middle.
 
 ## Start a training run
 
@@ -34,6 +35,9 @@ uv run python scripts/train.py --run-dir runs/snake/mine --config configs/mine.t
 
 # Command-line overrides (new runs only; they win over the config file)
 uv run python scripts/train.py --run-dir runs/snake/small --width 6 --height 6 --num-envs 32 --seed 1 --steps 2000000
+
+# Snake rules: three apples at once, new apples near the middle of the board
+uv run python scripts/train.py --run-dir runs/snake/3apples --set game.food_count=3 --set game.food_distribution=center --set game.food_spread=2
 
 # Any single setting, a description, and keeping only the latest checkpoint
 uv run python scripts/train.py --run-dir runs/snake/lr-test --set train.learning_rate=1e-4 --set reward.step=0 \
@@ -130,6 +134,9 @@ uv run python scripts/train.py --run-dir runs/snake/8x8-lowlr --fork runs/snake/
 uv run python scripts/train.py --run-dir runs/snake/8x8-food2 --fork runs/snake/8x8 --fork-checkpoint checkpoint_0000500000.pt \
     --set reward.food=2 --steps 2000000 --description "food worth more"
 
+# Back to the standard game after training with several apples (a curriculum; the apple rules are not locked)
+uv run python scripts/train.py --run-dir runs/snake/8x8-single --fork runs/snake/8x8-3apples --set game.food_count=1
+
 # From an edited copy of the parent's config
 cp runs/snake/8x8/config.toml configs/8x8-variant.toml   # edit it, then:
 uv run python scripts/train.py --run-dir runs/snake/8x8-variant --fork runs/snake/8x8 --config configs/8x8-variant.toml
@@ -143,7 +150,7 @@ uv run python scripts/train.py --run-dir runs/snake/8x8-variant --fork runs/snak
 - Its settings are the parent's `config.toml` (or `--config`) plus `--set`, `--steps`, `--num-envs`, `--seed`,
   `--keep-checkpoints`. Everything under `[reward]`, `[train]` (but `train.algorithm`) and the algorithm's section
   (`[ppo]` / `[dqn]`), `env.num_envs` and the game rules the game does not lock (Snake:
-  `game.max_steps_without_food`) may change. The game (`game.name`), the algorithm (`train.algorithm`: the weights
+  `game.max_steps_without_food`, `game.food_count`, `game.food_distribution`, `game.food_spread`) may change. The game (`game.name`), the algorithm (`train.algorithm`: the weights
   end in its head), all of `[model]` except jepa's `prediction_coef`, `value_training`, `prediction_trains_encoder` and `target_ema` (they
   change how it is trained, not the network), `env.history_length`, `env.history_actions` and the rules the game locks (Snake: `game.width`, `game.height`,
   `game.initial_length`) must equal the parent's (the weights would not fit, or the input would change meaning);

@@ -7,13 +7,13 @@ from attentive_snake.games.snake.engine import SnakeGame
 from attentive_snake.games.snake.types import Action, StepEvent
 
 
-def make_game(config: SnakeConfig, snake, direction=Action.RIGHT, food=None, seed=0) -> SnakeGame:
+def make_game(config: SnakeConfig, snake, direction=Action.RIGHT, food=None, seed=0, foods=None) -> SnakeGame:
     """Build a game in a hand-crafted state (pokes private attributes)."""
     game = SnakeGame(config, seed=seed)
     game._snake = deque(snake)
     game._occupied = set(snake)
     game._direction = direction
-    game._food = food
+    game._foods = list(foods) if foods is not None else ([] if food is None else [food])
     return game
 
 
@@ -25,7 +25,7 @@ def test_reset_layout():
     assert len(ys) == 1
     assert xs == sorted(xs, reverse=True) and xs[0] - xs[-1] == 2
     assert state.direction == Action.RIGHT
-    assert state.food is not None and state.food not in state.snake
+    assert len(state.foods) == 1 and state.foods[0] not in state.snake
     assert (state.score, state.steps, state.steps_since_food, state.done) == (0, 0, 0, False)
 
 
@@ -94,7 +94,7 @@ def test_eating_grows_and_scores():
     assert result.state.snake == ((3, 2), (2, 2), (1, 2))
     assert result.state.score == 1
     assert result.state.steps_since_food == 0
-    assert result.state.food is not None and result.state.food not in result.state.snake
+    assert len(result.state.foods) == 1 and result.state.foods[0] not in result.state.snake
 
 
 def test_starvation():
@@ -123,7 +123,7 @@ def test_win_on_tiny_grid():
     result = game.step(Action.LEFT)
     assert result.event is StepEvent.WON
     assert result.state.done
-    assert result.state.food is None
+    assert result.state.foods == ()
     assert len(result.state.snake) == 6
     assert result.state.score == 1
 

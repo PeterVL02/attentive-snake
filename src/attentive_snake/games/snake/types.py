@@ -73,7 +73,7 @@ class GameState:
         width, height: Grid size.
         snake: Body cells, head first, tail last.
         direction: Current heading of the snake.
-        food: Food cell, or ``None`` when the grid is full (game won).
+        foods: Apple cells (up to ``SnakeConfig.food_count``); empty when the grid is full (game won).
         score: Number of food items eaten.
         steps: Steps taken since the game started.
         steps_since_food: Steps taken since food was last eaten (or since start).
@@ -84,7 +84,7 @@ class GameState:
     height: int
     snake: tuple[Position, ...]
     direction: Action
-    food: Position | None
+    foods: tuple[Position, ...]
     score: int
     steps: int
     steps_since_food: int

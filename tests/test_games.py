@@ -108,4 +108,4 @@ def test_a_dropped_in_game_trains_and_is_watched_through_the_generic_code(extra_
     assert (session.info["game"], session.info["view_kind"], session.info["width"]) == ("walk", "board", 4)
     frames = [session.step().to_dict() for _ in range(5)]
     assert all(frame["view_kind"] == "board" and len(frame["snake"]) == 1 for frame in frames)
-    assert make_env(config).view()["food"] == [3, 0]
+    assert make_env(config).view()["foods"] == [[3, 0]]

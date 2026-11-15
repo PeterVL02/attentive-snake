@@ -4,6 +4,7 @@ import random
 from collections import deque
 
 from attentive_snake.games.snake.config import SnakeConfig
+from attentive_snake.games.snake.food_placement import FoodPlacer
 from attentive_snake.games.snake.types import Action, GameState, Position, StepEvent, StepResult
 
 
@@ -17,10 +18,11 @@ class SnakeGame:
     def __init__(self, config: SnakeConfig, seed: int | None = None) -> None:
         self._config = config
         self._rng = random.Random(seed)
+        self._placer = FoodPlacer(config)
         self._snake: deque[Position] = deque()
         self._occupied: set[Position] = set()
         self._direction = Action.RIGHT
-        self._food: Position | None = None
+        self._foods: list[Position] = []
         self._score = 0
         self._steps = 0
         self._steps_since_food = 0
@@ -34,7 +36,7 @@ class SnakeGame:
             height=self._config.height,
             snake=tuple(self._snake),
             direction=self._direction,
-            food=self._food,
+            foods=tuple(self._foods),
             score=self._score,
             steps=self._steps,
             steps_since_food=self._steps_since_food,
@@ -51,7 +53,9 @@ class SnakeGame:
         self._steps = 0
         self._steps_since_food = 0
         self._done = False
-        self._food = self._spawn_food()
+        self._foods = []
+        for _ in range(self._config.food_count):
+            self._spawn_food()
         return self.state
 
     def step(self, action: Action) -> StepResult:
@@ -67,7 +71,7 @@ class SnakeGame:
         if collision is not None:
             return self._finish(collision)
 
-        ate = new_head == self._food
+        ate = new_head in self._foods
         self._advance_snake(new_head, grow=ate)
         if ate:
             return self._after_eating()
@@ -82,7 +86,7 @@ class SnakeGame:
     def _collision_event(self, new_head: Position) -> StepEvent | None:
         if not self._in_bounds(new_head):
             return StepEvent.HIT_WALL
-        grows = new_head == self._food
+        grows = new_head in self._foods
         # The tail cell is vacated this step unless the snake grows.
         tail_vacates = not grows and new_head == self._snake[-1]
         if new_head in self._occupied and not tail_vacates:
@@ -101,8 +105,9 @@ class SnakeGame:
     def _after_eating(self) -> StepResult:
         self._score += 1
         self._steps_since_food = 0
-        self._food = self._spawn_food()
-        if self._food is None:
+        self._foods.remove(self._snake[0])
+        self._spawn_food()
+        if not self._foods:
             return self._finish(StepEvent.WON)
         return StepResult(self.state, StepEvent.ATE_FOOD)
 
@@ -122,15 +127,16 @@ class SnakeGame:
         self._snake = deque(cells)
         self._occupied = set(cells)
 
-    def _spawn_food(self) -> Position | None:
-        """Random free cell, or None when the snake fills the grid. O(grid)."""
+    def _spawn_food(self) -> None:
+        """Add one apple on a free cell (not snake, not apple); nothing if there is none. O(grid)."""
         free = [
             (x, y)
             for y in range(self._config.height)
             for x in range(self._config.width)
-            if (x, y) not in self._occupied
+            if (x, y) not in self._occupied and (x, y) not in self._foods
         ]
-        return self._rng.choice(free) if free else None
+        if free:
+            self._foods.append(self._placer.choose(free, self._rng))
 
 
 def _move(pos: Position, direction: Action) -> Position:

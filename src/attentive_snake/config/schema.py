@@ -68,8 +68,14 @@ def _field_row(field: dataclasses.Field, annotation: Any, cls: type) -> dict[str
         "default": default.as_posix() if isinstance(default, Path) else default,
         "nullable": _is_nullable(annotation),
         "description": field.metadata["help"],
-        "choices": list(_CHOICES[cls.__name__, field.name]) if (cls.__name__, field.name) in _CHOICES else None,
+        "choices": _choices(field, cls),
     }
+
+
+def _choices(field: dataclasses.Field, cls: type) -> list[str] | None:
+    """The allowed values: the table above, or a field's own ``metadata["choices"]`` (a game's rules)."""
+    options = _CHOICES.get((cls.__name__, field.name), field.metadata.get("choices"))
+    return None if options is None else list(options)
 
 
 def _kind_row(kind: str, observation_kind: str) -> dict[str, Any]:

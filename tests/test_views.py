@@ -13,8 +13,9 @@ from attentive_snake.watch.frame import WatchFrame
 
 
 def test_board_payload() -> None:
-    assert board_payload(5, 4, [(2, 1), (1, 1)], (4, 3)) == {"width": 5, "height": 4, "snake": [[2, 1], [1, 1]], "food": [4, 3]}
-    assert board_payload(5, 4, [], None)["food"] is None
+    assert board_payload(5, 4, [(2, 1), (1, 1)], [(4, 3)]) == {"width": 5, "height": 4, "snake": [[2, 1], [1, 1]], "foods": [[4, 3]]}
+    assert board_payload(5, 4, [], [(0, 0), (1, 2)])["foods"] == [[0, 0], [1, 2]]
+    assert board_payload(5, 4, [], [])["foods"] == []
 
 
 def test_image_payload_is_a_decodable_png() -> None:

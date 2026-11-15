@@ -50,7 +50,7 @@ def test_rollout_shape_range():
 def test_renderer_heatmap_smoke():
     state = GameState(
         width=W, height=H, snake=((1, 1), (0, 1)), direction=Action.RIGHT,
-        food=(3, 2), score=0, steps=0, steps_since_food=0, done=False,
+        foods=((3, 2),), score=0, steps=0, steps_since_food=0, done=False,
     )
     r = BoardWindow(W, H, cell_size=10)
     try:

@@ -51,7 +51,7 @@ class WalkEnv:
         return EnvStep(self._observation(), reward, won, cut, event, float(self._position))
 
     def view(self) -> dict[str, Any]:
-        return board_payload(self._rules.length, 1, [(self._position, 0)], (self._rules.length - 1, 0))
+        return board_payload(self._rules.length, 1, [(self._position, 0)], [(self._rules.length - 1, 0)])
 
     def _observation(self) -> np.ndarray:
         obs = np.zeros(self.observation_shape, dtype=np.float32)
