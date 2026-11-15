@@ -441,12 +441,11 @@ def training_warnings_for(client: TestClient, tables: dict, game: str = "snake")
 
 
 def test_training_warnings_route(client: TestClient, paths: AppPaths):
-    tables = tiny_tables()  # default reward: step -0.01, death -1; gamma 0.99
+    tables = tiny_tables()  # default reward: step -0.005, death -1; gamma 0.99: below the limit
+    assert training_warnings_for(client, tables).json() == {"warnings": []}
+    tables["reward"] = {"step": -0.01}
     (text,) = training_warnings_for(client, tables).json()["warnings"]
     assert "step cost of -0.01" in text
-    tables["reward"] = {"step": -0.001}
-    assert training_warnings_for(client, tables).json() == {"warnings": []}
-    tables["reward"] = {}
     tables["train"]["gamma"] = 0.5
     assert training_warnings_for(client, tables).json() == {"warnings": []}
     assert not paths.runs_dir.exists()

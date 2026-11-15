@@ -23,7 +23,7 @@ class SnakeRewardConfig:
     death: float = field(default=-1.0, metadata={"help": "Reward for hitting a wall or the snake's own body. Make it more negative to make the snake more careful."})
     win: float = field(default=1.0, metadata={"help": "Reward for filling the whole board. Very rare on large boards, so it mostly matters on small ones."})
     starved: float = field(default=-1.0, metadata={"help": "Reward when the game is cut off for taking too many steps without food (see max_steps_without_food in the game section). Usually negative to discourage wandering."})
-    step: float = field(default=-0.01, metadata={"help": "Small cost added on every step that does not end the game. A negative value pushes the snake to reach food quickly; 0 removes the pressure."})
+    step: float = field(default=-0.005, metadata={"help": "Small cost added on every step that does not end the game. A negative value pushes the snake to reach food quickly; 0 removes the pressure. Keep it small next to the death penalty: once step / (1 - gamma) reaches it (-0.01 with gamma 0.99 and death -1), a snake that finds no food loses nothing by dying."})
     closer_to_food: float = field(default=0.0, metadata={"help": "Shaping bonus for a plain move that brings the head nearer to the food (Manhattan distance). A positive value gives hints, but can teach the snake to chase food rather than survive."})
     farther_from_food: float = field(default=0.0, metadata={"help": "Shaping value for a plain move that takes the head farther from the food. Use a negative value to penalise moving away."})
 

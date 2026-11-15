@@ -65,12 +65,12 @@ def test_reward_table_rows_cover_every_situation_and_are_consistent() -> None:
 
 def test_reward_table_default_values() -> None:
     rewards = _rewards(SnakeRewardConfig())
-    assert rewards["Eat food at score 0"] == pytest.approx(0.99)
-    assert rewards["Eat food at score 5"] == pytest.approx(0.99)
+    assert rewards["Eat food at score 0"] == pytest.approx(0.995)
+    assert rewards["Eat food at score 5"] == pytest.approx(0.995)
     assert rewards["Hit a wall"] == -1.0 and rewards["Hit itself"] == -1.0
     assert rewards["Starve (too long without food)"] == -1.0
     assert rewards["Win (fill the board)"] == 1.0
-    assert rewards["Move closer to the food"] == rewards["Move farther from the food"] == pytest.approx(-0.01)
+    assert rewards["Move closer to the food"] == rewards["Move farther from the food"] == pytest.approx(-0.005)
 
 
 def test_reward_table_reflects_growth_and_shaping() -> None:

@@ -58,7 +58,7 @@ def test_reward_defaults_no_shaping():
     f = build_reward(SnakeRewardConfig())
     prev = make_state([(2, 2), (1, 2)], (5, 2))
     new = make_state([(3, 2), (2, 2)], (5, 2))
-    assert f(prev, result(new, StepEvent.MOVED)) == pytest.approx(-0.01)
+    assert f(prev, result(new, StepEvent.MOVED)) == pytest.approx(-0.005)
 
 
 def test_env_accepts_custom_reward():

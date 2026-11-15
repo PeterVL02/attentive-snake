@@ -6,6 +6,6 @@ food_growth = 0.0             # extra food reward per point of score before eati
 death = -1.0                  # hit a wall or itself
 win = 1.0                     # filled the grid
 starved = -1.0                # hit max_steps_without_food
-step = -0.01                  # living cost on every non-final step
+step = -0.005                 # living cost on every non-final step; keep |step| / (1 - gamma) below |death|
 closer_to_food = 0.0          # shaping: plain move that reduces the distance to food
 farther_from_food = 0.0       # shaping: plain move that increases it
