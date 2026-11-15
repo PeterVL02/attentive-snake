@@ -173,7 +173,7 @@ The window shows the run's game (it reads the game from the run's `config.toml`)
 
 | model kind | `--attention` shows (board games) | (vector games such as Lunar Lander) |
 | --- | --- | --- |
-| `transformer`, `hybrid` | heatmap of what the class token attends to on the board (`--layer` applies, `--frame` must stay -1/0) | one weight per input number in the window title, e.g. `x 0.12, y 1.00, ...` |
+| `transformer`, `hybrid`, `jepa_attention` | heatmap of what the class token attends to on the board (`--layer` applies, `--frame` must stay -1/0) | one weight per input number in the window title, e.g. `x 0.12, y 1.00, ...` |
 | `temporal_transformer` | heatmap for one of the history frames (`--layer`, `--frame`) | one weight per number of one history frame (`--frame`) |
 | `frame_attention` | one weight per history frame, printed in the window title (`--layer`) | the same |
 | `cnn`, `resnet`, `lstm`, `jepa`, `mlp` | nothing: there is no attention, so `--attention` is refused | the same |
@@ -305,6 +305,7 @@ Set `kind` in `[model]` and `history_length` / `history_actions` in `[env]`.
 | `frame_attention` | CNN per frame, attention across frames | MLP per frame, attention across frames | `history_length = 4`, `history_actions = true` |
 | `lstm` | CNN per frame, an LSTM over the frames | MLP per frame, an LSTM over the frames | `history_length = 4` or more, `history_actions = true` |
 | `jepa` | CNN encoder, a predictor of each action's next-state embedding, a value decoder; acts on the predicted values | the same with an MLP encoder | `history_length = 1` |
+| `jepa_attention` | `jepa` with `hybrid`'s encoder (conv stem, transformer over cells, class token = the embedding) | the same with hybrid's per-number stem | `history_length = 1` |
 | `mlp` | flattened board, weak baseline | plain MLP; recommended | `history_length = 1` |
 
 The non-temporal kinds see stacked frames only as extra input channels (extra values per number). Which `[model]` fields each kind uses
@@ -319,7 +320,7 @@ from one env step to the next and is not stored in the DQN replay buffer. `kind 
 attention, so Watch shows no attention panel for them. `resnet` uses `d_model`, `conv_channels`, `conv_layers` (the number of
 residual blocks) and, on boards, `kernel_size`; `lstm` uses those plus `num_layers` (LSTM layers) with `conv_*` building its per-frame encoder.
 
-`model.residual = true` (`hybrid`, `frame_attention`, `lstm`; off by default, locked when forking) builds their convolutional
+`model.residual = true` (`hybrid`, `jepa_attention`, `frame_attention`, `lstm`; off by default, locked when forking) builds their convolutional
 stem (an MLP on numbers; for the other two the per-frame encoder) from `resnet`'s residual blocks instead of plain layers, e.g.
 `--set model.kind=hybrid --set model.residual=true`. Other kinds ignore it.
 
@@ -343,7 +344,16 @@ embedding into a value. With DQN, Q(s, a) = value of the embedding action a is p
 the action whose predicted next state is worth most. With PPO the policy scores the predicted embeddings (its own
 decoder) and the value decoder values the current embedding.
 
-Four `[model]` settings belong to it, and unlike the rest of `[model]` they may change when forking a run:
+`kind = "jepa_attention"` is the same world model with `hybrid`'s encoder: a conv stem (an MLP per number on vectors),
+a transformer over the cells (numbers) and the class token's output as the embedding. Its `num_layers` sets both the
+number of transformer blocks and the predictor's depth; `num_heads`, `mlp_ratio`, `dropout` and `residual` work as for
+`hybrid`, and `watch.py --attention` / the Watch tab show its encoder's attention. Everything below applies to both kinds:
+
+```bash
+uv run python scripts/train.py --run-dir runs/snake/jepa-attention --set train.algorithm=dqn --set model.kind=jepa_attention
+```
+
+Four `[model]` settings belong to them, and unlike the rest of `[model]` they may change when forking a run:
 
 - `prediction_coef` (default 0.0 = off): weight of the prediction loss, which makes the embedding predicted for the action
   taken match a slowly updated (EMA) copy of the encoder's embedding of the real next state. Above 0 it is on; measurements

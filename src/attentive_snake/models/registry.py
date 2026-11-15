@@ -11,6 +11,7 @@ from attentive_snake.models.policies.cnn import CnnPolicy
 from attentive_snake.models.policies.frame_attention import FrameAttentionPolicy
 from attentive_snake.models.policies.hybrid import HybridPolicy
 from attentive_snake.models.policies.jepa import JepaPolicy
+from attentive_snake.models.policies.jepa_attention import JepaAttentionPolicy
 from attentive_snake.models.policies.lstm import LstmPolicy
 from attentive_snake.models.policies.mlp import MlpPolicy
 from attentive_snake.models.policies.resnet import ResnetPolicy
@@ -28,6 +29,7 @@ _BUILDERS: dict[str, Callable[..., nn.Module]] = {
     "frame_attention": FrameAttentionPolicy,
     "lstm": LstmPolicy,
     "jepa": JepaPolicy,
+    "jepa_attention": JepaAttentionPolicy,
     "mlp": MlpPolicy,
 }
 
@@ -49,6 +51,12 @@ _JEPA_HOW = (
     "of the state that really followed (JEPA-style). "
     "By default that loss trains the predictor only (prediction_trains_encoder, which matters only when the loss is on). "
     "value_training (DQN) chooses whether the value decoder learns from the predicted next embedding (recommended) or from the real one (did not learn in our tests). Experimental."
+)
+
+_JEPA_FIELDS = ("prediction_coef", "value_training", "prediction_trains_encoder", "target_ema")
+_JEPA_ATTENTION_HOW = (
+    "The class token's output is the embedding (num_layers sets both the number of transformer blocks and the predictor's depth); "
+    "from there it is the jepa kind: " + _JEPA_HOW + " The attention shown is the encoder's, as for hybrid. With residual = true the stem is built from residual blocks."
 )
 
 KIND_INFO: dict[str, KindInfo] = {
@@ -182,7 +190,7 @@ KIND_INFO: dict[str, KindInfo] = {
         },
     ),
     "jepa": KindInfo(
-        ("d_model", "num_layers", *CONV_FIELDS, "prediction_coef", "value_training", "prediction_trains_encoder", "target_ema"),
+        ("d_model", "num_layers", *CONV_FIELDS, *_JEPA_FIELDS),
         False,
         None,
         {
@@ -193,6 +201,25 @@ KIND_INFO: dict[str, KindInfo] = {
             "vector": InputReading(
                 "A world model that acts by predicting where each action leads. An MLP encoder (conv_channels wide, conv_layers deep, as in cnn) "
                 "turns the numbers into an embedding, " + _JEPA_HOW,
+                False,
+                NO_KERNEL,
+            ),
+        },
+        JEPA_METRICS,
+    ),
+    "jepa_attention": KindInfo(
+        (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual", *_JEPA_FIELDS),
+        False,
+        "grid",
+        {
+            "grid": InputReading(
+                "The jepa world model with an attention encoder: as in hybrid, a convolutional stem summarises each cell's neighbourhood "
+                "and a transformer attends over the cells. " + _JEPA_ATTENTION_HOW,
+                False,
+            ),
+            "vector": InputReading(
+                "The jepa world model with an attention encoder: as in hybrid, a small MLP turns every number into a token "
+                "(conv_channels wide, conv_layers deep) and a transformer attends over these tokens. " + _JEPA_ATTENTION_HOW,
                 False,
                 NO_KERNEL,
             ),
