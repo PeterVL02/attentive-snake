@@ -12,6 +12,9 @@ width = 8
 height = 8
 initial_length = 3
 max_steps_without_food = 128  # starvation limit; comment out for no limit (None)
+food_distribution = "uniform"  # where new apples appear: "uniform" (any free cell) or "center" (near the middle)
+food_spread = 2.0  # with "center": standard deviation in cells of the apple's distance from the middle
+food_count = 1  # apples on the board at once (a new one appears when one is eaten)
 
 # [reward]: not listed here. The default reward values live in one place, the
 # reward scheme configs/snake/rewards/default.toml (= attentive_snake.games.snake.reward.SnakeRewardConfig()),

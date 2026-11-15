@@ -14,7 +14,7 @@ from attentive_snake.games.snake.types import Action, GameState, StepEvent, Step
 
 
 def state(snake, food, score=0):
-    return GameState(8, 8, tuple(snake), Action.RIGHT, food, score, 0, 0, False)
+    return GameState(8, 8, tuple(snake), Action.RIGHT, () if food is None else (food,), score, 0, 0, False)
 
 
 PREV = state([(2, 2), (1, 2)], (5, 2), score=3)

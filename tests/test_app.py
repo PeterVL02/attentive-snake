@@ -808,6 +808,29 @@ def test_lunar_lander_hidden_velocities_in_the_schema_and_a_watched_lstm(client:
     assert detail["config"]["game"]["hide_velocities"] is True
 
 
+def test_the_apple_rules_are_form_rows_and_a_run_with_them_trains_and_is_watched_with_every_apple(client: TestClient):
+    schema = client.get("/api/schema").json()
+    rows = {row["name"]: row for row in schema["sections"]["game"]}
+    assert rows["food_distribution"]["choices"] == ["uniform", "center"] and rows["food_distribution"]["default"] == "uniform"
+    assert rows["food_spread"]["type"] == "float" and rows["food_spread"]["default"] == 2.0 and rows["food_spread"]["choices"] is None
+    assert rows["food_count"]["type"] == "int" and rows["food_count"]["default"] == 1
+    assert all(rows[name]["description"] for name in ("food_distribution", "food_spread", "food_count"))
+    assert client.get("/api/fork-rules").json()["locked"].keys().isdisjoint({"game.food_count", "game.food_distribution", "game.food_spread"})
+
+    tables = tiny_tables()
+    tables["game"].update({"food_count": 3, "food_distribution": "center", "food_spread": 1.5})
+    assert client.post("/api/runs", json={"name": "apples", "config": tables}).status_code == 201
+    detail = wait_until_done(client, "apples")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert detail["config"]["game"]["food_count"] == 3 and detail["config"]["game"]["food_distribution"] == "center"
+    assert client.get("/api/runs").json()[0]["rules"]["food_count"] == 3
+    body = client.post("/api/watch", json={"run": "apples", "seed": 0}).json()
+    assert len(body["frame"]["foods"]) == 3
+    frames = client.post(f"/api/watch/{body['id']}/step", json={"count": 3}).json()["frames"]
+    assert all(len(frame["foods"]) == 3 for frame in frames if "foods" in frame and not frame["done"])
+    assert client.post("/api/runs", json={"name": "bad", "config": {**tables, "game": {**tables["game"], "food_count": 0}}}).status_code == 422
+
+
 # --------------------------------------------------------------------------- evaluation
 
 

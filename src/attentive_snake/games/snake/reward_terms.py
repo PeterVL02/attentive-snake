@@ -19,6 +19,10 @@ def _manhattan(a: Position, b: Position) -> int:
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
+def _nearest_food_distance(state: GameState) -> int:
+    return min(_manhattan(state.head, food) for food in state.foods)
+
+
 @dataclass(frozen=True)
 class FoodReward:
     """On ATE_FOOD: ``food + growth * score_before_eating``.
@@ -85,7 +89,7 @@ class StepCost:
 @dataclass(frozen=True)
 class FoodDistanceShaping:
     """On a plain MOVED step: ``closer`` if the head's Manhattan distance to the
-    food decreased, ``farther`` if it increased, else 0."""
+    nearest apple decreased, ``farther`` if it increased, else 0."""
 
     closer: float = 0.0
     farther: float = 0.0
@@ -93,10 +97,10 @@ class FoodDistanceShaping:
 
     def __call__(self, previous: GameState, result: StepResult) -> float:
         new = result.state
-        if result.event is not StepEvent.MOVED or previous.food is None or new.food is None:
+        if result.event is not StepEvent.MOVED or not previous.foods or not new.foods:
             return 0.0
-        before = _manhattan(previous.head, previous.food)
-        after = _manhattan(new.head, new.food)
+        before = _nearest_food_distance(previous)
+        after = _nearest_food_distance(new)
         if after < before:
             return self.closer
         if after > before:

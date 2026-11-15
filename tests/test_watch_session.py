@@ -56,7 +56,7 @@ def test_every_kind_yields_json_frames_with_the_declared_attention(runs, kind) -
         assert json.loads(json.dumps(frame.to_dict())) == frame.to_dict()
         board = frame.to_dict()
         assert board["view_kind"] == "board" and (board["width"], board["height"]) == (5, 5)
-        assert board["snake"] == frame.view["snake"] and "food" in board
+        assert board["snake"] == frame.view["snake"] and "foods" in board
         live = not frame.done
         view = KIND_INFO[kind].attention_view
         if view in ("grid", "frames"):

@@ -20,7 +20,7 @@ def states(venv):
 
 
 def make_state(snake, food, w=6, h=5, done=False):
-    return GameState(w, h, tuple(snake), Action.RIGHT, food, 0, 0, 0, done)
+    return GameState(w, h, tuple(snake), Action.RIGHT, () if food is None else (food,), 0, 0, 0, done)
 
 
 def result(state, event):

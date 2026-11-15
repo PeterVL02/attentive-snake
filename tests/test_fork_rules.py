@@ -75,3 +75,13 @@ def test_several_changes_are_all_reported() -> None:
     parent = ExperimentConfig()
     child = changed(changed(parent, "game", width=6), "model", num_layers=1)
     assert set(locked_field_changes(parent, child)) == {"game.width", "model.num_layers"}
+
+
+def test_the_apple_rules_may_change_on_fork() -> None:
+    """The observation shape does not depend on them: a model trained with several or centred apples can go back to the standard game."""
+    locked = locked_fields("snake")
+    assert not {"game.food_count", "game.food_distribution", "game.food_spread"} & set(locked)
+    parent = changed(ExperimentConfig(), "game", food_count=3, food_distribution="center", food_spread=1.5)
+    child = changed(parent, "game", food_count=1, food_distribution="uniform", food_spread=2.0)
+    assert locked_field_changes(parent, child) == []
+    require_forkable(parent, child)

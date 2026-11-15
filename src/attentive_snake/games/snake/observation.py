@@ -12,7 +12,7 @@ class ObservationEncoder:
 
     Channels: 0 head (1.0 at the head cell); 1 body: every snake cell,
     head included, holds ``(len - index) / len`` so the head is 1.0 and the
-    tail is 1/len (how long until the cell is vacated); 2 food.
+    tail is 1/len (how long until the cell is vacated); 2 food (every apple).
     """
 
     num_channels = 3
@@ -33,8 +33,7 @@ class ObservationEncoder:
             out[BODY, y, x] = (length - i) / length
         hx, hy = state.head
         out[HEAD, hy, hx] = 1.0
-        if state.food is not None:
-            fx, fy = state.food
+        for fx, fy in state.foods:
             out[FOOD, fy, fx] = 1.0
 
     __call__ = encode

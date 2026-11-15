@@ -10,11 +10,11 @@ from attentive_snake.games.snake.types import Action, GameState, Position, StepE
 _DIGITS = 9  # hides float noise such as -0.060000000000000005
 _SIZE = 5
 _BODY: tuple[Position, ...] = ((2, 2), (2, 3), (2, 4))  # head at (2, 2), body below it
-_FOOD: Position = (4, 2)
+_FOOD: tuple[Position, ...] = ((4, 2),)
 
 
-def _state(snake: tuple[Position, ...], food: Position | None, score: int, done: bool = False) -> GameState:
-    return GameState(_SIZE, _SIZE, snake, Action.RIGHT, food, score, 10, 0, done)
+def _state(snake: tuple[Position, ...], foods: tuple[Position, ...], score: int, done: bool = False) -> GameState:
+    return GameState(_SIZE, _SIZE, snake, Action.RIGHT, foods, score, 10, 0, done)
 
 
 def _moved(head: Position) -> tuple[Position, ...]:
@@ -22,7 +22,7 @@ def _moved(head: Position) -> tuple[Position, ...]:
 
 
 def _situations(example_score: int) -> list[tuple[str, GameState, StepResult]]:
-    no_food = _state(_BODY, None, 0)
+    no_food = _state(_BODY, (), 0)
 
     def before(score: int = 0) -> GameState:
         return _state(_BODY, _FOOD, score)
@@ -32,13 +32,13 @@ def _situations(example_score: int) -> list[tuple[str, GameState, StepResult]]:
 
     def eat(score: int) -> tuple[GameState, StepResult]:
         grown = ((3, 2), *_BODY)
-        return before(score), StepResult(_state(grown, (0, 0), score + 1), StepEvent.ATE_FOOD)
+        return before(score), StepResult(_state(grown, ((0, 0),), score + 1), StepEvent.ATE_FOOD)
 
     def ending(event: StepEvent, head: Position) -> StepResult:
         return StepResult(_state(_moved(head), _FOOD, 0, done=True), event)
 
     return [
-        ("Plain move (ignoring distance to food)", no_food, StepResult(_state(_moved((2, 1)), None, 0), StepEvent.MOVED)),
+        ("Plain move (ignoring distance to food)", no_food, StepResult(_state(_moved((2, 1)), (), 0), StepEvent.MOVED)),
         ("Move closer to the food", before(), move(StepEvent.MOVED, (3, 2))),
         ("Move farther from the food", before(), move(StepEvent.MOVED, (1, 2))),
         ("Eat food at score 0", *eat(0)),

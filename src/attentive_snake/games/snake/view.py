@@ -7,4 +7,4 @@ from attentive_snake.views.board import board_payload
 
 
 def board_view(state: GameState) -> dict[str, Any]:
-    return board_payload(state.width, state.height, state.snake, state.food)
+    return board_payload(state.width, state.height, state.snake, state.foods)

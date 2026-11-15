@@ -14,15 +14,21 @@ from attentive_snake.games.snake.engine import SnakeGame
 from attentive_snake.games.snake.types import Action
 
 
+def _food(state) -> object:
+    """The single apple as the digests were recorded: its cell, or None when there is none."""
+    assert len(state.foods) <= 1
+    return state.foods[0] if state.foods else None
+
+
 def _digest(config: SnakeConfig, seed: int, steps: int = 600) -> str:
     game = SnakeGame(config, seed=seed)
     chooser = random.Random(seed + 1000)  # actions come from their own stream
-    record = [repr(game.state.food)]
+    record = [repr(_food(game.state))]
     for _ in range(steps):
         result = game.step(Action(chooser.randrange(4)))
-        record.append(f"{result.event.value}:{result.state.food!r}")
+        record.append(f"{result.event.value}:{_food(result.state)!r}")
         if result.state.done:
-            record.append(repr(game.reset().food))
+            record.append(repr(_food(game.reset())))
     return hashlib.sha256("|".join(record).encode()).hexdigest()[:16]
 
 

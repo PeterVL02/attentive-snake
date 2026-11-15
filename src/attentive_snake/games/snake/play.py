@@ -76,10 +76,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Play snake with the keyboard.")
     parser.add_argument("--width", type=int, default=SnakeConfig.width)
     parser.add_argument("--height", type=int, default=SnakeConfig.height)
+    parser.add_argument("--food-count", type=int, default=SnakeConfig.food_count, help="apples on the board at once")
+    parser.add_argument("--center-food", action="store_true", help="apples appear near the middle of the board")
     parser.add_argument("--fps", type=int, default=8)
     parser.add_argument("--cell-size", type=int, default=30)
     args = parser.parse_args()
-    play(SnakeConfig(width=args.width, height=args.height), fps=args.fps, cell_size=args.cell_size)
+    rules = SnakeConfig(
+        width=args.width,
+        height=args.height,
+        food_count=args.food_count,
+        food_distribution="center" if args.center_food else "uniform",
+    )
+    play(rules, fps=args.fps, cell_size=args.cell_size)
 
 
 if __name__ == "__main__":

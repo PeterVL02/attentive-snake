@@ -38,8 +38,8 @@ class BoardWindow:
         if heatmap is not None:
             self._draw_heatmap(screen, heatmap)
         self._draw_grid(screen)
-        if board["food"] is not None:
-            self._draw_cell(screen, board["food"], self._config.food)
+        for cell in board["foods"]:
+            self._draw_cell(screen, cell, self._config.food)
         body = board["snake"]
         for cell in body[1:]:
             self._draw_cell(screen, cell, self._config.snake_body)
