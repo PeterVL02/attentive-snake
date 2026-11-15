@@ -1,6 +1,6 @@
 """What the decoders of a jepa kind read from a state embedding (current or predicted).
 
-A jepa kind's state embedding is either one vector per state (``jepa``, ``jepa_attention``:
+A jepa kind's state embedding is either one vector per state (``jepa``, ``jepa_attention``, ``jepa_temporal``:
 ``(..., D)``) or a token set (``jepa_tokens``: ``(..., T, D)``, class token first). The value
 and policy decoders always read one ``(..., D)`` vector per state; a readout turns the
 embedding into it.

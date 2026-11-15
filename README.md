@@ -78,6 +78,7 @@ Chosen with `kind` in the `[model]` section of a config (or the dropdown in the 
 | `jepa` | A world model: an encoder, a predictor of each action's next-state embedding, a value decoder; plays the action whose predicted next state is worth most. Experimental. | None |
 | `jepa_attention` | `jepa` with `hybrid`'s attention encoder: the class token's output is the embedding the predictor works on. Experimental. | Board heatmap |
 | `jepa_tokens` | `jepa_attention` with a per-cell predictor: the embedding is every token (class token + one per cell), a small transformer predicts the next state's tokens cell by cell, the decoders read the class token. Experimental. | Board heatmap |
+| `jepa_temporal` | `jepa` with `temporal_transformer`'s encoder: attention over the cells (numbers) of the last K frames plus one token per past action, the class token's output is the embedding. For games where one frame hides part of the state. Experimental. | Board heatmap per frame |
 | `mlp` | A plain multilayer perceptron on the flattened observation. Baseline for vector games. | None |
 
 Every kind reads both grids and vectors; only the input stage changes. On a
@@ -238,8 +239,46 @@ the three velocity numbers by zeros (the physics, score and reward still use the
 state), so a model has to infer them from several frames and memory can matter. The rule
 is locked when forking a run.
 
-The temporal kinds (`temporal_transformer`, `frame_attention`, `lstm`) need history: set `history_length` (for example 4) and
+The temporal kinds (`temporal_transformer`, `jepa_temporal`, `frame_attention`, `lstm`) need history: set `history_length` (for example 4) and
 `history_actions = true` under `[env]`. The app does this for you.
+
+`jepa_temporal` is the jepa world model (above) with `temporal_transformer`'s encoder, made
+for exactly this: one token per number (cell) of each of the last K frames plus one per past
+action, transformer blocks, and the class token's output as the embedding `z` the predictor and
+the decoders work on, so `z` can hold the velocities a single frame no longer shows. Its
+`num_layers` sets both the transformer blocks and the predictor's depth (as for
+`jepa_attention`); attention is shown per frame as for `temporal_transformer`. The token
+construction is `temporal_transformer`'s own code (`models/policies/temporal_tokens.py`), not
+a copy.
+
+Single-seed check, not a benchmark: Lunar Lander with `game.hide_velocities = true`, PPO with
+the game's defaults (32 envs x 256 steps, default `[model]` sizes: `d_model` 64, 2 layers, 4
+heads), `env.history_length = 8`, `env.history_actions = true`, 1M env steps, seed 0, greedy
+evaluation of 50 games every 500k env steps (it runs at the first update past each multiple:
+508k and 999k), GPU, the four runs sharing the machine (about 10 minutes together, so speeds
+compare only roughly). Mean score / landing rate:
+
+| run | parameters | 500k | 1M | at 1M: crashed / flew off / timeout | training mean score at 1M | env steps/s |
+| --- | --- | --- | --- | --- | --- | --- |
+| `temporal_transformer` | 102k | -103 / 2% | -136 / 6% | 14% / 0% / 80% | 6 | 2070 |
+| `jepa_temporal`, `prediction_coef = 0` | 119k | -185 / 0% | -111 / 2% | 38% / 0% / 60% | 23 | 1920 |
+| `jepa_temporal`, `prediction_coef = 1` | 119k | -165 / 0% | -190 / 0% | 30% / 12% / 58% | 4 | 1430 |
+| `jepa_attention` (history as extra values per token) | 127k | -47 / 2% | 270 / 96% | 0% / 0% / 4% | 274 | 1740 |
+
+With the loss on, `prediction_loss` (cosine distance) was 0.003 at 41k, 0.019 at 205k, 0.014 at
+410k, 0.023 at 614k, 0.028 at 819k and 0.023 at 1M; `embedding_std` rose from 0.017 to about
+0.10 (1/sqrt(64) = 0.125, no collapse) and `value_gap` fell from 0.23 to about 0.06.
+
+Reading: neither temporal kind learned to land here. The earlier single-seed result (only
+`temporal_transformer` with 8 frames landed, 86%, mean 213, before several changes to the
+code) was not reproduced: its network is unchanged (its weights at seed 0 and its outputs are
+pinned by a test), so that was luck of the seed or of other changes, not investigated.
+`jepa_temporal` was level with `temporal_transformer` (both hovered into the time limit; the
+differences are within what one seed and 50 games can show). The prediction loss did not help:
+it was the worst of the four and cost about 25% of the speed. The surprise is
+`jepa_attention`, which sees the 8 frames only as extra values of each number's token (no
+attention over time): it landed in 96% of the games with a mean of 270. So in this run,
+attention over time did not matter for jepa; one seed each, so take it as a hint, not a result.
 
 ## Training algorithms
 

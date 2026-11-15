@@ -1,7 +1,7 @@
 """``JepaWorldModel``: what turns a policy that embeds observations into a jepa kind.
 
 Shared by every jepa kind (``jepa``: a cnn encoder; ``jepa_attention``: the hybrid trunk;
-``jepa_tokens``: the hybrid trunk's whole token set, through ``token_world_model``). It
+``jepa_temporal``: the temporal_transformer trunk; ``jepa_tokens``: the hybrid trunk's whole token set, through ``token_world_model``). It
 assumes one thing of the policy it is mixed into (before ``BasePolicy`` in the bases): it can
 turn observations into embeddings ``z`` (here (B, d_model)), through ``encode`` and as one module
 (``embedding_encoder``, for the EMA target copy). On top of that it adds

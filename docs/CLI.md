@@ -179,7 +179,7 @@ The window shows the run's game (it reads the game from the run's `config.toml`)
 | model kind | `--attention` shows (board games) | (vector games such as Lunar Lander) |
 | --- | --- | --- |
 | `transformer`, `hybrid`, `jepa_attention`, `jepa_tokens` | heatmap of what the class token attends to on the board (`--layer` applies, `--frame` must stay -1/0) | one weight per input number in the window title, e.g. `x 0.12, y 1.00, ...` |
-| `temporal_transformer` | heatmap for one of the history frames (`--layer`, `--frame`) | one weight per number of one history frame (`--frame`) |
+| `temporal_transformer`, `jepa_temporal` | heatmap for one of the history frames (`--layer`, `--frame`) | one weight per number of one history frame (`--frame`) |
 | `frame_attention` | one weight per history frame, printed in the window title (`--layer`) | the same |
 | `cnn`, `resnet`, `lstm`, `jepa`, `mlp` | nothing: there is no attention, so `--attention` is refused | the same |
 
@@ -312,6 +312,7 @@ Set `kind` in `[model]` and `history_length` / `history_actions` in `[env]`.
 | `jepa` | CNN encoder, a predictor of each action's next-state embedding, a value decoder; acts on the predicted values | the same with an MLP encoder | `history_length = 1` |
 | `jepa_attention` | `jepa` with `hybrid`'s encoder (conv stem, transformer over cells, class token = the embedding) | the same with hybrid's per-number stem | `history_length = 1` |
 | `jepa_tokens` | `jepa_attention` whose predictor predicts every cell's token of the next state (a small transformer, `predictor_layers` blocks) | the same, one token per number | `history_length = 1` |
+| `jepa_temporal` | `jepa` with `temporal_transformer`'s encoder (attention over the cells of several frames plus action tokens, class token = the embedding) | the same over every number of several frames | `history_length = 4` (8 on Lunar Lander with hidden velocities), `history_actions = true` |
 | `mlp` | flattened board, weak baseline | plain MLP; recommended | `history_length = 1` |
 
 The non-temporal kinds see stacked frames only as extra input channels (extra values per number). Which `[model]` fields each kind uses
@@ -360,12 +361,20 @@ token plus one token per cell (per number). Its predictor is a small transformer
 `num_layers` is the encoder's) that adds the action's embedding to every token and predicts the whole token set of the next
 state, cell by cell; the decoders read the class token of a (predicted or current) token set, so the heads below work as for
 the other two. The prediction loss compares the token sets token by token. The predictor runs once per action, so it is
-slower than `jepa_attention`. `predictor_layers` is read by no other kind and is locked when forking. Everything below
-applies to all three kinds:
+slower than `jepa_attention`. `predictor_layers` is read by no other kind and is locked when forking.
+
+`kind = "jepa_temporal"` is the same world model with `temporal_transformer`'s encoder: a token for every cell (number) of each
+of the last `history_length` frames plus one per past action (`history_actions = true`), transformer blocks, and the class
+token's output as the embedding, so the embedding can hold what one frame does not show (Lunar Lander's velocities with
+`game.hide_velocities = true`). Like `jepa_attention`, its `num_layers` sets both the transformer blocks and the predictor's
+depth; it has no conv stem (no `conv_*`, no `residual`), and `watch.py --attention` / the Watch tab show its encoder's
+attention per frame as for `temporal_transformer`. Everything below applies to all four kinds:
 
 ```bash
 uv run python scripts/train.py --run-dir runs/snake/jepa-attention --set train.algorithm=dqn --set model.kind=jepa_attention
 uv run python scripts/train.py --run-dir runs/snake/jepa-tokens --set train.algorithm=dqn --set model.kind=jepa_tokens
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/blind-jepa-temporal --set game.hide_velocities=true \
+    --set model.kind=jepa_temporal --set env.history_length=8 --set env.history_actions=true
 ```
 
 Four `[model]` settings belong to them, and unlike the rest of `[model]` they may change when forking a run:

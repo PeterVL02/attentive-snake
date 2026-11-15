@@ -12,6 +12,7 @@ from attentive_snake.models.policies.frame_attention import FrameAttentionPolicy
 from attentive_snake.models.policies.hybrid import HybridPolicy
 from attentive_snake.models.policies.jepa import JepaPolicy
 from attentive_snake.models.policies.jepa_attention import JepaAttentionPolicy
+from attentive_snake.models.policies.jepa_temporal import JepaTemporalPolicy
 from attentive_snake.models.policies.jepa_tokens import JepaTokensPolicy
 from attentive_snake.models.policies.lstm import LstmPolicy
 from attentive_snake.models.policies.mlp import MlpPolicy
@@ -32,6 +33,7 @@ _BUILDERS: dict[str, Callable[..., nn.Module]] = {
     "jepa": JepaPolicy,
     "jepa_attention": JepaAttentionPolicy,
     "jepa_tokens": JepaTokensPolicy,
+    "jepa_temporal": JepaTemporalPolicy,
     "mlp": MlpPolicy,
 }
 
@@ -71,6 +73,12 @@ _JEPA_TOKENS_HOW = (
     "of the state that really followed, token by token; by default it trains the predictor only (prediction_trains_encoder). value_training (DQN) as for jepa. "
     "The predictor runs once per action, so it is slower than jepa_attention. The attention shown is the encoder's, as for hybrid. "
     "With residual = true the stem is built from residual blocks. Experimental."
+)
+
+_JEPA_TEMPORAL_HOW = (
+    "The class token's output is the embedding, so it can hold what a single frame does not show, such as how fast something moves "
+    "(num_layers sets both the number of transformer blocks and the predictor's depth); from there it is the jepa kind: " + _JEPA_HOW
+    + " Needs history: set history_length above 1 (history_actions adds the action tokens). The attention shown is the encoder's, per frame, as for temporal_transformer."
 )
 
 KIND_INFO: dict[str, KindInfo] = {
@@ -257,6 +265,24 @@ KIND_INFO: dict[str, KindInfo] = {
                 + _JEPA_TOKENS_HOW.format(position="number", positions="numbers"),
                 False,
                 NO_KERNEL,
+            ),
+        },
+        JEPA_METRICS,
+    ),
+    "jepa_temporal": KindInfo(
+        (*TRANSFORMER_FIELDS, *_JEPA_FIELDS),
+        True,
+        "frames",
+        {
+            "grid": InputReading(
+                "The jepa world model with an encoder that looks across time: as in temporal_transformer, a transformer attends over the cells "
+                "of several past frames (plus one token per past action, if enabled). " + _JEPA_TEMPORAL_HOW,
+                False,
+            ),
+            "vector": InputReading(
+                "The jepa world model with an encoder that looks across time: as in temporal_transformer, a transformer attends over every number "
+                "of several past frames (plus one token per past action, if enabled). " + _JEPA_TEMPORAL_HOW,
+                False,
             ),
         },
         JEPA_METRICS,
