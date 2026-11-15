@@ -17,6 +17,7 @@ from attentive_snake.views import ViewKind
 
 type MakeEnv = Callable[[Any, Any, int | None], GameEnv]
 type RewardTable = Callable[[Any, int], list[dict[str, Any]]]
+type TrainingWarnings = Callable[[Any, Any, float], tuple[str, ...]]  # (rules, reward, gamma) -> warnings
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,11 @@ class GameSpec:
             game's own evaluation statistics (Snake: win rate, steps to win, steps between
             apples), computed from ``EpisodeRecord``s on top of the generic ones every game
             gets (scores, lengths, outcome counts). ``None``: only the generic statistics.
+        training_warnings: Optional ``(rules, reward, gamma) -> tuple[str, ...]``: the game's own
+            plain-language warnings about a configuration it is about to be trained with (Snake: a
+            step cost that makes dying no worse than living). ``gamma`` is the discount factor as a
+            float. The app asks before starting a run, ``scripts/train.py`` prints them to stderr.
+            ``None`` or an empty tuple: nothing to warn about.
     """
 
     name: str
@@ -70,3 +76,4 @@ class GameSpec:
     observation_labels: tuple[str, ...] | None = None
     episode_metrics: GameMetrics | None = None
     action_labels: tuple[str, ...] | None = None
+    training_warnings: TrainingWarnings | None = None

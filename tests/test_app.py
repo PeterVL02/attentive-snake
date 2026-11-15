@@ -376,6 +376,90 @@ def test_architecture_validation_and_runs(client: TestClient, paths: AppPaths):
     assert client.get("/api/runs/arch/architecture").json()["parameters"] > 0
 
 
+# --------------------------------------------------------------------------- parameter count of a form's config
+
+
+def parameters_for(client: TestClient, tables: dict, game: str = "snake") -> int:
+    response = client.post("/api/parameters", params={"game": game}, json={"config": tables})
+    assert response.status_code == 200, response.text
+    return response.json()["parameters"]
+
+
+def test_parameter_count_equals_the_architecture_and_compare_of_a_run(client: TestClient, paths: AppPaths):
+    tables = tiny_tables("cnn")
+    count = parameters_for(client, tables)
+    make_run(paths, "same", kind="cnn")
+    assert count == client.get("/api/runs/same/architecture").json()["parameters"]
+    assert count == client.post("/api/compare", json={"runs": ["same"]}).json()["runs"][0]["parameters"]
+    assert count == client.post("/api/architecture", json=tables).json()["parameters"]
+
+
+def test_parameter_count_follows_the_model_board_history_and_algorithm(client: TestClient):
+    base = parameters_for(client, tiny_tables("cnn"))
+    wider = tiny_tables("cnn")
+    wider["model"]["conv_channels"] = 16
+    assert parameters_for(client, wider) != base
+    bigger_board = tiny_tables("cnn")
+    bigger_board["game"].update(width=6, height=6)
+    assert parameters_for(client, bigger_board) != base  # the cnn's readout depends on the board
+    assert parameters_for(client, tiny_tables("cnn", algorithm="dqn")) < base  # one head instead of two
+
+    for kind in ("temporal_transformer", "cnn"):  # a sequence of frames / extra input channels
+        longer = tiny_tables(kind)
+        longer["env"]["history_length"] = 3
+        assert parameters_for(client, longer) != parameters_for(client, tiny_tables(kind))
+    d_model = tiny_tables()
+    d_model["model"]["d_model"] = 32
+    assert parameters_for(client, d_model) != parameters_for(client, tiny_tables())
+
+
+def test_parameter_count_for_other_games(multi_client: TestClient):
+    beacon = tiny_tables("cnn")
+    beacon["game"] = BEACON
+    assert parameters_for(multi_client, beacon, game="beacon") > 0
+    lander = {"model": {"kind": "mlp", "d_model": 16}, "env": {"num_envs": 2, "history_length": 1}}
+    assert parameters_for(multi_client, lander, game="lunar_lander") > 0
+    assert parameters_for(multi_client, tiny_tables("cnn")) != parameters_for(multi_client, beacon, game="beacon")
+
+
+def test_parameter_count_errors_and_no_side_effects(client: TestClient, paths: AppPaths):
+    tables = tiny_tables()
+    tables["model"]["num_heads"] = 3  # d_model 16 is not divisible by 3
+    bad = client.post("/api/parameters", params={"game": "snake"}, json={"config": tables})
+    assert bad.status_code == 422 and bad.json()["detail"]
+    unknown_field = tiny_tables()
+    unknown_field["model"]["nonsense"] = 1
+    assert client.post("/api/parameters", params={"game": "snake"}, json={"config": unknown_field}).status_code == 422
+    assert client.post("/api/parameters", params={"game": "nope"}, json={"config": tiny_tables()}).status_code == 404
+    assert client.post("/api/parameters", json={"config": tiny_tables()}).status_code == 422  # ?game= is required
+    parameters_for(client, tiny_tables())
+    assert not paths.runs_dir.exists() or list(paths.runs_dir.rglob("*")) == []
+
+
+def training_warnings_for(client: TestClient, tables: dict, game: str = "snake"):
+    return client.post("/api/training-warnings", params={"game": game}, json={"config": tables})
+
+
+def test_training_warnings_route(client: TestClient, paths: AppPaths):
+    tables = tiny_tables()  # default reward: step -0.01, death -1; gamma 0.99
+    (text,) = training_warnings_for(client, tables).json()["warnings"]
+    assert "step cost of -0.01" in text
+    tables["reward"] = {"step": -0.001}
+    assert training_warnings_for(client, tables).json() == {"warnings": []}
+    tables["reward"] = {}
+    tables["train"]["gamma"] = 0.5
+    assert training_warnings_for(client, tables).json() == {"warnings": []}
+    assert not paths.runs_dir.exists()
+
+
+def test_training_warnings_route_errors_and_other_games(client: TestClient, multi_client: TestClient):
+    assert training_warnings_for(client, {"model": {"nonsense": 1}}).status_code == 422
+    assert training_warnings_for(client, tiny_tables(), game="nope").status_code == 404
+    lander = {"model": {"kind": "mlp", "d_model": 16}}
+    assert training_warnings_for(multi_client, lander, game="lunar_lander").json() == {"warnings": []}
+    assert training_warnings_for(multi_client, {}, game="beacon").json() == {"warnings": []}
+
+
 # --------------------------------------------------------------------------- reward schemes
 
 

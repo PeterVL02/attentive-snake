@@ -158,3 +158,16 @@ def test_dqn_trains_resumes_and_forks_through_the_script(tmp_path: Path):
     assert read_metrics(child / "metrics.jsonl")[0]["epsilon"] == 0.3  # its own schedule restarts at epsilon_start
     switched = train("--run-dir", tmp_path / "ppo-child", "--fork", run_dir, "--set", "train.algorithm=ppo")
     assert switched.returncode == 2 and "train.algorithm" in switched.stderr
+
+
+def test_training_warnings_go_to_stderr_for_new_runs_and_forks_only(tmp_path: Path):
+    parent = new_run(tmp_path)  # tiny config with the default reward: step -0.01, death -1, gamma 0.99
+    fresh = train("--run-dir", tmp_path / "again", "--config", tmp_path / "tiny.toml", "--steps", 16)
+    assert fresh.returncode == 0 and "warning: With a step cost of -0.01" in fresh.stderr
+    assert "warning" not in fresh.stdout
+    forked = train("--run-dir", tmp_path / "child", "--fork", parent, "--steps", 16)
+    assert forked.returncode == 0 and "warning: With a step cost of -0.01" in forked.stderr
+    resumed = train("--resume", parent, "--steps", 80)
+    assert resumed.returncode == 0 and "warning" not in resumed.stderr
+    lowered = train("--run-dir", tmp_path / "low", "--config", tmp_path / "tiny.toml", "--set", "reward.step=-0.001", "--steps", 16)
+    assert lowered.returncode == 0 and "warning" not in lowered.stderr

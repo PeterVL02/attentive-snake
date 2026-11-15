@@ -406,7 +406,8 @@ textarea { width: 100%; resize: vertical; line-height: 1.4; }
 
 /* ---------- fork dialog ---------- */
 
-dialog.fork-dialog {
+dialog.fork-dialog,
+dialog.warning-dialog {
   width: min(960px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
   padding: 0;
@@ -415,7 +416,9 @@ dialog.fork-dialog {
   background: var(--bg);
   color: var(--text);
 }
-dialog.fork-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+dialog.warning-dialog { width: min(560px, calc(100vw - 32px)); }
+dialog.fork-dialog::backdrop,
+dialog.warning-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .dialog-body { padding: 20px 22px; }
 .dialog-body > .message { margin-bottom: 12px; }
 .dialog-actions { margin: 4px 0 12px; }
