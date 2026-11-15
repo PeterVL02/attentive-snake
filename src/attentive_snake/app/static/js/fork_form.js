@@ -6,6 +6,7 @@ import { formatNumber, h, message } from "./dom.js";
 import { attachServerError, descriptionField, fieldControl, readFields } from "./fields.js";
 import { gameUrl } from "./game.js";
 import { loadSchema } from "./schema.js";
+import { confirmWarnings } from "./training_warnings.js";
 
 const PARENT_VALUES = ""; // reward-scheme option value: keep the parent's reward values
 const HIDDEN = new Set(["train.checkpoint_dir"]); // set by the server to the new run's folder
@@ -183,6 +184,7 @@ export async function openForkForm(game, parent, checkpoint, onStarted) {
     startButton.disabled = true;
     startButton.textContent = "Starting…";
     try {
+      if (!(await confirmWarnings(tables, game))) return; // "Go back": the finally below re-enables the button
       const body = { name: name.value, checkpoint: checkpoint.name, config: tables, description: description.get() };
       const result = await post(gameUrl(`/api/runs/${encodeURIComponent(parent.name)}/fork`, game), body);
       dialog.close();

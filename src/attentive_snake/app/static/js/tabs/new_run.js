@@ -11,6 +11,7 @@ import { parameterCount } from "../parameter_count.js";
 import { rewardTable } from "../reward_table.js";
 import { boardSize, rulesSummary } from "../rules_summary.js";
 import { loadAlgorithmDefaults, loadSchema } from "../schema.js";
+import { confirmWarnings } from "../training_warnings.js";
 
 const COMMON_TRAIN = [
   ["train", "total_env_steps"],
@@ -237,6 +238,7 @@ async function start() {
   startButton.disabled = true;
   startButton.textContent = "Starting…";
   try {
+    if (!(await confirmWarnings(tables, tables.game.name))) return; // "Go back": the finally below re-enables the button
     const result = await post("/api/runs", { name: nameResult.value, config: tables, description: description.get() });
     nameEdited = false;
     description.set("");

@@ -19,6 +19,9 @@ history with descriptions).
     uv run python scripts/train.py --run-dir runs/snake/8x8-lowlr --fork runs/snake/8x8
         [--fork-checkpoint checkpoint_0000500000.pt] [--set train.learning_rate=1e-4 ...]
 
+New and forked runs print the game's warnings about their config (e.g. a Snake step cost that
+makes dying no worse than living) to stderr before training; they never block.
+
 All three take ``--description TEXT`` (saved in run.json),
 ``--keep-checkpoints / --no-keep-checkpoints`` and ``--eval-interval N --eval-games X
 --eval-seed S`` (saved in config.toml; ``--eval-interval 0`` turns evaluation off).
@@ -29,6 +32,7 @@ run counts its own steps from 0 with its own total and learning-rate schedule.
 
 import argparse
 import dataclasses
+import sys
 import tomllib
 from pathlib import Path
 
@@ -60,6 +64,7 @@ from attentive_snake.training import (
     resume_from_checkpoint,
 )
 from attentive_snake.training.runtime import seed_everything
+from attentive_snake.training_warnings import training_warnings
 from attentive_snake.viz import diagram, save_diagram
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -231,6 +236,12 @@ def fork(trainer: Trainer, parent_dir: Path, checkpoint: Path, description: str 
     return RunEvent("fork", 0, description, Lineage(parent_dir.resolve().name, checkpoint.name, parent_steps))
 
 
+def print_training_warnings(config: ExperimentConfig) -> None:
+    """The game's warnings about this config on stderr; training goes on (scripted runs must not block)."""
+    for warning in training_warnings(config):
+        print(f"warning: {warning}", file=sys.stderr)
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -247,6 +258,8 @@ def main() -> None:
             config = new_run_config(args)
     except (ValueError, TypeError, OSError) as error:
         parser.error(str(error))
+    if not args.resume:
+        print_training_warnings(config)
     save_experiment(config, config_path(run_dir))
 
     env = make_vec_env(config)

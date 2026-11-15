@@ -40,6 +40,11 @@ uv run python scripts/train.py --run-dir runs/snake/lr-test --set train.learning
     --description "lower LR, no living cost" --no-keep-checkpoints
 ```
 
+New and forked runs print the game's warnings about their config to stderr before training (never a prompt, so scripts
+are not blocked). Snake warns when the step cost times the discounted horizon, `|step| / (1 - gamma)`, is at least
+the death penalty (the default reward does): early on the snake may run into a wall because nothing rewards staying
+alive. The app shows the same warning in a dialog before starting.
+
 ```bash
 # Lunar Lander with its defaults (mlp, 32 envs, 2M steps: a few minutes on a CPU), run saved in runs/lunar_lander/mlp
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/mlp

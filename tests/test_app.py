@@ -436,6 +436,30 @@ def test_parameter_count_errors_and_no_side_effects(client: TestClient, paths: A
     assert not paths.runs_dir.exists() or list(paths.runs_dir.rglob("*")) == []
 
 
+def training_warnings_for(client: TestClient, tables: dict, game: str = "snake"):
+    return client.post("/api/training-warnings", params={"game": game}, json={"config": tables})
+
+
+def test_training_warnings_route(client: TestClient, paths: AppPaths):
+    tables = tiny_tables()  # default reward: step -0.01, death -1; gamma 0.99
+    (text,) = training_warnings_for(client, tables).json()["warnings"]
+    assert "step cost of -0.01" in text
+    tables["reward"] = {"step": -0.001}
+    assert training_warnings_for(client, tables).json() == {"warnings": []}
+    tables["reward"] = {}
+    tables["train"]["gamma"] = 0.5
+    assert training_warnings_for(client, tables).json() == {"warnings": []}
+    assert not paths.runs_dir.exists()
+
+
+def test_training_warnings_route_errors_and_other_games(client: TestClient, multi_client: TestClient):
+    assert training_warnings_for(client, {"model": {"nonsense": 1}}).status_code == 422
+    assert training_warnings_for(client, tiny_tables(), game="nope").status_code == 404
+    lander = {"model": {"kind": "mlp", "d_model": 16}}
+    assert training_warnings_for(multi_client, lander, game="lunar_lander").json() == {"warnings": []}
+    assert training_warnings_for(multi_client, {}, game="beacon").json() == {"warnings": []}
+
+
 # --------------------------------------------------------------------------- reward schemes
 
 

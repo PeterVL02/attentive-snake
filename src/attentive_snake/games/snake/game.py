@@ -6,6 +6,7 @@ from attentive_snake.games.snake.metrics import SNAKE_METRICS
 from attentive_snake.games.snake.reward import SnakeRewardConfig
 from attentive_snake.games.snake.reward_table import reward_table
 from attentive_snake.games.snake.types import Action
+from attentive_snake.games.snake.warnings import step_cost_warnings
 from attentive_snake.games.spec import GameSpec
 
 
@@ -31,4 +32,5 @@ GAME = GameSpec(
     reward_table=reward_table,
     episode_metrics=SNAKE_METRICS,
     action_labels=tuple(action.name.lower() for action in Action),
+    training_warnings=step_cost_warnings,
 )
