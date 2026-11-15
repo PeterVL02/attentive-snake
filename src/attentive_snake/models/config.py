@@ -13,13 +13,13 @@ The ``jepa`` kind uses the ``conv_*`` fields for its encoder, ``num_layers`` for
 ``jepa_tokens`` is jepa_attention with a per-token predictor: ``num_layers`` sets its encoder's transformer blocks and
 ``predictor_layers`` (its only reader) the predictor's. ``jepa_temporal`` is jepa on the temporal_transformer trunk
 (transformer fields only); its ``num_layers`` sets both the transformer blocks and the predictor. ``prediction_coef`` / ``target_ema`` / ``value_training`` /
-``prediction_trains_encoder`` do not shape the network,
+``prediction_trains_encoder`` / ``rollout_steps`` / ``rollout_value_coef`` do not shape the network,
 only how it is trained (``OBJECTIVE_FIELDS``), so a run continued from a checkpoint may change them.
 """
 
 from dataclasses import dataclass, field
 
-OBJECTIVE_FIELDS = ("prediction_coef", "target_ema", "value_training", "prediction_trains_encoder")  # shape the training objective, not the network
+OBJECTIVE_FIELDS = ("prediction_coef", "target_ema", "value_training", "prediction_trains_encoder", "rollout_steps", "rollout_value_coef")  # shape the training objective, not the network
 VALUE_TRAINING = ("predicted", "actual")  # choices of ModelConfig.value_training
 
 
@@ -42,6 +42,8 @@ class ModelConfig:
     value_training: str = field(default="predicted", metadata={"help": "jepa kinds (jepa, jepa_attention, jepa_tokens, jepa_temporal) with DQN only: which embedding the value decoder learns from. Either way the model acts the same, by decoding the predicted next-state embedding of every action and picking the best. 'predicted' (recommended): the TD loss is applied to the value of the embedding predicted for the action taken, so it trains the decoder exactly where it is used when acting. 'actual' (experimental, did not learn in our tests): the TD loss is applied to the value of the embedding of the next state that really happened (the value of arriving there, the reward for getting there included); the predictor learns only from the prediction loss, which then matches the whole embedding and also the value the decoder gives it, so prediction_coef must be set above 0 (it is 0 by default). Its weakness: one step changes a state so little that the values of different actions differ by less than the predictor's error, so the choice of action is close to a coin toss between the best few. PPO ignores the TD part: its value is always that of the actual current state."})
     prediction_trains_encoder: bool = field(default=False, metadata={"help": "jepa kinds only (jepa, jepa_attention, jepa_tokens, jepa_temporal): whether the prediction loss also trains the encoder. Only matters with prediction_coef above 0. Off (the default): the prediction loss trains the predictor only and the encoder learns from the reinforcement-learning loss alone, as with prediction_coef = 0, so the prediction loss cannot pull the embeddings away from what the values need. On: the encoder also learns to make the next state predictable; in single-seed DQN tests on Lunar Lander that made the agent unstable (it ended up flying off)."})
     target_ema: float = field(default=0.99, metadata={"help": "jepa kinds only (jepa, jepa_attention, jepa_tokens, jepa_temporal): how slowly the target encoder (which embeds the real next states the predictor must match) follows the trained encoder. After every gradient step each target weight becomes target_ema x itself + (1 - target_ema) x the trained weight. Closer to 1 is a steadier but staler target; 0 copies the encoder every step."})
+    rollout_steps: int = field(default=1, metadata={"help": "jepa kinds only (jepa, jepa_attention, jepa_tokens, jepa_temporal): how many steps in a row the prediction loss follows. Only matters with prediction_coef above 0. 1 (the default) is the plain loss: predict the next state from the real current one. With more, the predictor is also fed its own prediction, along the actions that were really taken, and each of those predictions is compared with the state the game really reached (a sequence stops where the game ended). That is practice for looking several steps ahead, where the predictor must work from its own output instead of a real state. Each extra step costs speed (3 steps trained about a fifth slower than 1 in one Snake test), and in that test it made the values read from predicted states much more accurate but did not make looking ahead with the predictor pay. Works with PPO and DQN; with PPO, sequences also stop at the end of each rollout."})
+    rollout_value_coef: float = field(default=1.0, metadata={"help": "jepa kinds only (jepa, jepa_attention, jepa_tokens, jepa_temporal) with DQN (not with dqn.dueling) and rollout_steps above 1: weight of a second part of that loss. The model also reads the value of every action from each of its predicted states, exactly as a lookahead would, and this part pulls those values to the ones the model gives the real state. It trains only the predictor's step from a predicted state; the values of real states, the encoder and the value decoder are left to the reinforcement-learning loss. 0 switches it off (and saves its cost). Ignored with rollout_steps = 1, with PPO and with the dueling head."})
 
     def __post_init__(self) -> None:
         # Imported here: the registry imports the policies, which import this module.
@@ -54,6 +56,7 @@ class ModelConfig:
             "num_heads",
             "num_layers",
             "predictor_layers",
+            "rollout_steps",
             "mlp_ratio",
             "conv_channels",
             "conv_layers",
@@ -69,6 +72,8 @@ class ModelConfig:
             raise ValueError(f"kernel_size must be odd (same-padded convolutions), got {self.kernel_size}")
         if self.prediction_coef < 0.0:
             raise ValueError(f"prediction_coef must be >= 0, got {self.prediction_coef}")
+        if self.rollout_value_coef < 0.0:
+            raise ValueError(f"rollout_value_coef must be >= 0, got {self.rollout_value_coef}")
         if self.value_training not in VALUE_TRAINING:
             raise ValueError(f"value_training must be one of {', '.join(VALUE_TRAINING)}, got {self.value_training!r}")
         if self.value_training == "actual" and self.prediction_coef == 0.0:

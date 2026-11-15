@@ -25,6 +25,7 @@ from attentive_snake.models.heads import DEFAULT_HEAD, Head
 from attentive_snake.models.jepa.heads import JEPA_HEADS
 from attentive_snake.models.jepa.objective import DISTANCES, PredictionObjective
 from attentive_snake.models.jepa.readout import whole
+from attentive_snake.models.jepa.rollout import Rollout
 from attentive_snake.observation_spec import ObservationSpec
 
 
@@ -34,6 +35,7 @@ class JepaWorldModel:
     heads: ClassVar[dict[str, Head]] = JEPA_HEADS
     config: ModelConfig
     num_actions: int
+    head_name: str
     net: nn.ModuleDict
 
     def __init__(self, config: ModelConfig, observation_spec: ObservationSpec, num_actions: int, head: str = DEFAULT_HEAD) -> None:
@@ -67,10 +69,16 @@ class JepaWorldModel:
         return self.net["predictor"]
 
     def auxiliary_objective(self) -> PredictionObjective | None:
-        """The prediction loss with a fresh EMA target encoder, or ``None`` when ``prediction_coef`` is 0."""
+        """The prediction loss with a fresh EMA target encoder, or ``None`` when ``prediction_coef`` is 0.
+
+        It unrolls the predictor ``rollout_steps`` steps. The chained value consistency (``rollout_value_coef``) is only
+        added to a rollout under the ``q_values`` head: there ``value_decoder(readout(predictor(z)))`` is Q(z, .), what
+        lookahead reads from a predicted embedding (PPO's and the dueling head's decoders read other things).
+        """
         c = self.config
         if c.prediction_coef == 0.0:
             return None
+        chained_values = c.rollout_steps > 1 and self.head_name == "q_values"
         return PredictionObjective(
             self.embedding_encoder(),
             self.predictor,
@@ -81,6 +89,7 @@ class JepaWorldModel:
             value_decoder=self.net["value_decoder"],
             consistent_values=c.value_training == "actual",
             readout=self.readout,
+            rollout=Rollout(c.rollout_steps, c.rollout_value_coef if chained_values else 0.0),
         )
 
     def trained_values(self, observations: Tensor, actions: Tensor, next_observations: Tensor) -> Tensor | None:

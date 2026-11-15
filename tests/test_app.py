@@ -1062,9 +1062,9 @@ def test_jepa_is_offered_drawn_trained_watched_and_forked_through_the_api(client
     kind = schema["model_kinds"]["jepa"]
     assert {"prediction_coef", "value_training", "prediction_trains_encoder", "target_ema", "conv_channels", "num_layers"} <= set(kind["fields"])
     assert kind["attention_view"] is None and not kind["recommended"]
-    assert [m["key"] for m in kind["metrics"]] == ["prediction_loss", "embedding_std", "value_gap"]
+    assert [m["key"] for m in kind["metrics"]] == ["prediction_loss", "embedding_std", "value_gap", "rollout_last_loss", "chained_value_gap"]
     assert all(m["label"] and m["description"] for m in kind["metrics"])
-    assert all(m["setting"] == "model.prediction_coef" for m in kind["metrics"])
+    assert [(m["setting"], m["above"]) for m in kind["metrics"]] == [("model.prediction_coef", 0.0)] * 3 + [("model.rollout_steps", 1.0)] * 2
     assert all(not row["metrics"] for name, row in schema["model_kinds"].items() if name not in ("jepa", "jepa_attention", "jepa_tokens", "jepa_temporal"))
     fields = {row["name"]: row for row in schema["sections"]["model"]}
     assert fields["value_training"]["choices"] == ["predicted", "actual"] and fields["value_training"]["description"]
@@ -1102,6 +1102,38 @@ def test_jepa_is_offered_drawn_trained_watched_and_forked_through_the_api(client
     assert client.post("/api/runs", json={"name": "jepa-off", "config": ablation}).status_code == 201
     off = wait_until_done(client, "jepa-off")
     assert off["status"]["state"] == "finished" and "prediction_loss" not in off["metrics"][-1]
+
+
+def test_rollout_steps_is_offered_for_the_jepa_kinds_only_reaches_a_run_and_may_change_on_fork(client: TestClient):
+    schema = client.get("/api/schema").json()
+    rollout = {"rollout_steps", "rollout_value_coef"}
+    jepa_kinds = {"jepa", "jepa_attention", "jepa_tokens", "jepa_temporal"}
+    assert {name for name, row in schema["model_kinds"].items() if rollout <= set(row["fields"])} == jepa_kinds
+    assert not any(rollout & set(row["fields"]) for name, row in schema["model_kinds"].items() if name not in jepa_kinds)
+    fields = {row["name"]: row for row in schema["sections"]["model"]}
+    assert fields["rollout_steps"]["default"] == 1 and "its own prediction" in fields["rollout_steps"]["description"]
+    assert fields["rollout_value_coef"]["default"] == 1.0 and fields["rollout_value_coef"]["description"]
+    defaults = client.get("/api/defaults").json()["model"]
+    assert defaults["rollout_steps"] == 1 and defaults["rollout_value_coef"] == 1.0  # the New-training form's start values
+    assert not {"model.rollout_steps", "model.rollout_value_coef"} & set(client.get("/api/fork-rules").json()["locked"])
+
+    tables = tiny_tables("jepa", algorithm="dqn")
+    tables["model"] |= {"prediction_coef": 1.0, "rollout_steps": 3}
+    assert client.post("/api/runs", json={"name": "rolled", "config": tables}).status_code == 201
+    detail = wait_until_done(client, "rolled")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert detail["config"]["model"]["rollout_steps"] == 3 and detail["config"]["model"]["rollout_value_coef"] == 1.0
+    assert {"prediction_loss", "rollout_last_loss", "chained_value_gap"} <= set(detail["metrics"][-1])
+
+    tables["model"] |= {"rollout_steps": 1}  # part of the training objective: a fork may switch it off again
+    assert client.post("/api/runs/rolled/fork", json={"name": "unrolled", "config": tables}).status_code == 201
+    unrolled = wait_until_done(client, "unrolled")
+    assert unrolled["status"]["state"] == "finished", unrolled["log"]
+    assert "prediction_loss" in unrolled["metrics"][-1] and not {"rollout_last_loss", "chained_value_gap"} & set(unrolled["metrics"][-1])
+
+    refused = tiny_tables("jepa", algorithm="dqn")
+    refused["model"]["rollout_steps"] = 0
+    assert client.post("/api/runs", json={"name": "no-steps", "config": refused}).status_code == 422
 
 
 def test_jepa_attention_is_offered_for_both_games_trained_and_watched_with_attention(client: TestClient):

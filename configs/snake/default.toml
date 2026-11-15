@@ -48,6 +48,8 @@ prediction_coef = 0.0         # jepa kinds only: weight of the prediction loss (
 value_training = "predicted"  # jepa kinds with dqn only: the value decoder learns from the "predicted" or the "actual" next embedding
 prediction_trains_encoder = false  # jepa kinds only: true lets the prediction loss train the encoder too (false: the predictor only)
 target_ema = 0.99             # jepa kinds only: EMA rate of the target encoder (per gradient step)
+rollout_steps = 1             # jepa kinds only: steps the prediction loss follows, the predictor fed its own output (1 = one real step, the default)
+rollout_value_coef = 1.0      # jepa kinds with dqn, rollout_steps > 1: weight of matching the action values read from predicted states (0 = off)
 
 [train]  # attentive_snake.training.config.TrainConfig: what every algorithm shares
 algorithm = "ppo"             # "ppo" (the [ppo] section below) or "dqn" (its defaults: configs/snake/algorithms/dqn.toml)
