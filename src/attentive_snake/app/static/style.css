@@ -339,6 +339,8 @@ pre.log, pre.tree {
 .weights .bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font-size: 11px; color: var(--muted); }
 .weights .bar div { width: 100%; background: rgb(var(--heat)); border-radius: 3px 3px 0 0; min-height: 1px; }
 .game-image { display: block; max-width: 100%; height: auto; border-radius: 6px; background: var(--board-bg); }
+.game-image-wrap { position: relative; max-width: 100%; }
+.game-image-wrap .game-image-heat { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; image-rendering: pixelated; pointer-events: none; }
 .element-weights { display: grid; gap: 4px; }
 .element-row { display: grid; grid-template-columns: minmax(80px, 14ch) minmax(0, 1fr) 4ch; gap: 8px; align-items: center; font-size: 12.5px; }
 .element-name { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

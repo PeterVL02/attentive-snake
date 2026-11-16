@@ -3,7 +3,8 @@
 Field descriptions come from the config dataclasses' ``metadata["help"]``; the
 per-kind facts from ``attentive_snake.models.registry.KIND_INFO``, told for the game's
 observation kind (description, fields that matter, whether the kind is recommended, the
-training metrics its auxiliary objective logs). ``[game]`` and
+training metrics its auxiliary objective logs); a kind that cannot read that observation
+kind is not listed (``resnet`` and ``mlp`` for image games). ``[game]`` and
 ``[reward]`` rows are the chosen game's own fields (``[game] name`` is not a row: it is
 the top-level ``"game"`` of the schema). Every algorithm's section is listed (``"ppo"``,
 ``"dqn"``: a UI shows the one ``train.algorithm`` selects), and ``"algorithms"`` tells, per
@@ -41,7 +42,7 @@ def experiment_schema(game: str = DEFAULT_GAME) -> dict[str, Any]:
             **{section: _field_rows(section_classes[section]) for section in SHARED_SECTIONS},
             **{name: _field_rows(algorithm.settings_type) for name, algorithm in algorithms.items()},
         },
-        "model_kinds": {kind: _kind_row(kind, observation_kind) for kind in POLICY_KINDS},
+        "model_kinds": {kind: _kind_row(kind, observation_kind) for kind in POLICY_KINDS if observation_kind in KIND_INFO[kind].inputs},
         "algorithms": {name: _algorithm_row(algorithm) for name, algorithm in algorithms.items()},
     }
 
@@ -82,11 +83,11 @@ def _choices(field: dataclasses.Field, cls: type) -> list[str] | None:
 def _kind_row(kind: str, observation_kind: str) -> dict[str, Any]:
     """Facts about ``kind`` as it reads the game's ``observation_kind``."""
     info = KIND_INFO[kind]
-    reading = info.inputs.get(observation_kind)
+    reading = info.inputs[observation_kind]
     return {
-        "description": reading.description if reading else f"Cannot read {observation_kind} observations.",
+        "description": reading.description,
         "observation_kinds": list(info.observation_kinds),
-        "recommended": bool(reading and reading.recommended),
+        "recommended": reading.recommended,
         "fields": list(info.fields_for(observation_kind)),
         "uses_history": info.uses_history,
         "recommended_env": {"history_length": 4 if info.uses_history else 1, "history_actions": info.uses_history},

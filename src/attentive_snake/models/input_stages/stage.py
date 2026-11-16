@@ -37,11 +37,15 @@ class Stage:
     its checkpoints: renaming one breaks every saved model.
 
     ``num_tokens`` is the number of tokens a token stage makes per input (cells of a grid,
-    elements of a vector); 0 for stages that make one feature vector.
+    elements of a vector, patches of an image); 0 for stages that make one feature vector.
+    ``token_grid`` is ``(rows, columns)`` of those tokens when they tile the input more coarsely
+    than its own positions (image stages: patches or feature-map cells, row-major); ``None``
+    when there is one token per position of the observation.
     """
 
     modules: Mapping[str, nn.Module]
     num_tokens: int = 0
+    token_grid: tuple[int, int] | None = None
 
 
 def run_stage(net: nn.ModuleDict, names: Iterable[str], x: Tensor) -> Tensor:

@@ -40,6 +40,8 @@ function expectsElements(info) {
 function attentionNote(info) {
   if (info.attention_view === null) return `This model (${info.kind}) has no attention to show; only the game is drawn.`;
   const cellHeatmap = info.attention_view === "grid" || info.attention_view === "frames";
+  const overPicture = currentGame().observation_kind === "image"; // the model reads the picture itself: image_view.js lays the heatmap over it
+  if (cellHeatmap && overPicture) return "The heatmap is coarse: one square per token of the model (a patch of the picture, or a cell of its convolutions' feature map), stretched over the screen.";
   if (cellHeatmap && info.view_kind !== "board" && !expectsElements(info)) return "This model's attention is a heatmap over the observation's cells, which cannot be laid over this game's picture.";
   return "";
 }

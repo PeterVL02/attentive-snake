@@ -3,6 +3,21 @@ revision = 3
 requires-python = ">=3.14"
 
 [[package]]
+name = "ale-py"
+version = "0.12.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3e/e8/e69da8a5fb5feafa9fffb32ed8c2b306b7571b77faf779f61e4eb53304ec/ale_py-0.12.1.tar.gz", hash = "sha256:c503d574c5983e1063b451201ccb779d935919c0f6bf116fb0f4f8aa4c86d249", size = 11460017, upload-time = "2026-08-16T23:19:21.74Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/52/09/82a5bcda26a0dd429314618822d128b61b0e7e2361656e200f3c8bbd3da0/ale_py-0.12.1-cp314-cp314-macosx_13_0_arm64.whl", hash = "sha256:dbdee85cb399a722f4280f3e656cdb149c379328799f1a1bb0f4cc8222987b89", size = 2251631, upload-time = "2026-08-16T23:19:16.714Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/c4/d114df0fc6666fb938c9419cd240645cb43b22e5341d5e2cd79d1257b203/ale_py-0.12.1-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:af72c31a787932cf951a647180e12ddd99a69b2fd04c32c566baaec3ecec8ba9", size = 2966494, upload-time = "2026-08-16T23:19:17.879Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/58/8c9163bd867b3014109b66dd16b8e14d690074f5b33a7ee219b86d5216c0/ale_py-0.12.1-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a51ecb3a99d0cd8985566caa6e81b3e02d6c2c90896279e8741a5165d313bc16", size = 3110227, upload-time = "2026-08-16T23:19:19.369Z" },
+    { url = "https://files.pythonhosted.org/packages/76/de/cc53ba13b245dd3980dd2bb98423d452e7ce177d10fc004025ecb8f0c3fc/ale_py-0.12.1-cp314-cp314-win_amd64.whl", hash = "sha256:66ba0fe67b6b443cc794b879a6272d10f715363f25d487ab86e54532cea7d8b5", size = 2207920, upload-time = "2026-08-16T23:19:20.596Z" },
+]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.6"
 source = { registry = "https://pypi.org/simple" }
@@ -38,6 +53,7 @@ name = "attentive-snake"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "ale-py" },
     { name = "fastapi" },
     { name = "gymnasium", extra = ["box2d"] },
     { name = "numpy" },
@@ -54,6 +70,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ale-py", specifier = ">=0.12.1" },
     { name = "fastapi", specifier = ">=0.162.7" },
     { name = "gymnasium", extras = ["box2d"], specifier = ">=1.4.0" },
     { name = "numpy", specifier = ">=2.5.4" },

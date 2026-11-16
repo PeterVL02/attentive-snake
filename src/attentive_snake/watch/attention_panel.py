@@ -2,7 +2,8 @@
 
 A policy with ``attention_maps`` and ``token_layout`` has attention. Whole frames as tokens
 (``token_layout.tokens_per_frame == 1``) give one weight per frame; otherwise the tokens
-of a frame are its positions: the cells of a grid observation (a heatmap of one frame) or
+of a frame are its positions: the cells of a grid observation (a heatmap of one frame), the
+patches of an image observation (a coarser heatmap, ``token_layout.grid`` rows by columns) or
 the numbers of a vector observation (one weight per number of one frame), told apart by
 the observation's spatial shape. Nothing here looks at class names.
 """
@@ -17,7 +18,7 @@ from attentive_snake.viz.attention import cls_attention_elements, cls_attention_
 
 @dataclass(frozen=True)
 class AttentionPanel:
-    heatmap: np.ndarray | None = None  # (H, W) in [0, 1]
+    heatmap: np.ndarray | None = None  # (H, W) in [0, 1]: the board's cells, or the rows and columns of an image's tokens
     frame_weights: np.ndarray | None = None  # (K,), oldest first
     element_weights: np.ndarray | None = None  # (base elements,) of one frame, in [0, 1]
     caption: str = ""
@@ -60,6 +61,6 @@ def attention_panel(policy: nn.Module, observation: Tensor, layer: int, frame: i
         start = layout.frame_slice(frame % layout.num_frames).start
         weights = cls_attention_elements(maps, start, spec.base_channels, layer=layer)
         return AttentionPanel(element_weights=weights, caption=f"layer {layer}, frame {frame}, attention per input")
-    _, height, width = policy.observation_shape
+    height, width = layout.grid or spec.spatial_shape  # image tokens tile the picture coarsely; a grid has one per cell
     frames = cls_attention_frames(maps, layout.num_frames, height, width, layer=layer)
     return AttentionPanel(heatmap=frames[frame], caption=f"layer {layer}, frame {frame}")
