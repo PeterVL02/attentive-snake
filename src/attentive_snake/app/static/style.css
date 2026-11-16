@@ -435,3 +435,7 @@ details.panel[open] > summary { margin-bottom: 12px; }
 .evaluation-runner .fields { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
 .evaluation-runner .message.info { background: var(--surface); }
 .evaluation-headline { margin-top: 6px; }
+
+/* Reward search */
+tr[aria-current="true"] > td { background: var(--accent-soft); }
+.search-fields .field.checkbox label { font-weight: 600; }

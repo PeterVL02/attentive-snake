@@ -129,6 +129,7 @@ How it works, in short (all of it is settings in `configs/atari/default.toml`, e
 | **New training** | Pick a model, fill in its settings (each with a description), choose the board, reward scheme and training settings, add an optional description, and start a run. The state representation (history length, past actions) is pre-set from the chosen model. |
 | **Runs** | Live status, score chart, log, config and history (descriptions, where a run was continued from) of a run. Its **evaluations** (see below): the latest one's statistics, a chart of any evaluation metric, and "Run evaluation now" for any checkpoint. Stop it, resume it with an optional new step total and description, or **continue with changes**: a new run under a new name that starts from a chosen checkpoint with edited rewards and training settings. Open any checkpoint in the watch tab. |
 | **Queue** | Runs waiting to start (added with "Add to queue" in New training or in the continue-with-changes dialog), for all games. They start by themselves, oldest first, while fewer than "runs at once" (default 1) queue-started runs train; runs you start yourself do not hold the queue back. "Run now" starts an entry at once, "Remove" drops it; an entry that cannot start is kept as failed with the reason. Saved in `runs/queue.json`, so it survives a restart of the app. See [Training queue](docs/CLI.md#training-queue-app). |
+| **Reward search** | Let the reward adjust itself: from a run's checkpoint, each generation trains several forks, one on the current reward and the others on bounded random changes of the fields you tick; the one with the best real score (never the reward-dependent return) wins and starts the next generation. Shows every member's reward values, score and the winners; members are ordinary runs through the queue. See [Reward search](#reward-search). |
 | **Architecture** | Diagram, text tree and parameter count for the config in the form or for an existing run. |
 | **Watch & attention** | Watch a checkpoint play. Board games show the attention heatmap over the board; Lunar Lander shows the game's picture with attention bars per input number; Atari shows the screen with a coarse heatmap over it (one square per token of the model). |
 | **Rewards** | Create and edit named reward schemes, with a live table of what a scheme pays in each situation. |
@@ -615,6 +616,43 @@ A statistic that cannot be computed (steps to win when no game was won) is N/A.
   [--games X] [--seed S] [--save]`, or "Run evaluation now" in the Runs tab. The same
   checkpoint, number of games and seed give exactly the same numbers, so a recorded
   evaluation can be reproduced; both say whether the result matches one.
+
+## Reward search
+
+The reward a model trains on is a guess about what leads to playing well. A **reward search** (the
+**Reward search** tab) tests changes of that guess against the game itself, in the style of population-based
+training of reward weights: starting from a run's checkpoint, each generation forks the best model so far
+`population` times and trains each fork `steps_per_member` env steps. One member keeps the current reward;
+the others train on a bounded, seeded random change of the fields you ticked. Every member then plays the
+same greedy evaluation games, and the one with the best **real** statistic (default the mean score; never
+the return, which depends on the reward being searched) wins: its model and its reward start the next
+generation. Ties go to the unchanged reward. Member runs (`<search>-g<generation>-m<member>`) go through the
+training queue and are ordinary runs. Settings, bounds and the handling of coefficients that start at 0 are in
+[docs/CLI.md](docs/CLI.md#reward-search-app); the state is saved in `runs/reward_searches/<search>.json` and
+the search goes on after a restart of the app.
+
+**First reading (one seed, not a benchmark).** 6 x 6 Snake, `cnn`, PPO with the default settings. The parent
+trained 500k env steps (greedy mean score 2.51 over 100 games). The search: 4 members x 4 generations x 250k
+env steps, searching `step`, `death` and `closer_to_food` (`perturbation` 0.5, `max_change` 1.0,
+`zero_scale` 0.02, seed 0), judged by the mean score over 100 greedy games. The comparison is the lineage that
+keeps the default reward: a chain of four forks of 250k steps each from the same parent checkpoint (the same
+total steps and the same learning-rate schedule per fork). Whole measurement: under 7 minutes of compute.
+
+| Generation | Winner's step / death / closer_to_food | Winner's mean score | Unchanged member (same generation) | Unchanged chain (same total steps) |
+|---|---|---|---|---|
+| 0 | -0.005 / -1.0 / 0 (unchanged won) | 5.72 | 5.72 | 4.79 |
+| 1 | -0.0056 / -1.20 / 0.0001 | 9.67 | 8.09 | 8.71 |
+| 2 | -0.0057 / -1.16 / -0.0075 | 14.39 | 13.75 | 13.56 |
+| 3 | -0.0059 / -1.23 / -0.0035 | 18.09 | 17.98 | 18.73 |
+
+What it shows: the search runs end to end through the app and the queue (16 members, one at a time, none failed),
+the reward drifts within its bounds (death a little more negative, the step cost a little larger), and after
+1M steps the winner's lineage scores 18.09 against 18.73 for the lineage that kept the default reward. So on
+this setup the search found **no reward better than the default**; the difference is well within what
+another seed would change. What it does not show: anything about larger boards, other games or longer
+searches. Also note that the per-generation margins over the unchanged member are biased upward: the winner is
+the best of four noisy scores on the same 100 evaluation games, and the next generation does not re-check it on
+fresh games.
 
 ## Caveats
 

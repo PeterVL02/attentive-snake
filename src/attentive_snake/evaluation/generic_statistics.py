@@ -12,7 +12,7 @@ GENERIC_METRICS: tuple[MetricDefinition, ...] = (
     MetricDefinition("min_score", "lowest score", "Worst end-of-game score of any game.", True),
     MetricDefinition("max_score", "highest score", "Best end-of-game score of any game.", True),
     MetricDefinition("mean_length", "mean episode length", "Average number of steps per game.", None, unit="steps"),
-    MetricDefinition("mean_return", "mean return", "Average summed training reward per game (the reward the model was trained on).", True),
+    MetricDefinition("mean_return", "mean return", "Average summed training reward per game (the reward the model was trained on).", True, measures_reward=True),
 )
 GENERIC_KEYS = frozenset(definition.key for definition in GENERIC_METRICS)
 

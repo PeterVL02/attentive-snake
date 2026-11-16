@@ -61,6 +61,10 @@ class GameSpec:
             step cost that makes dying no worse than living). ``gamma`` is the discount factor as a
             float. The app asks before starting a run, ``scripts/train.py`` prints them to stderr.
             ``None`` or an empty tuple: nothing to warn about.
+        search_objective: Key of the evaluation statistic (``evaluation.statistics.metric_definitions``)
+            that says best how well a model plays, judged by the game's own outcomes only: the
+            default objective of a reward search (``attentive_snake.reward_search``). It must have a
+            direction (``higher_is_better`` not ``None``) and must not measure the reward.
     """
 
     name: str
@@ -77,3 +81,4 @@ class GameSpec:
     episode_metrics: GameMetrics | None = None
     action_labels: tuple[str, ...] | None = None
     training_warnings: TrainingWarnings | None = None
+    search_objective: str = "mean_score"

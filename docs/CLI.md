@@ -218,6 +218,51 @@ There is no command-line queue: from the terminal, run `scripts/train.py` comman
 Python script inside the app's process can use the same queue (`app.state.launcher`, see
 `src/attentive_snake/app/training_launcher.py`); the HTTP routes are under `/api/queue`.
 
+## Reward search (app)
+
+A reward search adjusts the reward table a run trains on, judged only by how well the model plays. It lives
+in the app's **Reward search** tab: choose a run and a checkpoint to start from, tick the `[reward]` fields
+the search may change (the numeric coefficients of the selected game), set the numbers below and start.
+
+- **One generation** = `population` new runs forked from the best checkpoint so far, each trained
+  `steps_per_member` env steps. Member 0 keeps the current reward table; the others train on a changed copy
+  (only the ticked fields change). Each member ends with one greedy evaluation of `evaluation_games` games on
+  the parent's evaluation seed, so all members play the same games.
+- **The winner** has the best value of the `objective` statistic (default: the game's choice, for every game
+  so far the mean score). Only statistics of what happened in the game are offered, never the return, which
+  depends on the reward being searched. Ties go to the unchanged member. Its checkpoint and its table start
+  the next generation. After `generations` generations the search is finished; the tab shows every member's
+  values, score and the winners.
+- **Changes are bounded.** A coefficient that started at `s` moves by up to `perturbation x |s|` per generation,
+  never gets farther than `max_change x |s|` from `s`, and keeps its sign (it may reach 0) unless
+  `allow_sign_change`. A coefficient that starts at 0 uses `zero_scale` in place of `|s|` and may go either
+  way. The draws are seeded (`seed`): the same settings propose the same tables.
+- **Member runs** are ordinary runs named `<search>-g<generation>-m<member>`: they go through the training
+  queue (so "runs at once" governs them), show in the Runs tab, and can be watched, compared and forked.
+- **Saved** in `runs/reward_searches/<search>.json` (not a game directory: the runs listing ignores it). A search
+  goes on after a restart of the app: it looks at which member runs exist, wait or have ended. A member whose job
+  was stopped (with the app, or by hand) before its final evaluation is resumed once; if it ends early again it
+  counts as failed. **Stop search** takes its waiting members out of the queue and stops the training one.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `population` | 4 | members per generation (at least 2; one keeps the current reward) |
+| `generations` | 4 | rounds; the whole search costs population x generations x steps_per_member env steps |
+| `steps_per_member` | 50000 | env steps each member trains, from the best checkpoint so far |
+| `perturbation` | 0.3 | largest move per generation, as a fraction of a coefficient's starting size |
+| `max_change` | 1.0 | farthest a coefficient may get from its start, as a multiple of its starting size |
+| `allow_sign_change` | false | let a coefficient cross 0 |
+| `zero_scale` | 0.01 | the size used for a coefficient that starts at 0 |
+| `objective` | the game's | the evaluation statistic that decides the winner |
+| `evaluation_games` | 100 | greedy games each member is judged on |
+| `seed` | 0 | seed of the reward changes |
+
+There is no command-line search: it needs the app's training queue. From Python inside the app's process,
+`app.state.searches` is the same object the routes use (`src/attentive_snake/reward_search/searches.py`);
+the HTTP routes are `GET /api/reward-search/form?game=`, `POST /api/reward-search?game=`
+(`{name, parent, checkpoint, fields, settings}`), `GET /api/reward-search[?game=]`,
+`GET /api/reward-search/{name}` and `POST /api/reward-search/{name}/stop`.
+
 ## Watch a trained agent
 
 ```bash

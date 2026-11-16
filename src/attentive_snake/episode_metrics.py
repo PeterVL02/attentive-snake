@@ -53,6 +53,9 @@ class MetricDefinition:
         format: ``"rate"``: a fraction in [0, 1] shown as a percentage; ``"integer"``: a count;
             ``"number"``: anything else.
         unit: Shown after the value, e.g. ``"steps"`` (empty: none).
+        measures_reward: ``True`` if the value depends on the reward the model was trained on
+            (the mean return) rather than only on what happened in the game. Such a statistic
+            cannot judge a change of the reward, so a reward search never uses it as its objective.
     """
 
     key: str
@@ -61,6 +64,7 @@ class MetricDefinition:
     higher_is_better: bool | None = True
     format: MetricFormat = "number"
     unit: str = ""
+    measures_reward: bool = False
 
 
 @dataclass(frozen=True)
