@@ -195,6 +195,29 @@ uv run python scripts/train.py --run-dir runs/snake/8x8-variant --fork runs/snak
 - The parent is never modified. The new run's `run.json` records the parent run, checkpoint and its env steps.
   The new run starts its own `evaluations.jsonl`; the parent's evaluations are not copied.
 
+## Training queue (app)
+
+The queue lets runs start by themselves, one after another. It lives in the app: "Add to queue" next to
+"Start training" in New training and next to "Start new run" in the dialog for a new run from a checkpoint,
+and the **Queue** tab. A queued run gets the same checks as a start, at the moment it is queued: an invalid
+setting, a fork that would change a locked setting, or a name that is taken (an existing run, or another
+queued entry of the same game) is refused right away, and nothing is written to `runs/` until it starts.
+
+- **When an entry starts:** whenever fewer than "runs at once" (`max_parallel`, default 1) runs started by the
+  queue are training, the oldest waiting entry starts. Runs you start yourself, and entries started with
+  **Run now**, take no place: they never hold the queue back. 0 pauses the queue (only Run now starts entries).
+- **Run now** starts an entry immediately, whatever is training. **Remove** takes it out of the queue.
+- **An entry that cannot start** (say the fork's parent checkpoint was deleted while it waited) stays in the
+  list as failed, with the reason, and the next entry starts. "Try again" retries it; it no longer holds its name.
+- **Once started** an entry leaves the queue and is an ordinary run: Runs tab, log, run.json, Stop.
+- **One queue for all games** (one machine trains them all); each entry shows its game.
+- **Saved** in `runs/queue.json` (the runs directory's root), so it survives a restart of the app. Training jobs
+  still stop with the app, as before; the queue goes on with the next entry when the app starts again.
+
+There is no command-line queue: from the terminal, run `scripts/train.py` commands one after another. A
+Python script inside the app's process can use the same queue (`app.state.launcher`, see
+`src/attentive_snake/app/training_launcher.py`); the HTTP routes are under `/api/queue`.
+
 ## Watch a trained agent
 
 ```bash
@@ -566,6 +589,6 @@ uv run pytest -q
 uv run python -m attentive_snake.app [--port 8000] [--runs-dir runs] [--configs-dir configs]
 ```
 
-Serves http://127.0.0.1:8000: configure (including the algorithm), start and resume training, continue a run under a new name with changed
+Serves http://127.0.0.1:8000: configure (including the algorithm), start, queue and resume training, continue a run under a new name with changed
 settings, evaluate checkpoints and chart evaluations, watch an agent with its attention, view the architecture and
 edit reward schemes.

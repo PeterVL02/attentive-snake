@@ -27,6 +27,11 @@ const ALGORITHM_SHARED = ["env.num_envs"]; // shared settings outside [train] th
 const STATE_FIELDS = ["history_length", "history_actions"];
 const DEFAULT_SCHEME = "default"; // configs/<game>/rewards/default.toml: the single source of the default reward values
 const BUILT_IN = ""; // option value used only when no scheme can be listed: the code defaults (same values)
+// The two ways to submit the form: start the run now, or put it in the training queue (same body, same checks).
+const SUBMIT = {
+  start: { url: "/api/runs", label: "Start training", busy: "Starting…", then: (result) => navigate("runs", { run: result.name }) },
+  queue: { url: "/api/queue/runs", label: "Add to queue", busy: "Adding…", then: () => navigate("queue") },
+};
 
 let root;
 let game = null; // info of the game the form is built for (null while loading)
@@ -46,7 +51,7 @@ let rewardSelect;
 let rewardPreview;
 let rewardValues = null;
 let formError;
-let startButton;
+let buttons = {}; // how ("start" | "queue") -> its button
 let summary;
 let parameters; // the parameter-count line of the model panel
 
@@ -225,7 +230,9 @@ async function fillRewardSchemes() {
   await loadReward();
 }
 
-async function start() {
+async function submit(how) {
+  const { url, label, busy, then } = SUBMIT[how];
+  const button = buttons[how];
   message(formError, "", "");
   nameWidget.setError("");
   const { tables, errors } = currentTables();
@@ -235,22 +242,22 @@ async function start() {
     message(formError, "error", "Some fields need attention (marked in red).");
     return;
   }
-  startButton.disabled = true;
-  startButton.textContent = "Starting…";
+  for (const b of Object.values(buttons)) b.disabled = true;
+  button.textContent = busy;
   try {
-    if (!(await confirmWarnings(tables, tables.game.name))) return; // "Go back": the finally below re-enables the button
-    const result = await post("/api/runs", { name: nameResult.value, config: tables, description: description.get() });
+    if (!(await confirmWarnings(tables, tables.game.name))) return; // "Go back": the finally below re-enables the buttons
+    const result = await post(url, { name: nameResult.value, config: tables, description: description.get() });
     nameEdited = false;
     description.set("");
-    navigate("runs", { run: result.name });
+    then(result);
   } catch (error) {
     const text = error.message;
     if (error instanceof ApiError && (error.status === 409 || /name/.test(text))) nameWidget.setError(text);
     else attachServerError(allWidgets(), text);
     message(formError, "error", text);
   } finally {
-    startButton.disabled = false;
-    startButton.textContent = "Start training";
+    for (const b of Object.values(buttons)) b.disabled = false;
+    button.textContent = label;
   }
 }
 
@@ -318,7 +325,10 @@ function build() {
   rewardPreview = h("div", {}, h("div", { class: "muted small", text: "Loading…" }));
 
   formError = h("div", { class: "message", role: "alert" });
-  startButton = h("button", { class: "primary", type: "button", text: "Start training", onclick: start });
+  buttons = {
+    start: h("button", { class: "primary", type: "button", text: SUBMIT.start.label, onclick: () => submit("start") }),
+    queue: h("button", { type: "button", text: SUBMIT.queue.label, title: "Start it by itself when the runs queued before it have ended (see the Queue tab).", onclick: () => submit("queue") }),
+  };
   summary = h("p", { class: "muted small" });
 
   const left = h(
@@ -359,7 +369,7 @@ function build() {
     panel(
       "Start",
       summary,
-      h("div", { class: "row" }, startButton, h("button", { type: "button", text: "Preview architecture", onclick: () => navigate("architecture", { source: "form" }) })),
+      h("div", { class: "row" }, buttons.start, buttons.queue, h("button", { type: "button", text: "Preview architecture", onclick: () => navigate("architecture", { source: "form" }) })),
       h("div", { style: "margin-top:12px" }, formError),
     ),
   );

@@ -7,6 +7,7 @@ import { loadGames, onGameChange } from "./game.js";
 import { renderGamePicker } from "./game_picker.js";
 import * as newRun from "./tabs/new_run.js";
 import * as runs from "./tabs/runs.js";
+import * as queue from "./tabs/queue.js";
 import * as compare from "./tabs/compare.js";
 import * as architecture from "./tabs/architecture.js";
 import * as watch from "./tabs/watch.js";
@@ -16,6 +17,7 @@ import * as cheatsheet from "./tabs/cheatsheet.js";
 const TABS = {
   new: { label: "New training", module: newRun },
   runs: { label: "Runs", module: runs },
+  queue: { label: "Queue", module: queue },
   compare: { label: "Compare", module: compare },
   architecture: { label: "Architecture", module: architecture },
   watch: { label: "Watch & attention", module: watch },
