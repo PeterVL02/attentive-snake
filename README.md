@@ -4,7 +4,7 @@ Train neural networks to play games with reinforcement learning (PPO or DQN), an
 inside them: which board cells or input numbers a transformer attends to, how the
 architecture is put together, and how different models and reward schemes compare.
 
-The project contains two games (Snake and Gymnasium's Lunar Lander), a
+The project contains three games (Snake, Gymnasium's Lunar Lander and the Atari 2600 titles of Gymnasium's ALE), a
 game-agnostic headless parallel RL environment layer, six selectable policy
 architectures, two training algorithms (PPO and DQN), an architecture-diagram tool, and a local web app
 that ties it all together.
@@ -15,6 +15,7 @@ that ties it all together.
 |---|---|---|
 | `snake` (default) | grid | The whole board: one cell per position, channels head / body / food. |
 | `lunar_lander` | vector | 8 numbers: x, y, vx, vy, angle, angular velocity, left and right leg contact (Gymnasium's `LunarLander-v3`, discrete actions). Watched as the game's own picture. |
+| `atari` | image | The console's screen, shrunk to 84 x 84 grayscale, the last 4 frames. One game for all titles; `[game] title` picks one (see [Atari](#atari)). |
 
 ### Snake rules
 
@@ -70,6 +71,57 @@ landed every game with a mean score of 256; the same run with
 hovered until the time limit in 49 of 50 games (mean score 1). One seed each, not a
 benchmark (see Caveats).
 
+### Atari
+
+```bash
+uv run python scripts/train.py --game atari --run-dir runs/atari/pong                       # Pong, PPO, cnn
+uv run python scripts/train.py --game atari --run-dir runs/atari/venture --set game.title=venture
+uv run python scripts/watch.py runs/atari/pong --scale 3
+```
+
+| `game.title` | Title | Why it is here |
+|---|---|---|
+| `pong` (default) | Pong | The easy one: a working setup beats the built-in opponent within a few million steps. Score from -21 to +21. |
+| `ms_pacman` | Ms. Pac-Man | Dense rewards, several lives, many moving objects. |
+| `montezuma_revenge` | Montezuma's Revenge | The classic sparse-reward game: plain PPO or DQN usually score 0. |
+| `pitfall` | Pitfall! | Sparse rewards and penalties: staying still (score 0) beats most learned play. |
+| `private_eye` | Private Eye | Sparse rewards over a large map. |
+| `venture` | Venture | Sparse rewards; rooms that have to be entered before anything pays. |
+
+**Measured (Pong, PPO, `cnn`, the defaults of `configs/atari/default.toml` with `--steps 1800000`, so the
+learning rate decays to 0 over 1.8M steps; one seed, not a benchmark).** On an RTX 5080 with 8 envs the run
+made about 1,250 env steps/s (5,000 frames/s; the emulators on the CPU are the limit) and took 24 minutes.
+Greedy evaluation, 5 games every 200k steps:
+
+| env steps | 0.2M - 1.0M | 1.2M | 1.4M | 1.6M | 1.8M |
+|---|---|---|---|---|---|
+| mean score | -21 | -20.8 | -19.8 | -19.8 | -17.4 (best -17) |
+| mean game length (steps) | 764 | 855 | 1538 | 3304 | 2425 |
+
+Until 1M steps the greedy policy kept pressing one action and lost every point in the same 764 steps, while
+the sampled training games already scored about -20. Take-off began at about 1.2M steps: by 1.8M it returns
+the ball in long rallies and wins 3-4 points a game (training games: -17.6). Pong is usually won (+18 or more)
+after 5-10M steps, i.e. one to two hours at this speed; that run was not made. Whether 18 actions
+(`full_action_space = true`) slow learning compared with Pong's own 6 cannot be told from one run.
+
+How it works, in short (all of it is settings in `configs/atari/default.toml`, each explained in the app):
+
+- **One game, many titles.** `atari` is a single game in the game dropdown; the title is a rule. Every title
+  uses the same adapter (`games/atari/`), the same config file and, with `game.full_action_space = true` (the
+  default), the same 18 actions, so a network has the same shape for every title.
+- **A step is 4 screen frames** (`frame_skip`); the model sees the brighter of the last two frames at each
+  pixel, shrunk to `screen_size` (84) and in grayscale. On every frame the console repeats the previous action
+  with probability `sticky_actions` (0.25), which is the only randomness in a game such as Pong.
+- **The reward is the sign of the points** by default (`reward.clip`), so one set of training settings fits
+  titles whose points differ by orders of magnitude; `mean_score` everywhere is the real score.
+- **Losing a life does not end the game.** The same environment is used for training and evaluation, and an
+  evaluation's score must be the whole game's. `reward.life_lost` (0 by default) can penalise a lost life.
+- **Models:** every kind except `resnet` and `mlp` reads pictures (`models/input_stages/image.py`); the
+  default `cnn` with `d_model = 512` is the DQN paper's network (1.7M weights).
+- **DQN's replay buffer is small**: 16000 transitions take about 3.6 GB (see the CLI cheat sheet). That is far
+  below the usual one million and DQN on Atari has not been measured here.
+- **Not built:** two-player titles (Combat) and continuous actions; `docs/ADDING_A_GAME.md` says what they need.
+
 ## The app
 
 | Tab | What it is for |
@@ -77,7 +129,7 @@ benchmark (see Caveats).
 | **New training** | Pick a model, fill in its settings (each with a description), choose the board, reward scheme and training settings, add an optional description, and start a run. The state representation (history length, past actions) is pre-set from the chosen model. |
 | **Runs** | Live status, score chart, log, config and history (descriptions, where a run was continued from) of a run. Its **evaluations** (see below): the latest one's statistics, a chart of any evaluation metric, and "Run evaluation now" for any checkpoint. Stop it, resume it with an optional new step total and description, or **continue with changes**: a new run under a new name that starts from a chosen checkpoint with edited rewards and training settings. Open any checkpoint in the watch tab. |
 | **Architecture** | Diagram, text tree and parameter count for the config in the form or for an existing run. |
-| **Watch & attention** | Watch a checkpoint play. Board games show the attention heatmap over the board; picture games such as Lunar Lander show the frame with attention bars per input number. |
+| **Watch & attention** | Watch a checkpoint play. Board games show the attention heatmap over the board; Lunar Lander shows the game's picture with attention bars per input number; Atari shows the screen with a coarse heatmap over it (one square per token of the model). |
 | **Rewards** | Create and edit named reward schemes, with a live table of what a scheme pays in each situation. |
 | **CLI cheat sheet** | The contents of [docs/CLI.md](docs/CLI.md). |
 | **Compare** | Plot the score curves or an evaluation metric of several runs on one chart, with their descriptions and latest/best evaluation numbers, and list the config fields that differ. |

@@ -40,6 +40,15 @@ _BUILDERS: dict[str, Callable[..., nn.Module]] = {
 POLICY_KINDS: tuple[str, ...] = tuple(_BUILDERS)
 
 NO_KERNEL = ("kernel_size",)  # nothing to convolve in a list of numbers
+FIXED_CONVS = ("conv_layers", "kernel_size")  # image convolutions have a fixed layout; only their width is set
+FIXED_STEM = (*FIXED_CONVS, "residual")
+
+_IMAGE_CONVS = (
+    "three convolutions that shrink the picture as they go (8x8 stride 4, 4x4 stride 2, 3x3 stride 1, as in the DQN paper; "
+    "conv_channels sets their width: half of it for the first, the full width for the other two; conv_layers and kernel_size have no effect)"
+)
+_IMAGE_PATCHES = "The picture is cut into 12 x 12 pixel patches (7 x 7 of them for an 84 x 84 picture) and every patch becomes a token"
+_IMAGE_JEPA_ENCODER = "A convolutional encoder (as in cnn: " + _IMAGE_CONVS + ") turns the picture into an embedding, "
 
 _JEPA_SWITCH = "model.prediction_coef"
 JEPA_METRICS = (
@@ -104,6 +113,11 @@ KIND_INFO: dict[str, KindInfo] = {
                 "Shows which inputs the decision draws on; usually learns slower than mlp or cnn.",
                 False,
             ),
+            "image": InputReading(
+                _IMAGE_PATCHES + ", and a transformer lets a class token attend to the patches that matter. "
+                "Stacked history frames are extra channels of each patch. No convolutions: usually learns slower from pixels than cnn or hybrid.",
+                False,
+            ),
         },
     ),
     "cnn": KindInfo(
@@ -122,6 +136,12 @@ KIND_INFO: dict[str, KindInfo] = {
                 "Use the mlp kind for a plain baseline; this one is kept so every kind can play every game.",
                 False,
                 NO_KERNEL,
+            ),
+            "image": InputReading(
+                "The convolutional network of the DQN paper, without attention: " + _IMAGE_CONVS + ", then the whole feature map "
+                "flattened into d_model numbers (512 in the paper). Stacked history frames are extra input channels. The standard baseline for Atari.",
+                True,
+                FIXED_CONVS,
             ),
         },
     ),
@@ -159,6 +179,13 @@ KIND_INFO: dict[str, KindInfo] = {
                 False,
                 NO_KERNEL,
             ),
+            "image": InputReading(
+                "A convolutional stem (" + _IMAGE_CONVS + ") turns the picture into a small feature map (7 x 7 for an 84 x 84 picture), "
+                "then every cell of that map becomes a token and a transformer attends over them. Stacked history frames are extra input channels. "
+                "residual has no effect.",
+                True,
+                FIXED_STEM,
+            ),
         },
     ),
     "temporal_transformer": KindInfo(
@@ -174,6 +201,11 @@ KIND_INFO: dict[str, KindInfo] = {
             "vector": InputReading(
                 "A transformer over every number of several past frames (plus one token per past action, if enabled), "
                 "so attention can look across both the observation's features and time.",
+                False,
+            ),
+            "image": InputReading(
+                _IMAGE_PATCHES + ", for each of several past frames (plus one token per past action, if enabled), "
+                "so attention can look across both the screen and time. With 4 frames of 84 x 84 pixels that is 196 tokens: slow.",
                 False,
             ),
         },
@@ -193,6 +225,12 @@ KIND_INFO: dict[str, KindInfo] = {
                 "and attention decides which frames matter. The attention shown is one weight per frame. With residual = true the frame encoder is built from residual blocks (two layers and a skip connection each, as in resnet).",
                 False,
                 NO_KERNEL,
+            ),
+            "image": InputReading(
+                "A convolutional network (" + _IMAGE_CONVS + ", then a readout to d_model) encodes each past frame into one vector, "
+                "and attention decides which frames matter. The attention shown is one weight per frame. residual has no effect.",
+                True,
+                FIXED_STEM,
             ),
         },
     ),
@@ -215,6 +253,14 @@ KIND_INFO: dict[str, KindInfo] = {
                 False,
                 NO_KERNEL,
             ),
+            "image": InputReading(
+                "A convolutional network (" + _IMAGE_CONVS + ", then a readout to d_model) encodes each of the last K frames into one vector "
+                "(plus the past action, if enabled) and an LSTM (num_layers layers, d_model hidden) reads them oldest to newest, as in DRQN but with a fixed "
+                "unroll length: the memory is exactly the history window, since the hidden state is not carried from one step to the next or stored in the "
+                "replay buffer. residual has no effect.",
+                False,
+                FIXED_STEM,
+            ),
         },
     ),
     "jepa": KindInfo(
@@ -231,6 +277,11 @@ KIND_INFO: dict[str, KindInfo] = {
                 "turns the numbers into an embedding, " + _JEPA_HOW,
                 False,
                 NO_KERNEL,
+            ),
+            "image": InputReading(
+                "A world model that acts by predicting where each action leads. " + _IMAGE_JEPA_ENCODER + _JEPA_HOW,
+                False,
+                FIXED_CONVS,
             ),
         },
         JEPA_METRICS + ROLLOUT_METRICS,
@@ -250,6 +301,12 @@ KIND_INFO: dict[str, KindInfo] = {
                 "(conv_channels wide, conv_layers deep) and a transformer attends over these tokens. " + _JEPA_ATTENTION_HOW,
                 False,
                 NO_KERNEL,
+            ),
+            "image": InputReading(
+                "The jepa world model with an attention encoder: as in hybrid, a convolutional stem (" + _IMAGE_CONVS + ") turns the picture into a small "
+                "feature map and a transformer attends over its cells. " + _JEPA_ATTENTION_HOW.replace(" With residual = true the stem is built from residual blocks.", " residual has no effect."),
+                False,
+                FIXED_STEM,
             ),
         },
         JEPA_METRICS + ROLLOUT_METRICS,
@@ -272,6 +329,14 @@ KIND_INFO: dict[str, KindInfo] = {
                 False,
                 NO_KERNEL,
             ),
+            "image": InputReading(
+                "A world model that predicts the next screen region by region. As in hybrid, a convolutional stem (" + _IMAGE_CONVS + ") turns the picture "
+                "into a small feature map and a transformer attends over its cells (trained from scratch). "
+                + _JEPA_TOKENS_HOW.format(position="map cell", positions="cells").replace(" With residual = true the stem is built from residual blocks.", " residual has no effect.")
+                + " With 18 actions the predictor runs 18 times per state: very slow.",
+                False,
+                FIXED_STEM,
+            ),
         },
         JEPA_METRICS + ROLLOUT_METRICS,
     ),
@@ -287,6 +352,11 @@ KIND_INFO: dict[str, KindInfo] = {
             ),
             "vector": InputReading(
                 "The jepa world model with an encoder that looks across time: as in temporal_transformer, a transformer attends over every number "
+                "of several past frames (plus one token per past action, if enabled). " + _JEPA_TEMPORAL_HOW,
+                False,
+            ),
+            "image": InputReading(
+                "The jepa world model with an encoder that looks across time: as in temporal_transformer, a transformer attends over the 12 x 12 pixel patches "
                 "of several past frames (plus one token per past action, if enabled). " + _JEPA_TEMPORAL_HOW,
                 False,
             ),

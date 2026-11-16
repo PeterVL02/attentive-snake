@@ -28,7 +28,7 @@ class SnakeTransformerPolicy(AttentivePolicy):
 
     def _build_front(self) -> dict[str, nn.Module]:
         stage = self._input_stage(TOKEN_STAGES, whole_observation(self.observation_spec))
-        self._stage_names, self._positions = tuple(stage.modules), stage.num_tokens
+        self._stage_names, self._positions, self._token_grid = tuple(stage.modules), stage.num_tokens, stage.token_grid
         return dict(stage.modules)
 
     def _tokens(self, obs: Tensor) -> Tensor:
@@ -36,4 +36,4 @@ class SnakeTransformerPolicy(AttentivePolicy):
 
     @property
     def token_layout(self) -> TokenLayout:
-        return TokenLayout(num_frames=1, tokens_per_frame=self._positions)
+        return TokenLayout(num_frames=1, tokens_per_frame=self._positions, grid=self._token_grid)

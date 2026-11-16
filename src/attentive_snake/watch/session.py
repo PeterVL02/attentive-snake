@@ -63,7 +63,7 @@ class WatchSession:
             "attention_view": KIND_INFO[config.model.kind].attention_view,
             "element_names": element_names(game, observation_spec(config, self._env)),  # vector games only
             "algorithm": config.train.algorithm,
-            "action_names": action_names(game, self._env.num_actions),
+            "action_names": action_names(game, self._env.game),
             "checkpoint": str(checkpoint),
             "env_steps": env_steps,
             "width": first.view["width"],  # of the view: cells for "board", pixels for "image"

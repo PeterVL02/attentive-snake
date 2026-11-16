@@ -103,16 +103,20 @@ def test_action_channels_must_be_one_per_action(kind):
         build_policy(ModelConfig(kind=kind, **SMALL), ObservationSpec("grid", (5, H, W), 1, action_channels=2), A)
 
 
-@pytest.mark.parametrize("kind", POLICY_KINDS)
+NO_IMAGE = ("resnet", "mlp")  # the kinds without an image input stage (tests/test_image_stages.py covers the others)
+
+
+@pytest.mark.parametrize("kind", NO_IMAGE)
 def test_unsupported_observation_kind_rejected(kind):
     with pytest.raises(ValueError, match="cannot read image observations"):
-        build_policy(ModelConfig(kind=kind, **SMALL), ObservationSpec("image", (3, 8, 8)), A)
+        build_policy(ModelConfig(kind=kind, **SMALL), ObservationSpec("image", (3, 84, 84)), A)
 
 
 @pytest.mark.parametrize("kind", POLICY_KINDS)
 def test_kind_info_observation_kinds_match_the_policy(kind):
     m = make(kind)
-    assert KIND_INFO[kind].observation_kinds == type(m).observation_kinds == ("grid", "vector")
+    expected = ("grid", "vector") if kind in NO_IMAGE else ("grid", "vector", "image")
+    assert KIND_INFO[kind].observation_kinds == type(m).observation_kinds == expected
 
 
 def test_base_channels_come_from_the_spec_not_the_channel_count():

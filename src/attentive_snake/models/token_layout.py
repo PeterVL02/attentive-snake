@@ -6,7 +6,9 @@ Order of the token axis (attention maps are indexed the same way):
 
 Frames are oldest first (frame K-1 is the newest); each frame contributes
 ``tokens_per_frame`` tokens (grid cells in row-major order, or a single token for a
-whole frame); the action tokens exist only when ``num_action_tokens`` is K.
+whole frame); the action tokens exist only when ``num_action_tokens`` is K. ``grid`` is
+``(rows, columns)`` of a frame's tokens when they tile the observation more coarsely than its
+own positions (image patches, ``Stage.token_grid``); ``None``: one token per position.
 """
 
 from dataclasses import dataclass
@@ -17,6 +19,7 @@ class TokenLayout:
     num_frames: int
     tokens_per_frame: int
     num_action_tokens: int = 0
+    grid: tuple[int, int] | None = None
 
     cls_index = 0
     frames_offset = 1

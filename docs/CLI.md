@@ -62,6 +62,27 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/n
 ```
 
 ```bash
+# Atari (Gymnasium's ALE): Pong with the defaults (cnn, 8 envs, 10M steps = 40M frames: hours on a GPU)
+uv run python scripts/train.py --game atari --run-dir runs/atari/pong
+
+# Another title (pong, ms_pacman, montezuma_revenge, pitfall, private_eye, venture) and a shorter budget
+uv run python scripts/train.py --game atari --run-dir runs/atari/pacman --set game.title=ms_pacman --steps 2000000
+
+# Only the title's own actions (6 in Pong instead of all 18), and an attention model over the conv features
+uv run python scripts/train.py --game atari --run-dir runs/atari/pong-hybrid --set game.full_action_space=false \
+    --set model.kind=hybrid --set model.d_model=128
+
+# DQN on Atari: the replay buffer of configs/atari/algorithms/dqn.toml (16000 transitions) takes about 3.6 GB of RAM
+uv run python scripts/train.py --game atari --run-dir runs/atari/pong-dqn --set train.algorithm=dqn
+```
+
+All Atari titles are one game, `atari`; `[game] title` picks the title and a run cannot change it (nor
+`screen_size`, `grayscale`, `full_action_space`) when it is continued under a new name. A step is 4 screen frames
+(`game.frame_skip`). The reward the model learns from is the sign of the points by default (`reward.clip`); the
+score shown everywhere is the game's real score. Losing a life does not end a game; `reward.life_lost` can
+penalise it. `ale-py` ships the game ROMs, nothing else has to be installed.
+
+```bash
 # DQN instead of PPO: the game's DQN defaults (configs/<game>/algorithms/dqn.toml), then any [dqn] setting
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/dqn --set train.algorithm=dqn
 uv run python scripts/train.py --run-dir runs/snake/dqn-cnn --set train.algorithm=dqn --set model.kind=cnn \
@@ -190,6 +211,9 @@ uv run python scripts/watch.py runs/snake/8x8 --checkpoint runs/snake/8x8/checkp
 ```bash
 # Lunar Lander: the game's own picture; --attention puts the weight of each input number in the window title
 uv run python scripts/watch.py runs/lunar_lander/tt --attention --scale 0.75
+
+# Atari: the console's colour screen, enlarged (the heatmap over the screen is in the app's Watch tab only)
+uv run python scripts/watch.py runs/atari/pong --scale 3
 ```
 
 The window shows the run's game (it reads the game from the run's `config.toml`); games whose view is a board
@@ -335,6 +359,13 @@ Set `kind` in `[model]` and `history_length` / `history_actions` in `[env]`.
 | `jepa_tokens` | `jepa_attention` whose predictor predicts every cell's token of the next state (a small transformer, `predictor_layers` blocks) | the same, one token per number | `history_length = 1` |
 | `jepa_temporal` | `jepa` with `temporal_transformer`'s encoder (attention over the cells of several frames plus action tokens, class token = the embedding) | the same over every number of several frames | `history_length = 4` (8 on Lunar Lander with hidden velocities), `history_actions = true` |
 | `mlp` | flattened board, weak baseline | plain MLP; recommended | `history_length = 1` |
+
+On pictures (Atari): `cnn` is the DQN paper's network (three strided convolutions, then `d_model` features;
+recommended), `hybrid` runs a transformer over those convolutions' feature map (7 x 7 tokens at 84 pixels),
+`transformer` and `temporal_transformer` make one token per 12 x 12 pixel patch, `frame_attention` and `lstm`
+encode each frame with the convolutions, and the jepa kinds use the same encoders. `resnet` and `mlp` do not
+read pictures and are not offered for such a game. `conv_layers`, `kernel_size` and `residual` are not used on
+pictures. Use `history_length = 4` with every kind: one frame does not show which way anything moves.
 
 The non-temporal kinds see stacked frames only as extra input channels (extra values per number). Which `[model]` fields each kind uses
 (for example `cnn` ignores `num_heads`) is listed by the app's config page. Every kind works with both
@@ -492,7 +523,10 @@ Huber is squared below an error of 1 and linear above; `mse` is squared througho
 small errors, unbounded for large ones). The optimizer is Adam either way.
 
 DQN's replay buffer lives in memory: about `2 x buffer_size x (numbers in one observation) x 4` bytes (Snake 8x8,
-100k transitions: ~150 MB; Lunar Lander: ~6 MB; history frames multiply it). It is not saved.
+100k transitions: ~150 MB; Lunar Lander: ~6 MB; history frames multiply it). It is not saved. Atari observations
+are large (4 x 84 x 84 numbers): 16000 transitions, the Atari default, take about 3.6 GB, and the usual one million
+would take 226 GB. Frames are stored as 32-bit numbers and every transition holds its own copy of the stacked
+frames; a buffer of 8-bit frames stored once would need about 1/32 of that and is not built yet.
 
 ## Draw a model diagram from Python
 

@@ -58,6 +58,10 @@ class GameEnv(Protocol):
     ``observation_shape`` is one frame: ``(F, H, W)`` for grid and image games, ``(F,)``
     for vector games. ``view`` returns the JSON-able payload of the game's ``view_kind``
     for the current state (see ``attentive_snake.views``).
+
+    Optional: an env whose action set depends on its rules (Atari without ``full_action_space``)
+    may carry ``action_labels: tuple[str, ...]``, one name per action; watching prefers it over
+    ``GameSpec.action_labels`` (``watch.action_names``).
     """
 
     observation_shape: tuple[int, ...]
