@@ -1319,7 +1319,7 @@ def test_jepa_tokens_is_offered_for_both_games_trained_and_watched_with_attentio
         schema = client.get("/api/schema", params={"game": game}).json()
         kind = schema["model_kinds"]["jepa_tokens"]
         assert {"num_heads", "num_layers", "predictor_layers", "residual", "prediction_coef", "value_training"} <= set(kind["fields"])
-        assert kind["attention_view"] == "grid" and not kind["recommended"] and kind["metrics"] == jepa["metrics"]
+        assert kind["attention_view"] == "grid" and kind["recommended"] == (game == "snake") and kind["metrics"] == jepa["metrics"]
         assert all("predictor_layers" not in row["fields"] for name, row in schema["model_kinds"].items() if name != "jepa_tokens")
     assert "model.predictor_layers" in client.get("/api/fork-rules").json()["locked"]
 

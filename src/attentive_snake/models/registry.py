@@ -320,7 +320,7 @@ KIND_INFO: dict[str, KindInfo] = {
                 "A world model that predicts the next board cell by cell. As in hybrid, a convolutional stem summarises each cell's neighbourhood "
                 "and a transformer attends over the cells (trained from scratch). "
                 + _JEPA_TOKENS_HOW.format(position="board cell", positions="cells"),
-                False,
+                True,
             ),
             "vector": InputReading(
                 "A world model that predicts the next observation number by number. As in hybrid, a small MLP turns every number into a token "
