@@ -163,6 +163,7 @@ evaluation over 30 games at the end; 2 seeds, not a benchmark).** About 10,000 e
 | `lstm` (convolutional frame encoder + LSTM) | 5.8 | 7.1 |
 | `frame_attention` | **20.3** (19.6, 21.0) | 14.8 |
 | `jepa_tokens` | **32.8** | 15.7 |
+| `jepa_temporal` (2 frames, `d_model` 64) | 10.8 | 5.0 |
 
 - **The network matters most.** With the trails, `frame_attention` scores almost four times `cnn`, and
   `jepa_tokens` (one seed) six times; `lstm` stays at `cnn`'s level whether or not the trails are there.
@@ -170,6 +171,9 @@ evaluation over 30 games at the end; 2 seeds, not a benchmark).** About 10,000 e
   4 stacked frames still hold the direction. So direction matters in Breakout, and within 1M steps these
   models recover only part of it from the frames. The weak models (`cnn`, `lstm`) do not use direction yet, so
   the trails make no difference to them.
+- `jepa_temporal`, the jepa kind that reads frames in order, had to be made lighter (2 frames, width 64:
+  200 tokens per state, about 3,100 env steps/s with the GPU at 77%). It loses half its score without the
+  trails (10.8 to 5.0), like the other attention models, but at this size it is well below `frame_attention`.
 - `temporal_transformer` (one token per cell per frame, 400 tokens) was too heavy here: about 1,100 env
   steps/s, and it made the machine unresponsive, so it was stopped before its first evaluation.
 
