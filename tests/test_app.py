@@ -159,7 +159,7 @@ def test_games(client: TestClient):
     metrics = games["snake"].pop("evaluation_metrics")
     assert games["snake"] == {
         "name": "snake", "title": "Snake", "description": games["snake"]["description"],
-        "observation_kind": "grid", "view_kind": "board", "has_reward_table": True,
+        "observation_kind": "grid", "view_kind": "board", "has_reward_table": True, "seats": 1,
     }
     keys = [metric["key"] for metric in metrics]
     assert keys[:2] == ["win_rate", "mean_steps_to_win"] and "mean_score" in keys and "games" in keys
@@ -696,7 +696,7 @@ def test_games_lists_every_registered_game(multi_client: TestClient):
     assert walk_metrics[0] == "reach_rate"  # a dropped-in game's own metrics come first
     assert games["beacon"] == {
         "name": "beacon", "title": "Beacon", "description": "Drift right until you reach the beacon.",
-        "observation_kind": "grid", "view_kind": "image", "has_reward_table": False,
+        "observation_kind": "grid", "view_kind": "image", "has_reward_table": False, "seats": 1,
     }
     assert games["walk"]["view_kind"] == "board" and games["walk"]["has_reward_table"] is False
 
@@ -1877,3 +1877,54 @@ def test_train_and_watch_minatar_without_trails_through_the_api(client: TestClie
     with_trails = {**tiny_minatar(), "game": {**tiny_minatar()["game"], "trails": True}}
     refused = client.post("/api/runs/blind/fork", params={"game": "minatar"}, json={"name": "blind-v2", "config": with_trails})
     assert refused.status_code == 422 and "game.trails" in refused.text
+
+
+# --------------------------------------------------------------------------- two-player Atari (self-play)
+
+
+def tiny_versus(num_envs: int = 2) -> dict:
+    """Two-player Pong on a 48 x 48 picture, matches cut after 6 steps: one match of two seats, trains in seconds."""
+    tables = tiny_tables("cnn", total_env_steps=32)
+    tables["game"] = {"name": "atari_versus", "title": "pong", "screen_size": 48, "max_episode_steps": 6}
+    tables["env"]["num_envs"] = num_envs
+    return tables
+
+
+def test_atari_versus_is_listed_with_two_seats_its_titles_and_win_rates(client: TestClient):
+    versus = {game["name"]: game for game in client.get("/api/games").json()}["atari_versus"]
+    assert (versus["seats"], versus["observation_kind"], versus["view_kind"]) == (2, "image", "image")
+    assert "self-play" in versus["description"] and "random" in versus["description"]
+    assert [metric["key"] for metric in versus["evaluation_metrics"]][:3] == ["win_rate", "draw_rate", "loss_rate"]
+    schema = client.get("/api/schema", params={"game": "atari_versus"}).json()
+    rules = {row["name"]: row for row in schema["sections"]["game"]}
+    assert {"pong", "combat_tank", "combat_plane", "boxing"} <= set(rules["title"]["choices"]) and "continuous" not in rules
+    assert "cnn" in schema["model_kinds"] and "mlp" not in schema["model_kinds"]
+    locked = client.get("/api/fork-rules", params={"game": "atari_versus"}).json()["locked"]
+    assert {"game.title", "game.screen_size", "game.grayscale"} <= set(locked)
+    assert parameters_for(client, tiny_versus(), game="atari_versus") > 0
+
+
+def test_a_two_player_game_refuses_an_odd_number_of_parallel_games(client: TestClient):
+    refused = client.post("/api/runs", json={"name": "odd", "config": tiny_versus(num_envs=3)})
+    assert refused.status_code == 422 and "multiple of 2" in refused.text
+
+
+@pytest.mark.slow
+def test_self_play_trains_evaluates_against_the_random_player_and_watches_through_the_api(client: TestClient):
+    tables = tiny_versus()
+    tables["evaluation"] = {"interval": 32, "games": 2}
+    started = client.post("/api/runs", json={"name": "duel", "config": tables})
+    assert started.status_code == 201, started.text
+    detail = wait_until_done(client, "duel", game="atari_versus")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    statistics = detail["evaluations"][-1]["statistics"]
+    assert statistics["games"] == 2 and statistics["timeout_rate"] == 1.0  # cut after 6 steps
+    assert statistics["win_rate"] + statistics["draw_rate"] + statistics["loss_rate"] == pytest.approx(1.0)
+
+    body = client.post("/api/watch", json={"game": "atari_versus", "run": "duel", "seed": 0}).json()
+    assert (body["info"]["view_kind"], body["info"]["width"], body["info"]["height"]) == ("image", 160, 210)
+    assert body["info"]["observation_shape"] == [2, 48, 48] and len(body["info"]["action_names"]) == 18  # picture + seat plane
+    assert body["frame"]["note"].startswith("The model plays the green paddle on the right")  # seed 0: seat 0
+    assert base64.b64decode(body["frame"]["png"]).startswith(b"\x89PNG")
+    steps = client.post(f"/api/watch/{body['id']}/step", json={"count": 8, "frames": "last"}).json()["frames"]
+    assert any(frame["event"] == "timeout" for frame in steps) and steps[-1]["note"].startswith("The model plays the ")

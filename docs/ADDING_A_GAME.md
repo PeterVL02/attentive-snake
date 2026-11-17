@@ -67,6 +67,7 @@ GAME = GameSpec(
 | `training_warnings` | Optional `(rules, reward, gamma) -> tuple[str, ...]`: plain-language warnings about a configuration the game is about to be trained with (Snake: a step cost that makes dying no worse than living; `games/snake/warnings.py`). The app shows them in a dialog before starting a run, `scripts/train.py` prints them to stderr. `None`: none. |
 | `continuous_actions` | Optional `rules -> bool`: whether an env of these rules has continuous actions (section 3). It must agree with the env's `action_space`; `None`: always discrete. |
 | `search_objective` | The evaluation statistic a reward search optimises by default (default `"mean_score"`). It must have a direction and must not measure the reward (`MetricDefinition.measures_reward`): the search judges rewards by what happened in the game. Only the float fields of `reward_type` can be searched. |
+| `seats`, `make_match` | Optional, for games with several players per match: how many, and `(rules, reward, seed) -> MatchEnv`, one match of all seats for self-play training. `make_env` is then the model's seat against a fixed opponent, for evaluation and watching (section 9). |
 
 The registry checks the spec when it scans (`games/validation.py`) and raises
 `GameRegistryError` naming the package if anything is missing or wrong, including an
@@ -211,6 +212,9 @@ array, e.g. Gymnasium's `render_mode="rgb_array"`):
 The app's watch tab shows it (`static/js/image_view.js`), and `scripts/watch.py` shows it
 in a pygame window (`views/image_window.py`).
 
+Either payload may carry `note`, one line of plain text the Watch tab shows under the picture
+and `scripts/watch.py` prints once per game (two-player Atari: which player the model controls).
+
 A whole watch frame (`WatchFrame.to_dict()`, what `/api/watch` returns per step) is the
 payload plus `view_kind`, `score`, `steps`, `event`, `done`, `heatmap` (the
 observation's `(H, W)` attention for grid observations, else `null`),
@@ -304,7 +308,7 @@ registry needs no change for either.
 Picture observations (`observation_kind="image"`):
 
 - One frame is `(C, H, W)` float32 in `[0, 1]` (`C` = 1 for grayscale, 3 for colour). The env
-  does its own preprocessing with numpy (`games/atari/screen.py` shrinks the screen by
+  does its own preprocessing with numpy (`ale/screen.py` shrinks the screen by
   averaging); history comes from `HistoryEnv` as for every game.
 - `models/input_stages/image.py` holds the stages: three strided convolutions (the DQN
   paper's) for the kinds with a convolutional stage, 12-pixel patches for the token kinds. A
@@ -316,12 +320,49 @@ Picture observations (`observation_kind="image"`):
 - Memory: an observation is `history_length x C x H x W` float32 numbers (112 KB at 4 x 84 x
   84), and DQN's replay buffer stores two per transition. Choose `dqn.buffer_size` for it.
 
-What a second kind of game in the family would need (not built):
-
-- Two players (Combat, or PettingZoo's Atari games): a separate adapter whose env steps both
-  players. `GameEnv.step` takes one action, so either the opponent is part of the env (a
-  scripted player or a frozen checkpoint the env calls), or `GameEnv`, `VecEnv` and the
-  rollout storage gain a player axis. The first needs no contract change.
-
 Continuous actions are built: `[game] continuous = true` uses ALE's continuous joystick
 (`games/atari/joystick.py`; see section 3 for the contract).
+
+Shared ALE code (numpy only) lives outside both Atari packages, in `attentive_snake/ale/` (`screen.py`,
+`actions.py`), because one game package never imports another's modules.
+
+## 9. Several players: self-play (two-player Atari)
+
+`games/atari_versus/` is a game with two players per match, trained by self-play: the current policy
+plays every seat and learns from every seat's game. It needs two more `GameSpec` fields and nothing
+in the trainer:
+
+```python
+GAME = GameSpec(
+    ...,
+    make_env=make_env,      # the model in one seat against a fixed opponent: evaluation and watching
+    seats=2,                # players per match
+    make_match=make_match,  # (rules, reward, seed) -> MatchEnv: one match of all seats, for training
+)
+```
+
+- **`MatchEnv`** (`env/types.py`): `num_seats`, `observation_shape` (one seat's frame), `num_actions`
+  (per seat, discrete), `reset(seed) -> (num_seats, *observation_shape)`, `step(actions) ->` one
+  `EnvStep` per seat, `view()`. Every seat ends on the same step, the same way (`terminated` /
+  `truncated`); `MatchVecEnv` refuses anything else.
+- **`MatchVecEnv`** (`env/match_vec_env.py`, built by `factory.make_vec_env` when `make_match` is set)
+  holds `env.num_envs / seats` matches; slot `m * seats + s` is seat `s` of match `m`, with its own
+  frame history and action channels (`env/frame_stack.py`, as `HistoryEnv` builds them), reward and
+  episode summary. When a match ends, all its slots end, their last observations go in
+  `final_observations` and the match resets. Match `m` is seeded with `env_seed(seed, m)`. To the
+  trainer it is any `VecEnv`, so PPO and DQN both work unchanged. An env step is one seat's step.
+- **`env.num_envs` must be a multiple of `seats`** (`config/seat_compatibility.py` refuses the config
+  otherwise, with a plain message).
+- **The model must know its seat.** When the seats share one picture, put the seat in the frame
+  (`games/atari_versus/seat_frames.py`: one constant plane, 0 for seat 0 and 1 for seat 1); without
+  it one network cannot tell which of the two players it moves.
+- **Progress needs a fixed opponent.** Self-play returns hover around zero, so `make_env` is the
+  model's seat against an opponent the game provides (`games/atari_versus/opponent.py`: a uniformly
+  random player with its own generator, seeded by the game's seed, so evaluations reproduce). The
+  generic evaluation, watching, the CLI and the app then need nothing new. Report the outcome
+  against it (win, draw and loss rates: `games/atari_versus/metrics.py`). The view may carry a
+  `note` saying which player the model is (section 5).
+- Not built: an opponent that is a frozen earlier checkpoint. It needs torch, which game packages
+  do not import, so it would sit in `evaluation/` (an evaluation option naming the checkpoint) and
+  pass the opponent's actions into the env; the env would take the opponent as a parameter
+  instead of building a random one.

@@ -93,6 +93,12 @@ def window_title(frame: WatchFrame, element_names: list[str] | None) -> str:
     return f"score {frame.score:g}, step {frame.steps}{suffix}"
 
 
+def print_note(frame: WatchFrame) -> None:
+    """The view's optional line (two-player Atari: which player the model controls), once per episode."""
+    if frame.view.get("note"):
+        print(frame.view["note"])
+
+
 def main() -> None:
     args = parse_args()
     try:
@@ -107,11 +113,14 @@ def main() -> None:
     window, draw = display(session.info, args)
     clock = pygame.time.Clock()
     frame = session.reset()
+    print_note(frame)
     while True:
         draw(frame, window_title(frame, session.info["element_names"]))
         if quit_requested():  # after drawing: the window is created on the first render
             break
         frame = session.step()
+        if frame.steps == 1 and frame.episode > 0:  # the first step of a later episode
+            print_note(frame)
         if frame.done:
             print(f"episode over: {frame.event}, score {frame.score:g}")
         clock.tick(args.fps)
