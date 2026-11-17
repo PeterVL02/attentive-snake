@@ -13,8 +13,9 @@ _log = logging.getLogger(__name__)
 
 
 class Ticker:
-    def __init__(self, tick: Callable[[], None], interval: float = 1.0) -> None:
+    def __init__(self, tick: Callable[[], None], interval: float = 1.0, name: str = "training queue") -> None:
         self._tick = tick
+        self._name = name
         self._interval = interval
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -24,7 +25,7 @@ class Ticker:
         if self._thread is not None:
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name="training queue", daemon=True)
+        self._thread = threading.Thread(target=self._run, name=self._name, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
@@ -39,4 +40,4 @@ class Ticker:
             try:
                 self._tick()
             except Exception:  # one bad tick must not end the queue
-                _log.exception("training queue tick failed")
+                _log.exception("%s tick failed", self._name)

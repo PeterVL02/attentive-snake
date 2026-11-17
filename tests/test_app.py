@@ -163,7 +163,8 @@ def test_games(client: TestClient):
     }
     keys = [metric["key"] for metric in metrics]
     assert keys[:2] == ["win_rate", "mean_steps_to_win"] and "mean_score" in keys and "games" in keys
-    assert set(metrics[0]) == {"key", "label", "description", "higher_is_better", "format", "unit"}
+    assert set(metrics[0]) == {"key", "label", "description", "higher_is_better", "format", "unit", "measures_reward"}
+    assert [metric["key"] for metric in metrics if metric["measures_reward"]] == ["mean_return"]
     for url in ("/api/schema", "/api/defaults", "/api/fork-rules", "/api/rewards", "/api/runs", "/api/runs/x"):
         response = client.get(url, params={"game": "../etc"})
         assert response.status_code == 404 and "unknown game" in response.json()["detail"], url
@@ -194,6 +195,8 @@ def test_schema_defaults_and_page(client: TestClient):
     assert client.get("/static/js/fork_form.js").status_code == 200
     assert client.get("/static/js/tabs/queue.js").status_code == 200
     assert client.get("/static/js/queue_panel.js").status_code == 200
+    for script in ("tabs/reward_search.js", "reward_search_form.js", "reward_search_view.js"):
+        assert client.get(f"/static/js/{script}").status_code == 200, script
     assert "# " in client.get("/api/cheatsheet").text
 
 
@@ -1567,6 +1570,92 @@ def test_the_queue_is_one_for_all_games(multi_client: TestClient, multi_paths: A
     assert client.get("/api/runs", params={"game": "beacon"}).json() == []  # nothing started, nothing created
     assert client.get("/api/games").status_code == 200  # the queue file in the runs root is not mistaken for a game
     assert (multi_paths.runs_dir / "queue.json").is_file()
+
+
+# --------------------------------------------------------------------------- reward search
+
+
+def wait_for_search(client: TestClient, name: str) -> dict:
+    deadline = time.monotonic() + 2 * JOB_TIMEOUT
+    while time.monotonic() < deadline:
+        detail = client.get(f"/api/reward-search/{name}").json()
+        if detail["status"] != "running":
+            return detail
+        time.sleep(0.2)
+    raise AssertionError(f"reward search {name} still running: {client.get(f'/api/reward-search/{name}').json()}")
+
+
+def test_the_reward_search_form_offers_coefficients_and_real_objectives_only(client: TestClient):
+    form = client.get("/api/reward-search/form").json()
+    assert form["game"] == "snake" and "step" in [row["name"] for row in form["fields"]]
+    rows = {row["name"]: row for row in form["settings"]}
+    assert {"population", "generations", "steps_per_member", "perturbation", "max_change", "zero_scale", "allow_sign_change", "seed"} <= set(rows)
+    assert all(row["description"] for row in form["settings"])
+    assert rows["objective"]["default"] == "mean_score" and "mean_return" not in rows["objective"]["choices"]
+    atari = client.get("/api/reward-search/form", params={"game": "atari"}).json()
+    assert [row["name"] for row in atari["fields"]] == ["scale", "life_lost"]
+    assert client.get("/api/reward-search/form", params={"game": "chess"}).status_code == 404
+
+
+def test_a_reward_search_runs_through_the_queue_and_its_members_are_ordinary_runs(queue_client: TestClient, paths: AppPaths):
+    client = queue_client
+    make_run(paths, "parent")
+    body = {
+        "name": "rs", "parent": "parent", "fields": ["death", "step"],
+        "settings": {"population": 2, "generations": 2, "steps_per_member": 32, "evaluation_games": 2, "seed": 1},
+    }
+    assert client.post("/api/reward-search", json=body | {"parent": "missing"}).status_code == 404
+    assert client.post("/api/reward-search", json=body | {"checkpoint": "nope.pt"}).status_code == 404
+    assert client.post("/api/reward-search", json=body | {"fields": ["nope"]}).status_code == 422
+    assert client.post("/api/reward-search", json=body | {"fields": []}).status_code == 422
+    assert client.post("/api/reward-search", json=body | {"name": "../x"}).status_code == 422
+    assert client.post("/api/reward-search", json=body | {"name": "form"}).status_code == 422
+    assert client.post("/api/reward-search", json=body | {"settings": {"population": 1}}).status_code == 422
+    assert client.post("/api/reward-search", json=body | {"settings": {"objective": "mean_return"}}).status_code == 422
+    assert client.post("/api/reward-search", json=body | {"settings": {"unknown": 1}}).status_code == 422
+    started = client.post("/api/reward-search", json=body)
+    assert started.status_code == 201, started.text
+    assert started.json()["status"] == "running" and started.json()["state"]["spec"]["checkpoint"] == "checkpoint_0000000016.pt"
+    assert client.post("/api/reward-search", json=body).status_code == 409
+
+    detail = wait_for_search(client, "rs")
+    assert detail["status"] == "finished", detail
+    generations = detail["state"]["generations"]
+    assert [[m["run"] for m in g["members"]] for g in generations] == [["rs-g0-m0", "rs-g0-m1"], ["rs-g1-m0", "rs-g1-m1"]]
+    assert all(m["state"] == "done" and m["score"] is not None for g in generations for m in g["members"])
+    first_winner = generations[0]["members"][generations[0]["winner"]]
+    assert generations[1]["parent"] == first_winner["run"] and generations[1]["members"][0]["reward"] == first_winner["reward"]
+    assert detail["generations_judged"] == 2 and detail["best_run"].startswith("rs-g1-m")
+
+    runs = {run["name"]: run for run in client.get("/api/runs").json()}
+    assert {"rs-g0-m0", "rs-g0-m1", "rs-g1-m0", "rs-g1-m1"} <= set(runs)
+    member = client.get("/api/runs/rs-g1-m1").json()
+    assert member["parent"]["run"] == first_winner["run"] and member["config"]["reward"] == generations[1]["members"][1]["reward"]
+    assert "Reward search rs, generation 1, member 1" in member["description"]
+    assert member["evaluations"][-1]["statistics"]["games"] == 2
+    assert [s["name"] for s in client.get("/api/reward-search", params={"game": "snake"}).json()] == ["rs"]
+    assert client.get("/api/reward-search", params={"game": "lunar_lander"}).json() == []
+    assert client.get("/api/reward-search/missing").status_code == 404
+    assert client.post("/api/reward-search/rs/stop").json()["status"] == "finished"  # nothing to stop
+    assert client.get("/api/games").status_code == 200 and (paths.runs_dir / "reward_searches" / "rs.json").is_file()
+
+
+def test_stopping_a_reward_search_empties_its_queue_entries_and_survives_a_restart(paths: AppPaths):
+    make_run(paths, "parent")
+    body = {"name": "halt", "parent": "parent", "fields": ["food"], "settings": {"population": 3, "steps_per_member": 100_000}}
+    with TestClient(create_app(paths, queue_interval=0.05)) as client:
+        client.put("/api/queue/settings", json={"max_parallel": 0})  # members wait in the queue
+        assert client.post("/api/reward-search", json=body).status_code == 201
+        deadline = time.monotonic() + 30
+        while len(client.get("/api/queue").json()["entries"]) < 3:
+            assert time.monotonic() < deadline
+            time.sleep(0.05)
+    with TestClient(create_app(paths, queue_interval=0.05)) as client:  # after a restart: nothing queued twice
+        time.sleep(0.5)
+        assert [e["run"] for e in client.get("/api/queue").json()["entries"]] == ["halt-g0-m0", "halt-g0-m1", "halt-g0-m2"]
+        assert {m["state"] for m in client.get("/api/reward-search/halt").json()["state"]["generations"][0]["members"]} == {"waiting"}
+        stopped = client.post("/api/reward-search/halt/stop").json()
+        assert stopped["status"] == "stopped" and client.get("/api/queue").json()["entries"] == []
 
 
 # --------------------------------------------------------------------------- Atari (image observations)

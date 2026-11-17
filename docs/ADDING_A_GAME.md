@@ -64,6 +64,7 @@ GAME = GameSpec(
 | `reward_table` | What a scheme pays in typical situations, for the app's Rewards tab: rows `{"situation": str, "reward": float, "breakdown": {term: float}}`. `None`: no preview (`/api/rewards/preview` answers 404). |
 | `episode_metrics` | Optional `GameMetrics`: the game's own evaluation statistics on top of the generic ones (section 6). `None`: only the generic ones. |
 | `training_warnings` | Optional `(rules, reward, gamma) -> tuple[str, ...]`: plain-language warnings about a configuration the game is about to be trained with (Snake: a step cost that makes dying no worse than living; `games/snake/warnings.py`). The app shows them in a dialog before starting a run, `scripts/train.py` prints them to stderr. `None`: none. |
+| `search_objective` | The evaluation statistic a reward search optimises by default (default `"mean_score"`). It must have a direction and must not measure the reward (`MetricDefinition.measures_reward`): the search judges rewards by what happened in the game. Only the float fields of `reward_type` can be searched. |
 
 The registry checks the spec when it scans (`games/validation.py`) and raises
 `GameRegistryError` naming the package if anything is missing or wrong, including an

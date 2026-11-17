@@ -39,8 +39,8 @@ def experiment_schema(game: str = DEFAULT_GAME) -> dict[str, Any]:
     return {
         "game": game,
         "sections": {
-            **{section: _field_rows(section_classes[section]) for section in SHARED_SECTIONS},
-            **{name: _field_rows(algorithm.settings_type) for name, algorithm in algorithms.items()},
+            **{section: field_rows(section_classes[section]) for section in SHARED_SECTIONS},
+            **{name: field_rows(algorithm.settings_type) for name, algorithm in algorithms.items()},
         },
         "model_kinds": {kind: _kind_row(kind, observation_kind) for kind in POLICY_KINDS if observation_kind in KIND_INFO[kind].inputs},
         "algorithms": {name: _algorithm_row(algorithm) for name, algorithm in algorithms.items()},
@@ -57,7 +57,8 @@ def _algorithm_row(algorithm: Algorithm) -> dict[str, Any]:
     }
 
 
-def _field_rows(cls: type) -> list[dict[str, Any]]:
+def field_rows(cls: type) -> list[dict[str, Any]]:
+    """One form row per field of the flat dataclass ``cls`` (``name``, ``type``, ``default``, ``nullable``, ``description``, ``choices``)."""
     hints = typing.get_type_hints(cls)
     return [_field_row(field, hints[field.name], cls) for field in dataclasses.fields(cls)]
 

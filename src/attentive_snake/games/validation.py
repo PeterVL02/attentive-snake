@@ -4,7 +4,7 @@ import dataclasses
 import re
 
 from attentive_snake.episode_metrics import GameMetrics
-from attentive_snake.evaluation.generic_statistics import GENERIC_KEYS
+from attentive_snake.evaluation.generic_statistics import GENERIC_KEYS, GENERIC_METRICS
 from attentive_snake.games.spec import GameSpec
 from attentive_snake.observation_spec import OBSERVATION_KINDS
 from attentive_snake.views import VIEW_KINDS
@@ -36,6 +36,7 @@ def spec_problems(spec: GameSpec, package_name: str) -> list[str]:
         problems += [f"locked_rules names {name!r}, which is not a rules field" for name in spec.locked_rules if name not in rule_fields]
     if spec.episode_metrics is not None:
         problems += metric_problems(spec.episode_metrics)
+    problems += _search_objective_problems(spec)
     if spec.training_warnings is not None and not callable(spec.training_warnings):
         problems.append("training_warnings must be callable")
     if spec.observation_labels is not None and not problems:
@@ -63,6 +64,17 @@ def metric_problems(metrics: GameMetrics) -> list[str]:
         if definition.format not in METRIC_FORMATS:
             problems.append(f"episode_metrics {definition.key!r}: format must be one of {', '.join(METRIC_FORMATS)}")
     return problems
+
+
+def _search_objective_problems(spec: GameSpec) -> list[str]:
+    """``search_objective``: one of the game's statistics, with a direction, not measuring the reward."""
+    own = spec.episode_metrics.definitions if isinstance(spec.episode_metrics, GameMetrics) else ()
+    definition = next((d for d in (*own, *GENERIC_METRICS) if d.key == spec.search_objective), None)
+    if definition is None:
+        return [f"search_objective {spec.search_objective!r} is not one of the game's evaluation statistics"]
+    if definition.higher_is_better is None or definition.measures_reward:
+        return [f"search_objective {spec.search_objective!r} must have a direction and must not measure the reward"]
+    return []
 
 
 def _label_problems(spec: GameSpec) -> list[str]:
