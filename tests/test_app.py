@@ -219,6 +219,7 @@ def test_every_named_js_import_is_exported_by_its_module():
 # --------------------------------------------------------------------------- starting runs
 
 
+@pytest.mark.slow
 def test_start_rejects_invalid_requests(client: TestClient, paths: AppPaths):
     bad_name = client.post("/api/runs", json={"name": "../escape", "config": tiny_tables()})
     assert bad_name.status_code == 422 and "invalid name" in bad_name.json()["detail"]
@@ -243,6 +244,7 @@ def test_start_rejects_invalid_requests(client: TestClient, paths: AppPaths):
     assert existing.status_code == 409
 
 
+@pytest.mark.slow
 def test_train_then_resume_through_the_api(client: TestClient):
     started = client.post("/api/runs", json={"name": "tiny", "config": tiny_tables(total_env_steps=64)})
     assert started.status_code == 201, started.text
@@ -279,6 +281,7 @@ def test_stop_a_long_job_and_refuse_a_second_one(client: TestClient):
     assert client.get("/api/runs/long").json()["status"]["state"] == "stopped"
 
 
+@pytest.mark.slow
 def test_descriptions_and_keep_checkpoints_through_the_api(client: TestClient, paths: AppPaths):
     tables = tiny_tables(total_env_steps=64)
     started = client.post("/api/runs", json={"name": "noted", "config": tables, "description": "  -first try  "})
@@ -313,6 +316,7 @@ def test_fork_rules(client: TestClient):
     assert "train.learning_rate" not in locked and "env.num_envs" not in locked
 
 
+@pytest.mark.slow
 def test_fork_through_the_api(client: TestClient, paths: AppPaths):
     parent = make_run(paths, "parent")
     append_event(parent, RunEvent("start", 0, "parent run"))
@@ -707,6 +711,7 @@ def test_schema_defaults_and_rewards_per_game(multi_client: TestClient, multi_pa
     assert multi_client.post("/api/rewards/preview", json={"reward": {}}).status_code == 200
 
 
+@pytest.mark.slow
 def test_train_a_run_of_another_game_through_the_api(multi_client: TestClient, multi_paths: AppPaths):
     tables = tiny_tables(total_env_steps=32)
     tables["game"] = BEACON
@@ -874,6 +879,7 @@ def test_lunar_lander_hidden_velocities_in_the_schema_and_a_watched_lstm(client:
     assert detail["config"]["game"]["hide_velocities"] is True
 
 
+@pytest.mark.slow
 def test_the_apple_rules_are_form_rows_and_a_run_with_them_trains_and_is_watched_with_every_apple(client: TestClient):
     schema = client.get("/api/schema").json()
     rows = {row["name"]: row for row in schema["sections"]["game"]}
@@ -910,6 +916,7 @@ def wait_for_evaluation(client: TestClient, name: str, game: str = "snake") -> d
     raise AssertionError(f"evaluation of {name} still running after {JOB_TIMEOUT}s")
 
 
+@pytest.mark.slow
 def test_training_evaluations_are_listed_and_reproduced_through_the_api(client: TestClient):
     tables = tiny_tables(total_env_steps=64, keep_checkpoints=False)  # 16 env steps per update
     tables["evaluation"] = {"interval": 32, "games": 4}
@@ -947,6 +954,7 @@ def test_training_evaluations_are_listed_and_reproduced_through_the_api(client: 
     assert client.post("/api/runs/graded/resume", json={"evaluation_interval": -1}).status_code == 422
 
 
+@pytest.mark.slow
 def test_evaluation_requests_are_validated_and_one_runs_at_a_time(client: TestClient, paths: AppPaths):
     make_run(paths, "solo")
     assert client.get("/api/runs/solo/evaluate").json() == {"state": "idle"}
@@ -1000,6 +1008,7 @@ def test_resume_command_passes_evaluation_changes():
     assert command[-4:] == ["--eval-interval", "0", "--eval-games", "5"]
 
 
+@pytest.mark.slow
 def test_the_forms_config_with_evaluation_trains_and_a_config_without_it_still_resumes(client: TestClient, paths: AppPaths):
     """The New-training form sends /api/defaults (which has [evaluation]); the train.py subprocess must load it.
     Runs from before [evaluation] existed have no such section and must still load (evaluation off)."""
@@ -1054,6 +1063,7 @@ def test_algorithm_defaults_and_schema(client: TestClient):
     assert client.get("/api/defaults", params={"algorithm": "a2c"}).status_code == 404
 
 
+@pytest.mark.slow
 def test_prioritized_replay_settings_are_in_the_schema_and_a_prioritized_run_logs_its_metrics(client: TestClient):
     schema = client.get("/api/schema").json()
     fields = {row["name"]: row for row in schema["sections"]["dqn"]}
@@ -1074,6 +1084,7 @@ def test_prioritized_replay_settings_are_in_the_schema_and_a_prioritized_run_log
     assert wait_until_done(client, "per-v2")["config"]["dqn"]["priority_alpha"] == 0.3
 
 
+@pytest.mark.slow
 def test_n_step_dueling_and_loss_are_in_the_schema_and_reach_a_started_run(client: TestClient, paths: AppPaths):
     schema = client.get("/api/schema").json()
     fields = {row["name"]: row for row in schema["sections"]["dqn"]}
@@ -1123,6 +1134,7 @@ def test_n_step_dueling_and_loss_are_in_the_schema_and_reach_a_started_run(clien
     assert refused.status_code == 422 and "dueling" in refused.text
 
 
+@pytest.mark.slow
 def test_jepa_is_offered_drawn_trained_watched_and_forked_through_the_api(client: TestClient):
     schema = client.get("/api/schema").json()
     kind = schema["model_kinds"]["jepa"]
@@ -1170,6 +1182,7 @@ def test_jepa_is_offered_drawn_trained_watched_and_forked_through_the_api(client
     assert off["status"]["state"] == "finished" and "prediction_loss" not in off["metrics"][-1]
 
 
+@pytest.mark.slow
 def test_rollout_steps_is_offered_for_the_jepa_kinds_only_reaches_a_run_and_may_change_on_fork(client: TestClient):
     schema = client.get("/api/schema").json()
     rollout = {"rollout_steps", "rollout_value_coef"}
@@ -1202,6 +1215,7 @@ def test_rollout_steps_is_offered_for_the_jepa_kinds_only_reaches_a_run_and_may_
     assert client.post("/api/runs", json={"name": "no-steps", "config": refused}).status_code == 422
 
 
+@pytest.mark.slow
 def test_jepa_attention_is_offered_for_both_games_trained_and_watched_with_attention(client: TestClient):
     jepa = client.get("/api/schema").json()["model_kinds"]["jepa"]
     for game in ("snake", "lunar_lander"):
@@ -1227,6 +1241,7 @@ def test_jepa_attention_is_offered_for_both_games_trained_and_watched_with_atten
     assert steps.status_code == 200 and all("heatmap" in frame for frame in steps.json()["frames"])
 
 
+@pytest.mark.slow
 def test_a_dqn_run_through_the_api_trains_watches_evaluates_forks_and_compares(client: TestClient, paths: AppPaths):
     started = client.post("/api/runs", json={"name": "dqn", "config": tiny_tables("cnn", algorithm="dqn")})
     assert started.status_code == 201, started.text
@@ -1289,6 +1304,7 @@ def test_residual_is_offered_for_the_kinds_with_a_stem_and_locked_on_fork(client
     assert "model.residual" in client.get("/api/fork-rules", params={"game": game}).json()["locked"]
 
 
+@pytest.mark.slow
 def test_a_residual_hybrid_trains_is_drawn_and_cannot_change_on_fork(client: TestClient):
     tables = tiny_tables("hybrid")
     tables["model"]["residual"] = True
@@ -1335,6 +1351,7 @@ def test_the_parameter_count_reflects_layer_norm_for_the_kinds_that_read_it(clie
     assert parameters_for(client, cnn) - parameters_for(client, tiny_tables("cnn")) == 2 * 8 + 2 * 16
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("algorithm", ["ppo", "dqn"])
 def test_a_run_with_layer_norm_and_weight_decay_trains_is_drawn_and_forks_with_another_weight_decay(client: TestClient, algorithm: str):
     tables = tiny_tables("cnn", algorithm=algorithm, weight_decay=0.01)
@@ -1360,6 +1377,7 @@ def test_a_run_with_layer_norm_and_weight_decay_trains_is_drawn_and_forks_with_a
     assert refused.status_code == 422 and "model.layer_norm" in refused.text
 
 
+@pytest.mark.slow
 def test_jepa_tokens_is_offered_for_both_games_trained_and_watched_with_attention(client: TestClient):
     jepa = client.get("/api/schema").json()["model_kinds"]["jepa"]
     for game in ("snake", "lunar_lander"):
@@ -1384,6 +1402,7 @@ def test_jepa_tokens_is_offered_for_both_games_trained_and_watched_with_attentio
     assert steps.status_code == 200 and all("heatmap" in frame for frame in steps.json()["frames"])
 
 
+@pytest.mark.slow
 def test_jepa_temporal_is_offered_for_both_games_with_history_trained_and_watched_with_frame_attention(client: TestClient, paths: AppPaths):
     jepa = client.get("/api/schema").json()["model_kinds"]["jepa"]
     for game in ("snake", "lunar_lander"):
@@ -1567,6 +1586,7 @@ def test_a_queued_fork_that_cannot_start_is_kept_as_failed_and_the_queue_goes_on
     assert queue_runs(client) == (["child"], ["after"])
 
 
+@pytest.mark.slow
 def test_the_queue_survives_a_restart_and_a_queued_fork_and_resume_train(paths: AppPaths):
     make_run(paths, "parent")
     with TestClient(create_app(paths, queue_interval=0.05)) as first:
@@ -1641,6 +1661,7 @@ def test_the_reward_search_form_offers_coefficients_and_real_objectives_only(cli
     assert client.get("/api/reward-search/form", params={"game": "chess"}).status_code == 404
 
 
+@pytest.mark.slow
 def test_a_reward_search_runs_through_the_queue_and_its_members_are_ordinary_runs(queue_client: TestClient, paths: AppPaths):
     client = queue_client
     make_run(paths, "parent")
@@ -1738,6 +1759,7 @@ def test_atari_is_listed_with_its_titles_and_the_kinds_that_read_pictures(client
     assert parameters_for(client, tiny_atari(), game="atari") > 0
 
 
+@pytest.mark.slow
 def test_train_watch_evaluate_and_compare_atari_through_the_api(client: TestClient, paths: AppPaths):
     """The real emulator in a real training subprocess, then everything the tabs ask for."""
     tables = tiny_atari()
@@ -1781,6 +1803,7 @@ def test_train_watch_evaluate_and_compare_atari_through_the_api(client: TestClie
     assert refused.status_code == 422 and "game.title" in refused.text
 
 
+@pytest.mark.slow
 def test_atari_trains_with_dqn_through_the_api(client: TestClient):
     started = client.post("/api/runs", json={"name": "pong-dqn", "config": tiny_atari(algorithm="dqn")})
     assert started.status_code == 201, started.text

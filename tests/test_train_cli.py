@@ -12,6 +12,8 @@ from attentive_snake.run_metadata import Lineage, read_events
 from attentive_snake.training.checkpoint import read_checkpoint
 from attentive_snake.training.metrics import read_metrics
 
+pytestmark = pytest.mark.slow  # every test here trains through the scripts: run in the full suite only
+
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "train.py"
 TINY = """
 [game]

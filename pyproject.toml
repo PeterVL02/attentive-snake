@@ -23,6 +23,10 @@ packages = ["src/attentive_snake"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: trains a run end to end (app or scripts); skip while iterating with -m \"not slow\", always run before a PR",
+]
+strict_markers = true
 
 [dependency-groups]
 dev = [

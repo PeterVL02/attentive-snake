@@ -334,6 +334,7 @@ def _corridor_trainer(seed: int, total_env_steps: int, **overrides) -> Trainer:
     return build_trainer(policy, env, config, PpoConfig(rollout_length=32, num_epochs=4, num_minibatches=4), NullLogger())
 
 
+@pytest.mark.slow
 def test_end_to_end_learning_on_corridor() -> None:
     trainer = _corridor_trainer(seed=1, total_env_steps=40_000)
     history = trainer.train()

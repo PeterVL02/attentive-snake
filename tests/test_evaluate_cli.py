@@ -14,6 +14,8 @@ from attentive_snake.training.checkpoint import checkpoint_path
 from attentive_snake.evaluation.log import read_evaluations
 from attentive_snake.run_dir import config_path, evaluations_path, list_checkpoints
 
+pytestmark = pytest.mark.slow  # every test here trains through the scripts: run in the full suite only
+
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 TINY = """
 [game]

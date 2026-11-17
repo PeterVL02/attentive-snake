@@ -809,7 +809,8 @@ that is clearly wrong; on the hand-tuned default (first reading) it found nothin
 ## Development
 
 ```bash
-uv run pytest -q
+uv run pytest -q                   # everything, about 4 minutes: run before every pull request
+uv run pytest -q -m "not slow"     # about 1 minute: skips the 45 tests that train a run end to end
 ```
 
 The code is organised so that each module has one job; see [CLAUDE.md](CLAUDE.md)

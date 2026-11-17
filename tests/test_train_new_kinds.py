@@ -15,6 +15,7 @@ HEADS = {"ppo": "net.value_head.linear.weight", "dqn": "net.q_head.linear.weight
 TRUNK = {"resnet": "net.encoder.blocks.0.", "lstm": "net.recurrent.lstm.weight_ih_l0"}
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("kind, algorithm, resume", [("resnet", "ppo", False), ("resnet", "dqn", True), ("lstm", "ppo", True), ("lstm", "dqn", False)])
 def test_kind_trains_saves_and_resumes(tmp_path: Path, kind: str, algorithm: str, resume: bool):
     (tmp_path / "tiny.toml").write_text(TINY)
