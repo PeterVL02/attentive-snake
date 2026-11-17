@@ -1,5 +1,6 @@
 // Tab 1: configure and start a new training run of the selected game.
 
+import { actionSpaceWatcher } from "../action_space.js";
 import { ApiError, get, post } from "../api.js";
 import { algorithmPicker } from "../algorithm_picker.js";
 import { navigate, provide } from "../bus.js";
@@ -54,6 +55,7 @@ let formError;
 let buttons = {}; // how ("start" | "queue") -> its button
 let summary;
 let parameters; // the parameter-count line of the model panel
+let continuous = false; // whether the form's rules give continuous actions (the server's answer)
 
 function sectionWidgets(section, names) {
   return names.map((name) => {
@@ -91,7 +93,20 @@ function explainState() {
   } else {
     text = `The last ${n} observations are stacked as extra input channels; this model has no notion of their order in time.${actionNote} The recommended setting for this model is a single frame.`;
   }
+  if (continuous) text += actions
+    ? " These rules give continuous actions, so history_actions will be refused: it needs one channel per action of a discrete set."
+    : " These rules give continuous actions, so history_actions stays off: it needs one channel per action of a discrete set.";
   explain.textContent = text;
+}
+
+/** The server's answer for the current rules: with continuous actions, history_actions is turned off (it would be refused). */
+function onActionSpace(answer) {
+  continuous = answer;
+  if (continuous && widgets["env.history_actions"].get().value) {
+    widgets["env.history_actions"].set(false);
+    formChanged();
+  }
+  explainState();
 }
 
 function showKindFields() {
@@ -106,7 +121,7 @@ function onKindChange() {
   showKindFields();
   const recommended = kindInfo().recommended_env;
   widgets["env.history_length"].set(recommended.history_length);
-  widgets["env.history_actions"].set(recommended.history_actions);
+  widgets["env.history_actions"].set(recommended.history_actions && !continuous);
   explainState();
   formChanged();
 }
@@ -280,6 +295,7 @@ function build() {
   widgets = {};
   nameEdited = false;
   rewardValues = null;
+  continuous = false; // until the server answers for this game's rules
   const nameSpec = { name: "run name", type: "str", nullable: false, description: `Directory under runs/${game.name}/: letters, digits, '.', '_' and '-'.` };
   nameWidget = fieldControl(nameSpec, "");
   nameWidget.onChange(() => (nameEdited = true));
@@ -297,6 +313,8 @@ function build() {
   stateWidgets.forEach((w) => w.onChange(explainState));
 
   const gameWidgets = sectionWidgets("game", schema.sections.game.map((f) => f.name));
+  const actionSpace = actionSpaceWatcher(game.name, gameRules, onActionSpace);
+  gameWidgets.forEach((w) => w.onChange(actionSpace.update));
 
   algorithms = algorithmPicker(schema.algorithms);
   algorithms.set(defaults.train.algorithm);
@@ -385,6 +403,7 @@ function build() {
   widgets["env.history_length"].set(defaults.env.history_length);
   widgets["env.history_actions"].set(defaults.env.history_actions);
   explainState();
+  actionSpace.update(); // the loaded rules may already give continuous actions
   requestAnimationFrame(reserveModelHeight);
 }
 
