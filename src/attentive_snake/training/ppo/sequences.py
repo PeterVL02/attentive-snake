@@ -29,7 +29,7 @@ def rollout_sequences(buffer: RolloutBuffer, length: int) -> TransitionSequences
     found = slot_sequences(dones.cpu().numpy() > 0.5, starts, later_steps, envs, length)
     slots = torch.as_tensor(found.slots, device=dones.device)
     return TransitionSequences(
-        actions=buffer.actions.flatten()[slots],
+        actions=buffer.actions.flatten(0, 1)[slots],
         next_observations=buffer.next_observations.flatten(0, 1)[slots],
         valid=torch.as_tensor(found.present.astype(np.float32), device=dones.device),
         terminal=dones[slots],

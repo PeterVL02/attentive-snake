@@ -2,8 +2,10 @@
 
 Any ``nn.Module`` whose ``forward`` maps a batch of observations
 ``(batch, *observation_spec.shape)`` to the output of its head can be trained by the
-algorithm that uses that head: ``PolicyOutput`` (actor-critic, PPO) or ``QValues``
-(value-based, DQN). ``models.acting`` turns either into actions and displayable numbers.
+algorithm that uses that head: ``PolicyOutput`` (actor-critic over discrete actions, PPO),
+``GaussianPolicyOutput`` (actor-critic over continuous actions, PPO) or ``QValues``
+(value-based, DQN). ``models.acting`` turns any of them into actions and displayable numbers,
+``models.action_distribution`` an actor-critic output into the distribution PPO trains.
 """
 
 from typing import NamedTuple
@@ -18,3 +20,9 @@ class PolicyOutput(NamedTuple):
 
 class QValues(NamedTuple):
     q_values: Tensor  # (batch, num_actions), expected discounted return of each action
+
+
+class GaussianPolicyOutput(NamedTuple):
+    mean: Tensor  # (batch, dimension), the mean action (before clipping to the game's bounds)
+    log_std: Tensor  # (batch, dimension), log standard deviation of each number (the same for every observation)
+    value: Tensor  # (batch,), state-value estimate

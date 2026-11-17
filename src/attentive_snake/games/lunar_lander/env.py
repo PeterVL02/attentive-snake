@@ -1,6 +1,8 @@
-"""Lunar Lander as a ``GameEnv``: Gymnasium's ``LunarLander-v3`` with discrete actions, 8 numbers per frame.
+"""Lunar Lander as a ``GameEnv``: Gymnasium's ``LunarLander-v3``, 8 numbers per frame.
 
-Actions: 0 nothing, 1 left engine, 2 main engine, 3 right engine. Observation (see
+Actions: 0 nothing, 1 left engine, 2 main engine, 3 right engine; with ``LanderRules.continuous``
+two throttles in [-1, 1] instead (Gymnasium's own continuous mode: main engine, side engines),
+described by ``action_space`` and named by ``action_labels``. Observation (see
 ``game.OBSERVATION_LABELS``): position, velocity, angle, angular velocity, leg contacts.
 Rendering is lazy: the Gymnasium env is made without a render mode, and only the first
 ``view()`` switches it to ``"rgb_array"`` (engine particles, Gymnasium's only rendering
@@ -13,6 +15,7 @@ from typing import Any
 
 import numpy as np
 
+from attentive_snake.env.action_space import ContinuousActions
 from attentive_snake.env.types import EnvStep
 from attentive_snake.games.lunar_lander.config import LanderRules
 from attentive_snake.games.lunar_lander.hidden_velocities import visible_part
@@ -21,6 +24,8 @@ from attentive_snake.games.lunar_lander.reward import LanderReward, lander_rewar
 from attentive_snake.views.image import image_payload
 
 GYMNASIUM_ID = "LunarLander-v3"
+CONTINUOUS_ACTIONS = ContinuousActions(low=(-1.0, -1.0), high=(1.0, 1.0))
+CONTINUOUS_LABELS = ("main engine", "side engines")
 
 
 def make_gymnasium_env(rules: LanderRules):
@@ -31,7 +36,7 @@ def make_gymnasium_env(rules: LanderRules):
         GYMNASIUM_ID,
         max_episode_steps=rules.max_episode_steps,
         disable_env_checker=True,
-        continuous=False,
+        continuous=rules.continuous,
         gravity=rules.gravity,
         enable_wind=rules.enable_wind,
         wind_power=rules.wind_power,
@@ -40,12 +45,20 @@ def make_gymnasium_env(rules: LanderRules):
 
 
 class LunarLanderEnv:
-    """One Lunar Lander; ``score`` is the episode's raw Gymnasium return, ``reward`` the scaled one."""
+    """One Lunar Lander; ``score`` is the episode's raw Gymnasium return, ``reward`` the scaled one.
+
+    With continuous rules it carries ``action_space`` and ``action_labels`` (the two throttles).
+    """
 
     observation_shape = (8,)
     num_actions = 4
 
     def __init__(self, rules: LanderRules, reward: LanderReward, seed: int | None = None) -> None:
+        self._continuous = rules.continuous
+        if rules.continuous:
+            self.action_space = CONTINUOUS_ACTIONS
+            self.action_labels = CONTINUOUS_LABELS
+            self.num_actions = CONTINUOUS_ACTIONS.dimension
         self._env = make_gymnasium_env(rules)
         self._reward = reward
         self._visible = visible_part(rules)
@@ -58,8 +71,9 @@ class LunarLanderEnv:
         self._return = 0.0
         return self._visible(np.asarray(observation, dtype=np.float32))
 
-    def step(self, action: int) -> EnvStep:
-        observation, reward, terminated, truncated, _ = self._env.step(int(action))
+    def step(self, action: int | np.ndarray) -> EnvStep:
+        action = np.asarray(action, dtype=np.float32) if self._continuous else int(action)
+        observation, reward, terminated, truncated, _ = self._env.step(action)
         self._return += float(reward)
         timed_out = bool(truncated and not terminated)
         return EnvStep(

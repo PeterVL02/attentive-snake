@@ -20,8 +20,9 @@ class WatchFrame:
     by its maximum) belong to the observation the *next* action is chosen from, and are
     ``None`` when not requested, not available or the episode is over. ``action_values``
     (``models.acting.ActionReadout.to_dict``: action probabilities and state value, or
-    Q-values, one per ``WatchSession.info["action_names"]``) also belongs to that
-    observation; ``None`` once the episode is over.
+    Q-values, one per ``WatchSession.info["action_names"]``; for continuous actions the mean
+    action and its ``spread`` per dimension, drawn against ``WatchSession.info["action_bounds"]``)
+    also belongs to that observation; ``None`` once the episode is over.
     """
 
     view_kind: str

@@ -18,6 +18,7 @@ from attentive_snake.views import ViewKind
 type MakeEnv = Callable[[Any, Any, int | None], GameEnv]
 type RewardTable = Callable[[Any, int], list[dict[str, Any]]]
 type TrainingWarnings = Callable[[Any, Any, float], tuple[str, ...]]  # (rules, reward, gamma) -> warnings
+type ActionsAreContinuous = Callable[[Any], bool]  # rules -> whether the env's actions are continuous
 
 
 @dataclass(frozen=True)
@@ -50,8 +51,13 @@ class GameSpec:
             ``GameEnv.observation_shape``; shown next to the attention over them. ``None``:
             no names (displays number them). Only for ``observation_kind == "vector"``.
         action_labels: Optional names of the actions, in action-index order (Snake: ``"up"``,
-            ...), one per action of ``GameEnv.num_actions``; shown next to the action
-            probabilities or Q-values when watching. ``None``: ``"action 0"``, ...
+            ...), one per action of ``GameEnv.num_actions`` of the default rules; shown next to the
+            action probabilities or Q-values when watching. ``None``: ``"action 0"``, ...
+        continuous_actions: Optional ``rules -> bool``: whether an env of these rules has
+            continuous actions (``GameEnv.action_space``, ``env.action_space``). It lets a config be
+            checked without building an env (DQN, ``history_actions`` and the world-model kinds need
+            discrete actions: ``config.action_compatibility``); it must agree with the env's
+            ``action_space``. ``None``: the game's actions are always discrete.
         episode_metrics: Optional ``GameMetrics`` (``attentive_snake.episode_metrics``): the
             game's own evaluation statistics (Snake: win rate, steps to win, steps between
             apples), computed from ``EpisodeRecord``s on top of the generic ones every game
@@ -82,3 +88,8 @@ class GameSpec:
     action_labels: tuple[str, ...] | None = None
     training_warnings: TrainingWarnings | None = None
     search_objective: str = "mean_score"
+    continuous_actions: ActionsAreContinuous | None = None
+
+    def has_continuous_actions(self, rules: Any) -> bool:
+        """Whether an env of ``rules`` has continuous actions (``continuous_actions``; ``False`` without one)."""
+        return self.continuous_actions is not None and bool(self.continuous_actions(rules))

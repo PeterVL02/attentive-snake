@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 import torch
 from torch import nn
+from torch.distributions import Categorical
 
 from attentive_snake.env.types import EpisodeSummary, VecEnvStep
 from attentive_snake.models.types import PolicyOutput
@@ -180,7 +181,7 @@ def test_ppo_loss_at_old_policy_is_minus_mean_advantage_with_no_kl() -> None:
     advantages = torch.tensor([1.0, -2.0, 0.5, 3.0, 0.0, -1.0])
     values = torch.zeros(6)
     returns = torch.ones(6)
-    terms = ppo_loss(logits, values, actions, old_log_probs, advantages, returns, 0.2, 0.5, 0.01)
+    terms = ppo_loss(Categorical(logits=logits), values, actions, old_log_probs, advantages, returns, 0.2, 0.5, 0.01)
 
     torch.testing.assert_close(terms.policy_loss, -advantages.mean())
     torch.testing.assert_close(terms.value_loss, torch.tensor(0.5))
@@ -195,7 +196,7 @@ def test_ppo_loss_clips_ratio_and_gradient_raises_good_actions() -> None:
     advantages = torch.tensor([1.0])
     # New policy far more likely than old: ratio > 1 + clip -> no gradient through policy term.
     shifted_old = old_log_probs - 1.0
-    terms = ppo_loss(logits, torch.zeros(1), actions, shifted_old, advantages, torch.zeros(1), 0.2, 0.0, 0.0)
+    terms = ppo_loss(Categorical(logits=logits), torch.zeros(1), actions, shifted_old, advantages, torch.zeros(1), 0.2, 0.0, 0.0)
     assert terms.clip_fraction == 1.0
     torch.testing.assert_close(terms.policy_loss, torch.tensor(-1.2))
     terms.total.backward()
@@ -203,7 +204,7 @@ def test_ppo_loss_clips_ratio_and_gradient_raises_good_actions() -> None:
 
     # Unclipped with positive advantage: gradient descent increases that action's logit.
     logits.grad = None
-    terms = ppo_loss(logits, torch.zeros(1), actions, old_log_probs, advantages, torch.zeros(1), 0.2, 0.0, 0.0)
+    terms = ppo_loss(Categorical(logits=logits), torch.zeros(1), actions, old_log_probs, advantages, torch.zeros(1), 0.2, 0.0, 0.0)
     terms.total.backward()
     assert logits.grad[0, actions[0]] < 0
 
@@ -211,7 +212,7 @@ def test_ppo_loss_clips_ratio_and_gradient_raises_good_actions() -> None:
 def test_ppo_loss_rejects_mismatched_value_shape() -> None:
     logits, actions, old_log_probs = _loss_inputs()
     with pytest.raises(ValueError):
-        ppo_loss(logits, torch.zeros(6, 1), actions, old_log_probs, torch.zeros(6), torch.zeros(6), 0.2, 0.5, 0.0)
+        ppo_loss(Categorical(logits=logits), torch.zeros(6, 1), actions, old_log_probs, torch.zeros(6), torch.zeros(6), 0.2, 0.5, 0.0)
 
 
 def test_normalize_and_explained_variance() -> None:

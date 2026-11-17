@@ -6,6 +6,7 @@ from typing import Any
 
 import torch
 
+from attentive_snake.env.action_space import action_space_of
 from attentive_snake.env.types import EpisodeSummary
 from attentive_snake.training.algorithm import LearnerSetup
 from attentive_snake.training.auxiliary import AuxiliaryTraining
@@ -32,7 +33,12 @@ class PpoLearner:
         self._shuffle_generator = torch.Generator().manual_seed(train.seed)
         self._auxiliary = AuxiliaryTraining.of(self.policy)
         self._buffer = RolloutBuffer.allocate(
-            settings.rollout_length, env.num_envs, tuple(env.observation_shape), setup.device, self._auxiliary is not None
+            settings.rollout_length,
+            env.num_envs,
+            tuple(env.observation_shape),
+            setup.device,
+            self._auxiliary is not None,
+            action_space_of(env),
         )
         truncation = TruncationBootstrap(train.gamma) if train.bootstrap_truncated else None
         self._collector = RolloutCollector(env, self._buffer, env.reset(seed=train.seed), truncation)

@@ -59,7 +59,19 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/t
 
 # Treat the time limit like a real ending, as runs made before train.bootstrap_truncated existed did
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/no-bootstrap --set train.bootstrap_truncated=false
+
+# Continuous actions: two throttles in [-1, 1] (main engine, side engines) instead of four buttons; PPO only
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/throttle --set game.continuous=true
 ```
+
+**Continuous actions** (`game.continuous = true`, Lunar Lander and Atari; off by default). The network then outputs a
+mean for every number of the action and learns one spread (standard deviation) per number, the same for every
+observation; training samples around the mean, evaluation and greedy watching play the mean. Numbers outside the
+game's range are clipped by the game (the sample itself is what PPO learns from). Only PPO trains such actions;
+DQN (one value per action), `env.history_actions` (one channel per action) and the `jepa` kinds (they predict where
+each of a few actions leads) need a discrete action set and are refused with a message when the config is checked
+(the app answers before starting anything). The Watch tab shows the mean of each number with its spread, drawn
+between the number's bounds. `continuous` is locked when forking (the network's outputs change).
 
 ```bash
 # Atari (Gymnasium's ALE): Pong with the defaults (cnn, 8 envs, 10M steps = 40M frames: hours on a GPU)
@@ -74,10 +86,15 @@ uv run python scripts/train.py --game atari --run-dir runs/atari/pong-hybrid --s
 
 # DQN on Atari: the replay buffer of configs/atari/algorithms/dqn.toml (16000 transitions) takes about 3.6 GB of RAM
 uv run python scripts/train.py --game atari --run-dir runs/atari/pong-dqn --set train.algorithm=dqn
+
+# A continuous joystick (ALE's continuous mode: push 0..1, direction -pi..pi, fire 0..1); PPO only
+uv run python scripts/train.py --game atari --run-dir runs/atari/pong-stick --set game.continuous=true
 ```
 
 All Atari titles are one game, `atari`; `[game] title` picks the title and a run cannot change it (nor
-`screen_size`, `grayscale`, `full_action_space`) when it is continued under a new name. A step is 4 screen frames
+`screen_size`, `grayscale`, `full_action_space`, `continuous`) when it is continued under a new name. With
+`continuous = true` the three numbers become one of the 18 joystick actions as ALE's own continuous mode does it (a
+push beyond half way in a direction counts; fire above 0.5), and the push is passed on as the paddle strength. A step is 4 screen frames
 (`game.frame_skip`). The reward the model learns from is the sign of the points by default (`reward.clip`); the
 score shown everywhere is the game's real score. Losing a life does not end a game; `reward.life_lost` can
 penalise it. `ale-py` ships the game ROMs, nothing else has to be installed.

@@ -5,7 +5,9 @@ Indexing convention (shared by the collector and ``compute_gae``), for step
 
 * ``observations[t, i]`` - the observation the action was chosen from.
 * ``actions[t, i]``, ``log_probs[t, i]``, ``values[t, i]`` - chosen action, its
-  log-probability and V(observations[t, i]) under the acting policy.
+  log-probability and V(observations[t, i]) under the acting policy. Discrete actions are
+  int64 indices; continuous ones float32 vectors ``(dimension,)``, as sampled (before the env
+  clips them to the bounds: the log-probability belongs to the sample).
 * ``rewards[t, i]`` - reward received for that action.
 * ``dones[t, i]`` - 1.0 if that action ended the episode (terminated or
   truncated). Because environments auto-reset, ``observations[t + 1, i]``
@@ -21,6 +23,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from attentive_snake.env.action_space import ActionSpace
 from attentive_snake.models.auxiliary import TransitionSequences
 
 
@@ -29,7 +32,7 @@ class RolloutBuffer:
     """Pre-allocated per-step storage of one rollout, shaped (steps, envs, ...)."""
 
     observations: Tensor  # float32 (T, N, *obs_shape)
-    actions: Tensor  # int64 (T, N)
+    actions: Tensor  # int64 (T, N), or float32 (T, N, dimension) for continuous actions
     log_probs: Tensor  # float32 (T, N)
     values: Tensor  # float32 (T, N)
     rewards: Tensor  # float32 (T, N)
@@ -44,15 +47,18 @@ class RolloutBuffer:
         observation_shape: tuple[int, ...],
         device: torch.device,
         keep_next_observations: bool = False,
+        action_space: ActionSpace | None = None,
     ) -> "RolloutBuffer":
+        """Zeroed storage; ``action_space`` ``None`` means discrete actions."""
         steps = (rollout_length, num_envs)
+        continuous = action_space is not None and action_space.continuous
 
         def zeros(dtype: torch.dtype, extra: tuple[int, ...] = ()) -> Tensor:
             return torch.zeros(steps + extra, dtype=dtype, device=device)
 
         return cls(
             observations=zeros(torch.float32, tuple(observation_shape)),
-            actions=zeros(torch.int64),
+            actions=zeros(torch.float32, action_space.shape) if continuous else zeros(torch.int64),
             log_probs=zeros(torch.float32),
             values=zeros(torch.float32),
             rewards=zeros(torch.float32),
@@ -106,7 +112,7 @@ class TrainingBatch:
     """A rollout flattened over (steps, envs) together with its training targets."""
 
     observations: Tensor  # (B, *obs_shape)
-    actions: Tensor  # (B,)
+    actions: Tensor  # (B,), or (B, dimension) for continuous actions
     log_probs: Tensor  # (B,)
     values: Tensor  # (B,)
     advantages: Tensor  # (B,)
@@ -136,7 +142,7 @@ def flatten_rollout(
     """Merge the step and env dimensions of a rollout into one batch dimension (``sequences``: already one row per flattened step)."""
     return TrainingBatch(
         observations=buffer.observations.flatten(0, 1),
-        actions=buffer.actions.flatten(),
+        actions=buffer.actions.flatten(0, 1),
         log_probs=buffer.log_probs.flatten(),
         values=buffer.values.flatten(),
         advantages=advantages.flatten(),

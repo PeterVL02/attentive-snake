@@ -11,6 +11,7 @@ title = "pong"                # pong, ms_pacman, montezuma_revenge, pitfall, pri
 frame_skip = 4                # screen frames per step: 1 env step = 4 frames
 sticky_actions = 0.25         # chance per frame that the previous action is repeated instead (0: Pong plays out identically every game)
 full_action_space = true      # all 18 joystick actions in every title; false: the title's own (6 in Pong)
+continuous = false            # true: a continuous joystick (push 0..1, direction -pi..pi, fire 0..1; ALE's continuous mode); PPO only, no jepa kinds, no env.history_actions
 max_episode_steps = 27000     # time limit: ends the game as "timeout" (27000 x 4 frames = 30 minutes of play)
 screen_size = 84              # the model sees the screen shrunk to 84 x 84
 grayscale = true              # brightness only; false: 3 colour channels per frame

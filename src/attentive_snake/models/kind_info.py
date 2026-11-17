@@ -44,6 +44,9 @@ class KindInfo:
             can read (the keys equal the policy class's ``observation_kinds``).
         metrics: What the kind's auxiliary objective logs while training (with either
             algorithm), each switched on by its ``setting`` (``models.auxiliary``); none for most kinds.
+        needs_discrete_actions: The kind works only with a discrete action set (the world-model
+            kinds: their predictor is conditioned on one action index and scores every action), so a
+            game with continuous actions refuses it (``config.action_compatibility``).
     """
 
     fields: tuple[str, ...]
@@ -51,6 +54,7 @@ class KindInfo:
     attention_view: AttentionView | None
     inputs: Mapping[str, InputReading]
     metrics: tuple[TrainingMetric, ...] = ()
+    needs_discrete_actions: bool = False
 
     @property
     def observation_kinds(self) -> tuple[str, ...]:

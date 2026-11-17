@@ -12,6 +12,7 @@ class LanderRules:
     wind_power: float = field(default=15.0, metadata={"help": "Strongest sideways wind push when wind is enabled (0 to 20)."})
     turbulence_power: float = field(default=1.5, metadata={"help": "Strongest rotating gust when wind is enabled (0 to 2)."})
     max_episode_steps: int = field(default=1000, metadata={"help": "Cut the episode off as 'timeout' after this many steps (Gymnasium's limit is 1000). A lander that hovers forever ends here; the trainer treats the cut like a normal ending."})
+    continuous: bool = field(default=False, metadata={"help": "Control the engines with two throttle numbers between -1 and 1 instead of choosing one of four buttons: the first sets the main engine (off at 0 or below, half to full power from 0 to 1), the second the side engines (left below -0.5, right above 0.5, off in between; more power further out). Only PPO can learn such actions, and neither the world-model kinds (jepa...) nor env.history_actions work with them."})
     hide_velocities: bool = field(default=False, metadata={"help": "Show the model zeros instead of the three velocity numbers (x velocity, y velocity, spin). It then has to work them out from how position and angle change, so only a model with a history of past frames can do well. The physics, score and reward still use the true state."})
 
     def __post_init__(self) -> None:

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 
+from attentive_snake.models.action_distribution import policy_distribution
 from attentive_snake.models.auxiliary import TransitionBatch
 from attentive_snake.training.auxiliary import AuxiliaryTraining
 from attentive_snake.training.ppo.config import PpoConfig
@@ -97,7 +98,7 @@ def _minibatch_step(
     output = policy(minibatch.observations)
     advantages = normalize(minibatch.advantages) if config.normalize_advantages else minibatch.advantages
     terms = ppo_loss(
-        logits=output.logits,
+        distribution=policy_distribution(output),
         values=output.value,
         actions=minibatch.actions,
         old_log_probs=minibatch.log_probs,

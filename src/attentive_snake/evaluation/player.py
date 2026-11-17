@@ -1,4 +1,4 @@
-"""Playing N complete games with a policy's greedy action at every step (most likely action, or highest Q-value), batched over parallel environments.
+"""Playing N complete games with a policy's greedy action at every step (most likely action, highest Q-value, or mean action), batched over parallel environments.
 
 Game ``k`` (0-based) starts with ``reset(seed=env_seed(settings.seed, k))`` on whichever of
 the ``parallel_games`` environments is free; environments are taken in a fixed order and
@@ -68,9 +68,9 @@ def _play(policy: nn.Module, envs: list[SingleEnv], settings: EvalSettings, prog
     while any(slot is not None for slot in slots):
         active = [i for i, slot in enumerate(slots) if slot is not None]
         observations = torch.as_tensor(np.stack([slots[i].observation for i in active]), dtype=torch.float32, device=device)
-        actions = greedy_actions(policy(observations)).tolist()
+        actions = greedy_actions(policy(observations)).cpu().numpy()  # (B,) indices or (B, dimension) vectors
         for i, action in zip(active, actions):
-            game, step = slots[i], envs[i].step(int(action))
+            game, step = slots[i], envs[i].step(action)
             game.observation, game.score = step.observation, float(step.score)
             game.total_reward += float(step.reward)
             game.events.append(step.event)

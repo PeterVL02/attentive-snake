@@ -1,10 +1,10 @@
-"""The PPO loss for a categorical policy and the small statistics around it (pure functions)."""
+"""The PPO loss for any action distribution (categorical or Gaussian) and the small statistics around it (pure functions)."""
 
 from dataclasses import dataclass
 
 import torch
 from torch import Tensor
-from torch.distributions import Categorical
+from torch.distributions import Distribution
 
 
 @dataclass(frozen=True)
@@ -20,7 +20,7 @@ class LossTerms:
 
 
 def ppo_loss(
-    logits: Tensor,
+    distribution: Distribution,
     values: Tensor,
     actions: Tensor,
     old_log_probs: Tensor,
@@ -30,15 +30,15 @@ def ppo_loss(
     value_coef: float,
     entropy_coef: float,
 ) -> LossTerms:
-    """Clipped-surrogate PPO loss for a categorical policy (pure function).
+    """Clipped-surrogate PPO loss (pure function).
 
-    ``logits`` is (B, A); every other tensor is (B,). ``advantages`` are used
-    as given (normalise them beforehand if desired).
+    ``distribution`` is the current policy's (``models.action_distribution.policy_distribution``),
+    batch shape (B,); ``actions`` are its samples ((B,) indices or (B, dimension) vectors); every
+    other tensor is (B,). ``advantages`` are used as given (normalise them beforehand if desired).
     """
     if values.shape != returns.shape:
         # Guards against silent (B, 1) - (B,) broadcasting into a (B, B) loss.
         raise ValueError(f"values {tuple(values.shape)} and returns {tuple(returns.shape)} differ in shape.")
-    distribution = Categorical(logits=logits)
     log_probs = distribution.log_prob(actions)
     log_ratio = log_probs - old_log_probs
     ratio = log_ratio.exp()

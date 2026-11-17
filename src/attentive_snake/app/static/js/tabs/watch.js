@@ -79,7 +79,7 @@ function renderActionValues(frame) {
     els.actionTitle.textContent = readout.label;
     els.actionNote.textContent = actionValueNote(readout);
   }
-  replace(els.actionValues, actionValueBars(readout, session.info.action_names));
+  replace(els.actionValues, actionValueBars(readout, session.info.action_names, session.info.action_bounds));
 }
 
 function renderAttention(frame) {
@@ -343,7 +343,7 @@ export function init(root) {
     h("h2", { text: "Watch & attention" }),
     h("p", {
       class: "lead",
-      text: "Play a checkpoint greedily or by sampling. Next to the game: what the network says about each action (probabilities for PPO runs, Q-values for DQN runs). Attention shows what the class token looks at when choosing the next action: orange shading over a board's cells, or bars per history frame or per observation number (scaled so the largest is 1).",
+      text: "Play a checkpoint greedily or by sampling. Next to the game: what the network says about each action (probabilities for PPO runs, Q-values for DQN runs, the mean action per number for games with continuous actions). Attention shows what the class token looks at when choosing the next action: orange shading over a board's cells, or bars per history frame or per observation number (scaled so the largest is 1).",
     }),
     h(
       "div",

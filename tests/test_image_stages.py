@@ -96,12 +96,17 @@ def test_the_kinds_that_read_pictures():
 @pytest.mark.parametrize("head", list(HEADS))
 @pytest.mark.parametrize("kind", IMAGE_KINDS)
 def test_builds_and_runs_with_every_head(kind, head):
+    if head == "gaussian" and KIND_INFO[kind].needs_discrete_actions:  # the world models have no continuous head
+        with pytest.raises(ValueError, match="unknown policy head 'gaussian'"):
+            build(kind, head)
+        return
     policy = build(kind, head)
     assert policy.observation_kinds == KIND_INFO[kind].observation_kinds
     out = policy(torch.rand(3, *policy.observation_shape))
-    values = out.logits if hasattr(out, "logits") else out.q_values
+    values = out.mean if hasattr(out, "mean") else out.logits if hasattr(out, "logits") else out.q_values
     assert values.shape == (3, ACTIONS) and torch.isfinite(values).all()
-    (values.sum() + (out.value.sum() if hasattr(out, "value") else 0.0)).backward()
+    extra = (out.value.sum() if hasattr(out, "value") else 0.0) + (out.log_std.sum() if hasattr(out, "log_std") else 0.0)
+    (values.sum() + extra).backward()
     assert all(p.grad is not None for p in policy.parameters())  # every weight takes part
 
 

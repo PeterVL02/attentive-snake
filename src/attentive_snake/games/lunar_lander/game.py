@@ -34,6 +34,10 @@ GAME = GameSpec(
     make_env=make_env,
     observation_labels=OBSERVATION_LABELS,
     episode_metrics=LANDER_METRICS,
-    locked_rules={"hide_velocities": "it changes what the observation means, so the parent's weights would read different numbers"},
+    locked_rules={
+        "hide_velocities": "it changes what the observation means, so the parent's weights would read different numbers",
+        "continuous": "it changes what the network outputs (four action probabilities or two throttle numbers), so the parent's outputs would not fit",
+    },
     action_labels=("nothing", "left engine", "main engine", "right engine"),  # Gymnasium's discrete actions 0..3
+    continuous_actions=lambda rules: rules.continuous,  # the env then names its two throttles itself (LunarLanderEnv)
 )

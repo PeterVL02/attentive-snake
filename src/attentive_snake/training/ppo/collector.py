@@ -1,14 +1,13 @@
-"""Running a policy in a ``VecEnv`` to fill a ``RolloutBuffer``."""
+"""Running a policy in a ``VecEnv`` to fill a ``RolloutBuffer`` (discrete or continuous actions: ``models.action_distribution``)."""
 
 from dataclasses import dataclass
 
 import numpy as np
 import torch
 from torch import Tensor, nn
-from torch.distributions import Categorical
 
 from attentive_snake.env.types import EpisodeSummary, VecEnv
-from attentive_snake.models.types import PolicyOutput
+from attentive_snake.models.action_distribution import ActorCriticOutput, action_parameters, policy_distribution
 from attentive_snake.training.next_observations import next_observations
 from attentive_snake.training.ppo.rollout import RolloutBuffer
 from attentive_snake.training.ppo.truncation import TruncationBootstrap
@@ -67,7 +66,7 @@ class RolloutCollector:
         finished: list[EpisodeSummary] = []
         for t in range(buffer.rollout_length):
             output = self._evaluate(policy, self._observations)
-            distribution = Categorical(logits=output.logits)
+            distribution = policy_distribution(output)
             actions = distribution.sample()
 
             buffer.observations[t] = self._observations
@@ -89,11 +88,12 @@ class RolloutCollector:
         bootstrap_value = self._evaluate(policy, self._observations).value
         return CollectResult(bootstrap_value=bootstrap_value, finished_episodes=tuple(finished))
 
-    def _evaluate(self, policy: nn.Module, observations: Tensor) -> PolicyOutput:
+    def _evaluate(self, policy: nn.Module, observations: Tensor) -> ActorCriticOutput:
         output = policy(observations)
         batch = observations.shape[0]
-        if output.logits.shape != (batch, self._env.num_actions):
-            raise ValueError(f"Expected logits of shape {(batch, self._env.num_actions)}, got {tuple(output.logits.shape)}.")
+        width = tuple(action_parameters(output).shape)
+        if width != (batch, self._env.num_actions):
+            raise ValueError(f"Expected logits (or mean actions) of shape {(batch, self._env.num_actions)}, got {width}.")
         if output.value.shape != (batch,):
             raise ValueError(f"Expected value of shape {(batch,)}, got {tuple(output.value.shape)}.")
         return output

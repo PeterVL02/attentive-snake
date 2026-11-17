@@ -2,9 +2,10 @@
 
 An ``Algorithm`` names its settings dataclass (its own TOML section, named like the
 algorithm), the policy head it trains (``attentive_snake.models.heads``; a function of its
-settings, so a setting may choose between head forms), which of its settings a continued run
-must keep, the metrics it
-reports and a builder of its ``Learner``. The shared loop (``training.trainer.Trainer``)
+settings, so a setting may choose between head forms) for discrete actions and, if it can train
+them at all, for continuous ones (``continuous_head``; ``head_for`` picks by the game's action
+space), which of its settings a continued run must keep, the metrics it reports and a builder
+of its ``Learner``. The shared loop (``training.trainer.Trainer``)
 drives a ``Learner`` iteration by iteration and handles the learning-rate schedule,
 logging, checkpoints and hooks for every algorithm alike.
 """
@@ -74,3 +75,19 @@ class Algorithm:
     metrics: tuple[TrainingMetric, ...]
     build: Callable[[LearnerSetup], Learner]
     locked_settings: Mapping[str, str] = field(default_factory=dict)  # field of its section -> why a fork must keep it
+    continuous_head: Callable[[Any], str] | None = None  # the head for continuous actions; None: it trains discrete actions only
+
+    @property
+    def trains_continuous_actions(self) -> bool:
+        return self.continuous_head is not None
+
+    def head_for(self, settings: Any, continuous: bool) -> str:
+        """The head this algorithm trains with ``settings`` on a game whose actions are ``continuous`` or not.
+
+        ``ValueError`` for continuous actions when it has no head for them (config validation refuses that earlier).
+        """
+        if not continuous:
+            return self.head(settings)
+        if self.continuous_head is None:
+            raise ValueError(f"{self.label} trains discrete actions only; this game's actions are continuous.")
+        return self.continuous_head(settings)
