@@ -100,6 +100,30 @@ score shown everywhere is the game's real score. Losing a life does not end a ga
 penalise it. `ale-py` ships the game ROMs, nothing else has to be installed.
 
 ```bash
+# MinAtar (the minatar package): Breakout on a 10 x 10 grid with the defaults (the paper's small cnn, PPO, 32 envs, 5M steps)
+uv run python scripts/train.py --game minatar --run-dir runs/minatar/breakout
+
+# Another title (breakout, space_invaders, freeway, seaquest, asterix), all 6 actions as in the paper, DQN
+uv run python scripts/train.py --game minatar --run-dir runs/minatar/seaquest-dqn --set game.title=seaquest \
+    --set game.full_action_space=true --set train.algorithm=dqn
+
+# Without the trail channels: one frame no longer shows which way things move, so give the model memory
+uv run python scripts/train.py --game minatar --run-dir runs/minatar/blind-stack --set game.trails=false --set env.history_length=4
+uv run python scripts/train.py --game minatar --run-dir runs/minatar/blind-fa --set game.trails=false \
+    --set model.kind=frame_attention --set env.history_length=4
+```
+
+All MinAtar titles are one game, `minatar`; `[game] title` picks the title. The model sees a 10 x 10 grid with one 0/1
+channel per kind of object (Breakout: paddle, ball, trail, brick), so every model kind reads it like a Snake board
+(attention heatmaps over the cells). `game.trails = false` removes MinAtar's motion channels from the observation
+(`trail` in Breakout, Seaquest and Asterix; `speed1`..`speed5` in Freeway; `alien_left` / `alien_right` in Space
+Invaders): they are dropped, not blanked, so the model has fewer input channels. A run cannot change `title`,
+`trails` or `full_action_space` when it is continued under a new name. `sticky_action_prob` (0.1) and
+`difficulty_ramping` (on) are MinAtar's own settings. The reward is the game's points times `reward.scale`, plus
+`reward.game_over` when the game ends by its rules. The Watch tab draws each channel in its own colour with a legend
+of the channel names.
+
+```bash
 # DQN instead of PPO: the game's DQN defaults (configs/<game>/algorithms/dqn.toml), then any [dqn] setting
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/dqn --set train.algorithm=dqn
 uv run python scripts/train.py --run-dir runs/snake/dqn-cnn --set train.algorithm=dqn --set model.kind=cnn \
@@ -299,6 +323,9 @@ uv run python scripts/watch.py runs/lunar_lander/tt --attention --scale 0.75
 
 # Atari: the console's colour screen, enlarged (the heatmap over the screen is in the app's Watch tab only)
 uv run python scripts/watch.py runs/atari/pong --scale 3
+
+# MinAtar: the 10 x 10 board, one colour per channel (the channel names are in the app's legend); --attention as for Snake
+uv run python scripts/watch.py runs/minatar/breakout
 ```
 
 The window shows the run's game (it reads the game from the run's `config.toml`); games whose view is a board

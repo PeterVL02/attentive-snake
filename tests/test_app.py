@@ -1811,3 +1811,54 @@ def test_atari_trains_with_dqn_through_the_api(client: TestClient):
     assert detail["status"]["state"] == "finished", detail["log"]
     watch = client.post("/api/watch", json={"game": "atari", "run": "pong-dqn"}).json()
     assert watch["frame"]["action_values"]["kind"] == "q_values" and len(watch["frame"]["action_values"]["values"]) == 18
+
+
+# --------------------------------------------------------------------------- MinAtar (a grid game with several titles)
+
+
+def tiny_minatar(kind: str = "cnn", trails: bool = False) -> dict:
+    """Breakout, games cut after 6 steps: trains in a few seconds on the CPU."""
+    tables = tiny_tables(kind, total_env_steps=32)
+    tables["game"] = {"name": "minatar", "title": "breakout", "trails": trails, "max_episode_steps": 6}
+    return tables
+
+
+def test_minatar_is_listed_with_its_titles_the_trails_rule_and_a_reward_preview(client: TestClient):
+    minatar = {game["name"]: game for game in client.get("/api/games").json()}["minatar"]
+    assert (minatar["title"], minatar["observation_kind"], minatar["view_kind"], minatar["has_reward_table"]) == ("MinAtar", "grid", "board", True)
+    schema = client.get("/api/schema", params={"game": "minatar"}).json()
+    rules = {row["name"]: row for row in schema["sections"]["game"]}
+    assert rules["title"]["choices"] == ["breakout", "space_invaders", "freeway", "seaquest", "asterix"]
+    assert rules["trails"]["default"] is True and "removed" in rules["trails"]["description"]
+    assert {"cnn", "transformer", "frame_attention", "temporal_transformer", "resnet", "mlp"} <= set(schema["model_kinds"])
+    locked = client.get("/api/fork-rules", params={"game": "minatar"}).json()["locked"]
+    assert {"game.title", "game.trails", "game.full_action_space"} <= set(locked) and "game.sticky_action_prob" not in locked
+    preview = client.post("/api/rewards/preview", params={"game": "minatar"}, json={"reward": {"game_over": -1.0}}).json()
+    assert {row["situation"]: row["reward"] for row in preview}["Lose the game (ball lost, player hit)"] == -1.0
+    form = client.get("/api/reward-search/form", params={"game": "minatar"}).json()
+    assert [row["name"] for row in form["fields"]] == ["scale", "game_over"]
+    assert parameters_for(client, tiny_minatar(), game="minatar") > 0
+
+
+def test_train_and_watch_minatar_without_trails_through_the_api(client: TestClient, paths: AppPaths):
+    """A real training subprocess, then the Watch tab's board: one named layer per channel, a heatmap over the cells."""
+    started = client.post("/api/runs", json={"name": "blind", "config": tiny_minatar()})
+    assert started.status_code == 201, started.text
+    detail = wait_until_done(client, "blind", game="minatar")
+    assert detail["status"]["state"] == "finished", detail["log"]
+    assert detail["rules"]["trails"] is False and detail["checkpoints"][-1]["steps"] == 32
+
+    body = client.post("/api/watch", json={"game": "minatar", "run": "blind", "seed": 0}).json()
+    assert (body["info"]["view_kind"], body["info"]["width"], body["info"]["height"]) == ("board", 10, 10)
+    assert body["info"]["action_names"] == ["nothing", "left", "right"] and body["info"]["observation_shape"] == [3, 10, 10]
+    assert [layer["name"] for layer in body["frame"]["layers"]] == ["paddle", "ball", "brick"]  # no trail
+    assert all(layer["color"].startswith("#") for layer in body["frame"]["layers"])
+
+    make_run(paths, "eyes", kind="transformer", game={"name": "minatar", "trails": True})
+    eyes = client.post("/api/watch", json={"game": "minatar", "run": "eyes", "seed": 0}).json()
+    assert [layer["name"] for layer in eyes["frame"]["layers"]] == ["paddle", "ball", "trail", "brick"]
+    assert [len(eyes["frame"]["heatmap"]), len(eyes["frame"]["heatmap"][0])] == [10, 10]  # one weight per cell
+
+    with_trails = {**tiny_minatar(), "game": {**tiny_minatar()["game"], "trails": True}}
+    refused = client.post("/api/runs/blind/fork", params={"game": "minatar"}, json={"name": "blind-v2", "config": with_trails})
+    assert refused.status_code == 422 and "game.trails" in refused.text

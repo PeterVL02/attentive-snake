@@ -1,7 +1,8 @@
 // The "board" view kind: a watched frame drawn on a canvas as a grid with the attention heatmap,
-// the player body (distinct head) and the target cells (payload keys: see views/board.py).
+// the player body (distinct head) and the target cells (payload keys: see views/board.py), and
+// optional named layers of cells in their own colours (views/board_layers.py) with a legend.
 
-import { cssVar, h } from "./dom.js";
+import { cssVar, h, replace } from "./dom.js";
 
 const MAX_BOARD_PX = 520;
 
@@ -70,10 +71,37 @@ export function drawBoard(canvas, frame) {
     ctx.arc(fx * cell + cell / 2, fy * cell + cell / 2, cell * 0.3, 0, 2 * Math.PI);
     ctx.fill();
   });
+  // Layers with fewer cells go on top (a ball over the bricks), each later one a little smaller,
+  // so a cell holding several kinds of objects shows them all.
+  const layers = [...(frame.layers || [])].sort((a, b) => b.cells.length - a.cells.length);
+  layers.forEach((layer, i) => {
+    const pad = inset + Math.min(i, 4) * Math.round(cell * 0.05);
+    ctx.fillStyle = layer.color;
+    layer.cells.forEach(([x, y]) => roundedRect(ctx, x * cell + pad, y * cell + pad, cell - 2 * pad, cell - 2 * pad, cell * 0.12));
+  });
+}
+
+/** The legend of a frame's layers (none: nothing), in payload order. */
+function legendItems(frame) {
+  return (frame.layers || []).map((layer) =>
+    h("label", {}, h("span", { class: "swatch", style: `background:${layer.color};height:12px` }), layer.name),
+  );
 }
 
 /** The board view for the Watch tab: {el, draw(frame)}. */
 export function boardView() {
   const canvas = h("canvas", { role: "img", "aria-label": "Game board with attention heatmap" });
-  return { el: canvas, draw: (frame) => drawBoard(canvas, frame) };
+  const legend = h("div", { class: "legend" });
+  let names = "";
+  return {
+    el: h("div", {}, canvas, legend),
+    draw(frame) {
+      drawBoard(canvas, frame);
+      const shown = (frame.layers || []).map((layer) => layer.name).join(",");
+      if (shown !== names) {
+        names = shown;
+        replace(legend, legendItems(frame));
+      }
+    },
+  };
 }

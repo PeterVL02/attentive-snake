@@ -1,0 +1,82 @@
+# Default MinAtar experiment for scripts/train.py --game minatar (Breakout; --set game.title=... for another title).
+#
+# Every field is listed except the [reward] values (see below). A missing key
+# (or a whole missing section) takes the dataclass default; an unknown key is
+# an error. TOML has no null, so fields that may be None are commented out to mean None.
+# scripts/train.py writes the full resolved config to <run-dir>/config.toml.
+
+[game]  # name selects the game; the other keys are attentive_snake.games.minatar.config.MinAtarRules
+name = "minatar"
+title = "breakout"            # breakout, space_invaders, freeway, seaquest, asterix (games/minatar/titles.py)
+trails = true                 # MinAtar's motion channels (trail, Freeway's speed1-5, Space Invaders' alien_left/right); false removes them: the model then needs history
+sticky_action_prob = 0.1      # chance per step that the previous action is repeated instead (MinAtar's default)
+difficulty_ramping = true     # Seaquest, Asterix and Space Invaders speed up over time (MinAtar's default)
+full_action_space = false     # true: all 6 actions in every title (as the MinAtar paper); false: the title's own (3 in Breakout)
+max_episode_steps = 10000     # time limit: ends the game as "timeout" (Freeway also ends itself after 2500 steps)
+
+# [reward]: not listed here. The default reward values live in one place, the
+# reward scheme configs/minatar/rewards/default.toml
+# (= attentive_snake.games.minatar.reward.MinAtarReward()).
+
+[model]  # attentive_snake.models.config.ModelConfig (input shape / actions / history come from the env)
+# The observation is a 10 x 10 grid with one 0/1 channel per kind of object (4 in Breakout).
+# The default is the MinAtar paper's network: one 3x3 convolution of 16 channels, then 128 features.
+# Every kind reads grids; "transformer" makes one token per cell (attention heatmap over the board);
+# "frame_attention", "temporal_transformer" and "lstm" read the history frames in order (set
+# env.history_length > 1), the others see stacked frames as extra channels.
+kind = "cnn"
+d_model = 128                 # cnn: features after the convolutions (128 in the MinAtar paper); attention kinds: token width
+num_heads = 4                 # attention kinds only
+num_layers = 2                # attention kinds: transformer blocks; mlp: layers; lstm: LSTM layers; jepa: predictor layers; jepa_attention, jepa_temporal: both; jepa_tokens: encoder blocks
+mlp_ratio = 4                 # attention kinds only
+dropout = 0.0
+conv_channels = 16            # cnn, resnet, hybrid, frame_attention, lstm, jepa, jepa_attention: width of the conv layers (16 in the MinAtar paper)
+conv_layers = 1               # cnn, hybrid, frame_attention, lstm, jepa, jepa_attention: number of conv layers; resnet: residual blocks
+kernel_size = 3               # odd; same-padded
+residual = false              # hybrid, jepa_attention, frame_attention, lstm: build the stem (frame encoder) from residual blocks, as resnet does
+layer_norm = false            # every kind with a conv / MLP part (not transformer, temporal_transformer, jepa_temporal): normalise after each of its layers and in its readout
+predictor_layers = 1          # jepa_tokens only: transformer blocks of its per-token predictor (run once per action)
+prediction_coef = 0.0         # jepa kinds only: weight of the prediction loss (0 = off, the default; above 0 adds it)
+value_training = "predicted"  # jepa kinds with dqn only: the value decoder learns from the "predicted" or the "actual" next embedding
+prediction_trains_encoder = false  # jepa kinds only: true lets the prediction loss train the encoder too (false: the predictor only)
+target_ema = 0.99             # jepa kinds only: EMA rate of the target encoder (per gradient step)
+rollout_steps = 1             # jepa kinds only: steps the prediction loss follows, the predictor fed its own output (1 = one real step, the default)
+rollout_value_coef = 1.0      # jepa kinds with dqn, rollout_steps > 1: weight of matching the action values read from predicted states (0 = off)
+
+[train]  # attentive_snake.training.config.TrainConfig: what every algorithm shares
+algorithm = "ppo"             # "ppo" (the [ppo] section below) or "dqn" (its defaults: configs/minatar/algorithms/dqn.toml)
+total_env_steps = 5000000     # summed over all envs (the MinAtar paper trained for 5M frames); train.py --steps overrides it
+gamma = 0.99
+bootstrap_truncated = true    # the time limit is not the game ending: value the cut state, do not count it as an end
+learning_rate = 0.00025
+weight_decay = 0.0            # 0 = plain Adam; above 0 = AdamW, shrinking the weight matrices (not biases, norms, embeddings) each step
+anneal_lr = true              # linear decay to 0 over total_env_steps
+device = "auto"               # "auto" = cuda if available, else cpu
+seed = 0
+log_interval = 40960          # env steps (one PPO update here is 4096)
+# checkpoint_dir = "runs/x"   # set to the run directory by train.py
+checkpoint_interval = 500000  # env steps
+keep_checkpoints = true       # false: delete older checkpoints after each save (only the latest remains)
+
+[ppo]  # attentive_snake.training.ppo.config.PpoConfig (only with train.algorithm = "ppo")
+rollout_length = 128          # steps per env per update (update = rollout_length * num_envs = 4096 steps)
+num_epochs = 4
+num_minibatches = 8           # 512 steps per minibatch
+gae_lambda = 0.95
+clip_coef = 0.2
+value_coef = 0.5
+entropy_coef = 0.01
+max_grad_norm = 0.5
+normalize_advantages = true
+# target_kl = 0.02            # early-stop an update's epochs above this KL (None = off)
+
+[env]  # attentive_snake.config.EnvConfig
+num_envs = 32
+history_length = 1            # with trails one frame shows how things move; with game.trails = false use 4 (or a temporal kind)
+history_actions = false       # add one-hot planes of the action that produced each frame
+
+[evaluation]  # attentive_snake.evaluation.config.EvalConfig: greedy games played while training (scripts/evaluate.py: afterwards)
+interval = 250000             # env steps between evaluations (each saves a checkpoint); 0 = off
+games = 30                    # complete games per evaluation
+seed = 1000                   # the same checkpoint, seed and games always give the same numbers (the seed also decides which actions stick)
+max_episode_steps = 12000     # never reached: [game] max_episode_steps ends a game first

@@ -4,7 +4,7 @@ Train neural networks to play games with reinforcement learning (PPO or DQN), an
 inside them: which board cells or input numbers a transformer attends to, how the
 architecture is put together, and how different models and reward schemes compare.
 
-The project contains three games (Snake, Gymnasium's Lunar Lander and the Atari 2600 titles of Gymnasium's ALE), a
+The project contains four games (Snake, Gymnasium's Lunar Lander, the Atari 2600 titles of Gymnasium's ALE and MinAtar), a
 game-agnostic headless parallel RL environment layer, six selectable policy
 architectures, two training algorithms (PPO and DQN), an architecture-diagram tool, and a local web app
 that ties it all together.
@@ -16,6 +16,7 @@ that ties it all together.
 | `snake` (default) | grid | The whole board: one cell per position, channels head / body / food. |
 | `lunar_lander` | vector | 8 numbers: x, y, vx, vy, angle, angular velocity, left and right leg contact (Gymnasium's `LunarLander-v3`; four discrete actions, or two throttles with `game.continuous = true`). Watched as the game's own picture. |
 | `atari` | image | The console's screen, shrunk to 84 x 84 grayscale, the last 4 frames. One game for all titles; `[game] title` picks one (see [Atari](#atari)). |
+| `minatar` | grid | MinAtar's 10 x 10 grid, one 0/1 channel per kind of object (Breakout: paddle, ball, trail, brick). One game for five titles; `game.trails = false` removes the motion channels (see [MinAtar](#minatar)). |
 
 ### Snake rules
 
@@ -121,6 +122,44 @@ How it works, in short (all of it is settings in `configs/atari/default.toml`, e
 - **DQN's replay buffer is small**: 16000 transitions take about 3.6 GB (see the CLI cheat sheet). That is far
   below the usual one million and DQN on Atari has not been measured here.
 - **Not built:** two-player titles (Combat) and continuous actions; `docs/ADDING_A_GAME.md` says what they need.
+
+
+### MinAtar
+
+[MinAtar](https://github.com/kenjyoung/MinAtar) (Young & Tian 2019) shrinks five Atari games to a 10 x 10 grid
+with one 0/1 channel per kind of object, so every grid model kind (and its attention heatmap over cells) works on
+it, at Snake-like speed. One game, five titles chosen by `game.title` (Breakout, Space Invaders, Freeway,
+Seaquest, Asterix), each with its own minimal action set (`game.full_action_space = true` gives the paper's 6).
+
+```bash
+uv run python scripts/train.py --game minatar --run-dir runs/minatar/breakout
+uv run python scripts/train.py --game minatar --run-dir runs/minatar/breakout-memory \
+    --set game.trails=false --set env.history_length=4
+```
+
+**`game.trails`.** MinAtar adds "motion" channels (a trail where the ball or an enemy was one step earlier;
+speed channels in Freeway; direction channels in Space Invaders) so that a single frame shows which way things
+move. With `trails = false` those channels are removed from the observation, and direction can only be told from
+earlier frames: history (`env.history_length` above 1) or a temporal kind. The Watch tab draws each channel as a
+coloured layer with a legend.
+
+**Measured (Breakout, PPO with the defaults of `configs/minatar/default.toml`, 1M env steps per run, greedy
+evaluation over 30 games at the end; 2 seeds, not a benchmark).** About 10,000 env steps/s for `cnn`, 6,300 for
+`frame_attention`; all 8 runs took 14 minutes.
+
+| model | trails | history | seed 0 | seed 1 | mean |
+|---|---|---|---|---|---|
+| `cnn` | on | 1 | 5.5 | 5.3 | 5.4 |
+| `cnn` | off | 1 | 4.9 | 5.4 | 5.1 |
+| `cnn` | off | 4 | 6.0 | 6.1 | 6.1 |
+| `frame_attention` | off | 4 | 14.0 | 15.6 | **14.8** |
+
+- `frame_attention` with 4 frames scores more than twice as much as every `cnn` setting, on both seeds.
+- But removing the trail barely hurt `cnn` on one frame (5.1 against 5.4), and giving `cnn` 4 frames helped
+  only a little (6.1). So at 1M steps the small `cnn` (the paper's network: one 3 x 3 convolution of 16
+  channels) is not yet limited by missing direction, and this table does not separate "memory helps" from
+  "`frame_attention` is the better network here". The missing run that would separate them is
+  `frame_attention` with trails on (with history 4, and with history 1).
 
 ## The app
 
