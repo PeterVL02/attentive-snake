@@ -642,7 +642,8 @@ uv run python scripts/migrate_runs.py               # move them (--runs-dir DIR 
 ## Run the tests
 
 ```bash
-uv run pytest -q
+uv run pytest -q                   # everything, about 4 minutes: run before every pull request
+uv run pytest -q -m "not slow"     # about 1 minute: skips the 45 tests that train a run end to end
 ```
 
 ## Start the web app

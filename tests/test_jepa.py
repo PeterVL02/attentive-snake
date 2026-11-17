@@ -215,6 +215,7 @@ def test_restoring_without_objective_state_restarts_the_target_from_the_loaded_e
     assert torch.equal(resumed.learner._auxiliary._objective.target.module[1].linear.weight, target[1].linear.weight)
 
 
+@pytest.mark.slow
 def test_jepa_trains_resumes_and_forks_through_the_script(tmp_path):
     """DQN with value_training = actual through scripts/train.py; resume keeps the target encoder; a fork may change the objective."""
     from attentive_snake.run_dir import list_checkpoints
