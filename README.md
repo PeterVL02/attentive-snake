@@ -154,12 +154,24 @@ evaluation over 30 games at the end; 2 seeds, not a benchmark).** About 10,000 e
 | `cnn` | off | 4 | 6.0 | 6.1 | 6.1 |
 | `frame_attention` | off | 4 | 14.0 | 15.6 | **14.8** |
 
-- `frame_attention` with 4 frames scores more than twice as much as every `cnn` setting, on both seeds.
-- But removing the trail barely hurt `cnn` on one frame (5.1 against 5.4), and giving `cnn` 4 frames helped
-  only a little (6.1). So at 1M steps the small `cnn` (the paper's network: one 3 x 3 convolution of 16
-  channels) is not yet limited by missing direction, and this table does not separate "memory helps" from
-  "`frame_attention` is the better network here". The missing run that would separate them is
-  `frame_attention` with trails on (with history 4, and with history 1).
+**Follow-up: the same models with the trails on, plus `jepa_tokens` and `lstm`** (same settings; `lstm` and
+`jepa_tokens` one seed each, `frame_attention` two):
+
+| model (4 frames) | trails on | trails off |
+|---|---|---|
+| `cnn` | 5.4 (1 frame) | 6.1 |
+| `lstm` (convolutional frame encoder + LSTM) | 5.8 | 7.1 |
+| `frame_attention` | **20.3** (19.6, 21.0) | 14.8 |
+| `jepa_tokens` | **32.8** | 15.7 |
+
+- **The network matters most.** With the trails, `frame_attention` scores almost four times `cnn`, and
+  `jepa_tokens` (one seed) six times; `lstm` stays at `cnn`'s level whether or not the trails are there.
+- **Removing the trails costs the strong models a quarter to a half of their score** (20.3 to 14.8, 32.8 to 15.7) although the
+  4 stacked frames still hold the direction. So direction matters in Breakout, and within 1M steps these
+  models recover only part of it from the frames. The weak models (`cnn`, `lstm`) do not use direction yet, so
+  the trails make no difference to them.
+- `temporal_transformer` (one token per cell per frame, 400 tokens) was too heavy here: about 1,100 env
+  steps/s, and it made the machine unresponsive, so it was stopped before its first evaluation.
 
 ## The app
 
@@ -404,7 +416,7 @@ one checkpoint, 100 games per row):
 | | without rollout | `rollout_steps = 3` |
 | --- | --- | --- |
 | greedy on Q(s, a) | 16.5 | 12.1 |
-| depth 2, real game rules | 21.2 (+4.7 ± 0.6) | 22.0 (+9.8 ± 0.7) |
+| ceiling: depth 2 with the real game rules (a perfect model; not an option for a learned agent) | 21.2 (+4.7 ± 0.6) | 22.0 (+9.8 ± 0.7) |
 | depth 2, learned predictor | 16.8 (+0.3 ± 0.6) | 12.5 (+0.3 ± 0.8) |
 | error of the value read from a chained prediction (mean, signed) | 1.56, +1.52 | 0.34, -0.12 |
 | value gap between the actions that survive the step (mean) | 0.56 | 0.53 |
@@ -413,7 +425,8 @@ one checkpoint, 100 games per row):
 Reading: the rollout did what it was built for, and it was not enough. The chained value error
 fell to a fifth and its constant overestimate is gone, but what is left (0.34) is still about
 the size of the difference between the surviving actions, and lookahead through the predictor
-again gains nothing (+0.3 ± 0.8) where the real rules gain almost ten apples. The greedy
+again gains nothing over plain greedy play (+0.3 ± 0.8). The real-rules row is only the ceiling: it shows
+that depth-2 lookahead with a perfect model would gain almost ten apples, so the room was there. The greedy
 policy itself came out weaker (12.1 against 16.5); with one seed each that may be the rollout
 or chance, and it is why the real rules gain more here (a weaker policy leaves more to fix). Training was about a
 fifth slower (18.5 against 15.4 minutes).
