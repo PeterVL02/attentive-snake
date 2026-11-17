@@ -196,11 +196,13 @@ The attention encoder helps (`hybrid` and `jepa_attention` end 1-3 apples above 
 predictor does not: `hybrid`, without one, is best. Three seeds are still few: "attention yes, predictor no
 gain so far", not a ranking.
 
-**The jepa prediction loss.** Across single-seed runs on Snake and Lunar Lander it never improved the score
-and cost about 20-50% of the speed, so it is off by default. Letting it also train the encoder
-(`prediction_trains_encoder = true`) made the tokens far easier to predict but did not change the score,
-and on Lunar Lander it hurt. `value_training = "actual"` does not learn: the predictor's error in a next
-state's value is as large as the differences between actions.
+**The jepa prediction loss.** Trained from the start, it never improved the score in single-seed runs on
+Snake and Lunar Lander and cost about 20-50% of the speed, so it is off by default. Turned on in a fork of a
+trained `jepa_tokens` run (Snake 8x8, 500k more steps, `prediction_coef = 0.1`,
+`prediction_trains_encoder = true`), it helped a little but consistently: **54.2** apples against 51.7 for
+the same fork without it, five seeds each, every seed with the loss above every seed without (win rate 66%
+against 53%). It works by shaping the shared encoder, not by planning. `value_training = "actual"` does not
+learn: the predictor's error in a next state's value is as large as the differences between actions.
 
 **Lookahead through the predictor (`jepa_tokens`, Snake 6x6, DQN, 150k env steps, 100 games; one seed, one
 checkpoint).** Depth 2 picks the action with the best `reward + gamma * max Q(next state)`.
@@ -330,6 +332,6 @@ uv run pytest -q                   # everything, about 4 minutes: run before eve
 uv run pytest -q -m "not slow"     # about 1 minute: skips the 45 tests that train a run end to end
 ```
 
-The code is organised so that each module has one job; see [CLAUDE.md](CLAUDE.md) for a map of the
-packages and the contracts between them. Runs from before there were several games can be moved with
+The code is organised so that each module has one job, and packages talk through small contract files
+(their docstrings say what crosses them). Runs from before there were several games can be moved with
 `uv run python scripts/migrate_runs.py`.

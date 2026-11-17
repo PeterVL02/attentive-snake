@@ -3,7 +3,7 @@
 Lookahead with the predictor values a state it never observed: for a predicted embedding
 ``z`` it reads ``Q(z, a') = value_decoder(readout(predictor(z)))[a']``, the predictor applied to
 its own output. Trained on real embeddings only, that reading was off by more than the
-difference between actions (README, "Would looking ahead with the predictor help?").
+difference between actions (README, "Lookahead through the predictor").
 ``chained_value_gaps`` is that reading minus the Q-values the policy gives the real state the
 embedding stands for.
 
