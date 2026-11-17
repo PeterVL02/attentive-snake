@@ -485,6 +485,21 @@ def test_training_warnings_route_errors_and_other_games(client: TestClient, mult
     assert training_warnings_for(multi_client, {}, game="beacon").json() == {"warnings": []}
 
 
+def test_action_space_route_answers_from_the_games_rules(client: TestClient, multi_client: TestClient):
+    def continuous(c: TestClient, game: str, rules: dict) -> bool:
+        response = c.post("/api/action-space", params={"game": game}, json={"rules": rules})
+        assert response.status_code == 200, response.text
+        return response.json()["continuous"]
+
+    assert continuous(multi_client, "lunar_lander", {}) is False
+    assert continuous(multi_client, "lunar_lander", {"continuous": True}) is True
+    assert continuous(multi_client, "lunar_lander", {"continuous": False}) is False
+    assert continuous(client, "snake", {"width": 6, "height": 6}) is False  # a game without continuous actions
+    assert continuous(multi_client, "beacon", {}) is False
+    assert client.post("/api/action-space", params={"game": "snake"}, json={"rules": {"nonsense": 1}}).status_code == 422
+    assert client.post("/api/action-space", params={"game": "nope"}, json={"rules": {}}).status_code == 404
+
+
 # --------------------------------------------------------------------------- reward schemes
 
 

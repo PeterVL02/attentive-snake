@@ -70,7 +70,8 @@ observation; training samples around the mean, evaluation and greedy watching pl
 game's range are clipped by the game (the sample itself is what PPO learns from). Only PPO trains such actions;
 DQN (one value per action), `env.history_actions` (one channel per action) and the `jepa` kinds (they predict where
 each of a few actions leads) need a discrete action set and are refused with a message when the config is checked
-(the app answers before starting anything). The Watch tab shows the mean of each number with its spread, drawn
+(the app answers before starting anything; its New run form never presets `history_actions` with such rules and
+turns it off when they become continuous, asking `POST /api/action-space?game=` with `{rules}`). The Watch tab shows the mean of each number with its spread, drawn
 between the number's bounds. `continuous` is locked when forking (the network's outputs change).
 
 ```bash

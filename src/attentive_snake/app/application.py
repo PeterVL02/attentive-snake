@@ -13,7 +13,7 @@ from attentive_snake.app.jobs import TrainingJobs
 from attentive_snake.app.paths import STATIC_DIR, AppPaths, default_paths
 from attentive_snake.app.queue_storage import QueueFile, queue_path
 from attentive_snake.app.queue_ticker import Ticker
-from attentive_snake.app.routes import architecture, compare, evaluations, meta, parameters, queue, reward_search, rewards, runs, training_warnings, watch
+from attentive_snake.app.routes import action_space, architecture, compare, evaluations, meta, parameters, queue, reward_search, rewards, runs, training_warnings, watch
 from attentive_snake.app.search_backend import QueueBackend
 from attentive_snake.app.training_launcher import TrainingLauncher
 from attentive_snake.app.training_queue import TrainingQueue
@@ -64,6 +64,7 @@ def create_app(paths: AppPaths | None = None, jobs: TrainingJobs | None = None, 
     app.include_router(architecture.make_router(paths))
     app.include_router(parameters.make_router())
     app.include_router(training_warnings.make_router())
+    app.include_router(action_space.make_router())
     app.include_router(compare.make_router(paths, jobs))
     app.include_router(rewards.make_router(paths))
     app.include_router(watch.make_router(paths, WatchSessions()))
