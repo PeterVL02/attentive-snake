@@ -45,6 +45,7 @@ class BoardWindow:
             self._draw_cell(screen, cell, self._config.snake_body)
         if body:
             self._draw_cell(screen, body[0], self._config.snake_head)
+        self._draw_layers(screen, board.get("layers", ()))
         if caption is not None:
             pygame.display.set_caption(caption)
         pygame.display.flip()
@@ -81,8 +82,15 @@ class BoardWindow:
                 overlay.fill((*self._config.heatmap, round(value * self._config.heatmap_max_alpha)))
                 screen.blit(overlay, (x * size, y * size))
 
-    def _draw_cell(self, screen: pygame.Surface, cell: Any, color: Color) -> None:
-        pad = self._config.cell_padding
+    def _draw_layers(self, screen: pygame.Surface, layers: Any) -> None:
+        """Named layers (``views.board_layers``): fewer cells on top, each later one a little smaller."""
+        for index, layer in enumerate(sorted(layers, key=lambda layer: -len(layer["cells"]))):
+            color = pygame.Color(layer["color"])
+            for cell in layer["cells"]:
+                self._draw_cell(screen, cell, (color.r, color.g, color.b), extra_padding=min(index, 4) * self._cell_size // 20)
+
+    def _draw_cell(self, screen: pygame.Surface, cell: Any, color: Color, extra_padding: int = 0) -> None:
+        pad = self._config.cell_padding + extra_padding
         size = self._cell_size
         rect = pygame.Rect(cell[0] * size + pad, cell[1] * size + pad, size - 2 * pad, size - 2 * pad)
         pygame.draw.rect(screen, color, rect)

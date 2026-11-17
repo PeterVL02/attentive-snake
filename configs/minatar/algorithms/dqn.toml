@@ -1,0 +1,37 @@
+# MinAtar defaults for train.algorithm = "dqn" (scripts/train.py --game minatar --set train.algorithm=dqn,
+# or DQN in the app's New-training form). Laid over configs/minatar/default.toml key by key:
+# its [ppo] section is dropped, these values replace the shared ones they name, everything
+# else (game, model, evaluation, ...) comes from default.toml.
+# Close to the MinAtar paper's DQN (replay 100k, batch 32, target copy every 1000 updates,
+# epsilon 1 -> 0.1 over the first 100k frames, learning starts at 5000 frames), with several games at once.
+
+[train]
+total_env_steps = 2000000
+gamma = 0.99
+learning_rate = 0.00025
+anneal_lr = false
+log_interval = 20000          # env steps
+checkpoint_interval = 250000  # env steps
+
+[env]
+num_envs = 8                  # each step of the 8 games is one iteration (8 env steps)
+
+[dqn]  # attentive_snake.training.dqn.config.DqnConfig
+buffer_size = 100000          # 2 x 100k x 400 numbers (10 x 10 board, 4 planes in Breakout) x 4 bytes = ~320 MB; Seaquest (10 planes) and history_length multiply it
+batch_size = 32
+learning_starts = 5000        # transitions in the buffer before the first gradient step
+train_frequency = 1           # env steps per round of gradient steps (8 rounds per step of the 8 games): one update per frame, as the paper
+gradient_steps = 1
+target_update_interval = 1000 # env steps between target-network copies
+epsilon_start = 1.0
+epsilon_end = 0.1
+epsilon_fraction = 0.05       # of total_env_steps (100k of 2M)
+max_grad_norm = 10.0
+double = true
+prioritized = false           # prioritized experience replay (the three priority_* settings apply only when true)
+priority_alpha = 0.6
+priority_beta_start = 0.4     # rises to 1 at the end of total_env_steps
+priority_epsilon = 1e-6
+n_step = 1                    # steps a target looks ahead before bootstrapping (1 = plain DQN; 3-5 is common)
+dueling = false               # dueling head: Q = V + A - mean(A) (locked when continuing from a checkpoint)
+loss = "huber"                # or "mse" (squared error)

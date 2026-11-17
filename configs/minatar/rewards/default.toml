@@ -1,0 +1,7 @@
+# The default MinAtar reward: the game's own points.
+# The single source of the default reward values (tests check it equals MinAtarReward()).
+# A flat MinAtarReward table (no section header):
+#   reward = scale * points + game_over on the step the title ends the game
+# The score (mean_score) is always the raw sum of the game's points.
+scale = 1.0                   # multiplies the points (MinAtar pays small whole numbers, mostly 1)
+game_over = 0.0               # added when the game ends by its rules (ball lost, player hit; in Freeway the clock); negative says losing is bad

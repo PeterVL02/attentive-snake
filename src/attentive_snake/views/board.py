@@ -4,11 +4,13 @@
 
     {"width": W, "height": H,                  # grid size in cells
      "snake": [[x, y], ...],                   # player body cells, head first (may be empty)
-     "foods": [[x, y], ...]}                   # the target cells (apples), possibly none
+     "foods": [[x, y], ...],                   # the target cells (apples), possibly none
+     "layers": [{"name", "color", "cells"}]}   # optional: named coloured cells (views.board_layers)
 
 Coordinates: x grows to the right, y downwards, (0, 0) is the top-left cell. The app's
 ``board.js`` and ``views.board_window`` draw exactly these keys (body green, head brighter,
-targets red); a heatmap from the watch frame, shape (H, W), is drawn under them.
+targets red, each layer in its colour with a legend of the names); a heatmap from the watch
+frame, shape (H, W), is drawn under them.
 """
 
 from collections.abc import Iterable, Sequence

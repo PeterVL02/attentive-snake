@@ -18,6 +18,13 @@ def test_board_payload() -> None:
     assert board_payload(5, 4, [], [])["foods"] == []
 
 
+def test_layered_board_payload_is_a_board_with_named_coloured_cells() -> None:
+    from attentive_snake.views.board_layers import board_layer, layered_board_payload
+
+    payload = layered_board_payload(3, 2, [board_layer("ball", "#e15759", [(2, 1)]), board_layer("wall", "#4e79a7", [])])
+    assert payload == {"width": 3, "height": 2, "snake": [], "foods": [], "layers": [{"name": "ball", "color": "#e15759", "cells": [[2, 1]]}, {"name": "wall", "color": "#4e79a7", "cells": []}]}
+
+
 def test_image_payload_is_a_decodable_png() -> None:
     rgb = np.arange(2 * 3 * 3, dtype=np.uint8).reshape(2, 3, 3)
     payload = image_payload(rgb)

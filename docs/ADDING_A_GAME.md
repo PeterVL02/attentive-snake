@@ -194,6 +194,13 @@ merges the payload into its top level.
 Cells are `[x, y]`, x to the right, y down. `snake` is the player body, head first;
 `foods` the target cells (any number, possibly none). The app and `scripts/watch.py` draw this.
 
+A grid game with several kinds of objects (MinAtar: one 0/1 channel per kind) adds named,
+coloured layers instead, built with `layered_board_payload(width, height, layers)` and
+`board_layer(name, "#rrggbb", cells)` (`views/board_layers.py`): `snake` and `foods` stay empty,
+each layer is drawn in its colour (layers with fewer cells on top, so a ball stays visible over
+the bricks) and the app shows a legend of the names. One layer per observation channel, named
+like the channel, is how the channel names reach the Watch tab (`games/minatar/view.py`).
+
 `"image"` (`views/image.py`, build with `image_payload(rgb)` from an `(H, W, 3)` uint8
 array, e.g. Gymnasium's `render_mode="rgb_array"`):
 
@@ -281,6 +288,14 @@ family of games that share an adapter and settings:
 - the title is in `locked_rules`, so a fork cannot switch titles;
 - all titles share `runs/<name>/` and so the app's run lists; the run's detail and the Compare
   tab's differences show the title.
+
+`games/minatar/` is the same pattern for a grid game: five MinAtar titles chosen by `[game] title`,
+each with a different number of channels (4 in Breakout, 10 in Seaquest) and actions (3 to 6). The
+observation shape comes from the env, so the shared `default.toml` needs nothing per title. A rule
+that removes channels from the observation (MinAtar's `trails`) must drop them, not zero them, if the
+point is that the model cannot see them; it changes the shape, so it is locked on fork. Name the
+channels a rule touches in the title table and test them against the package
+(`tests/test_minatar.py`), not from memory.
 
 The other way is one package per title, each exposing its own `GAME` built by a shared
 factory. Choose it when titles need different defaults or should have separate run lists; the
