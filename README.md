@@ -685,6 +685,25 @@ searches. Also note that the per-generation margins over the unchanged member ar
 the best of four noisy scores on the same 100 evaluation games, and the next generation does not re-check it on
 fresh games.
 
+**Second reading: repairing a bad step cost (one seed, not a benchmark).** Same setup, but the parent trained
+500k steps with `step = -0.03`, so that 100 steps of living cost three times as much as dying: it learned to
+die early (mean score 1.56, games of 8 steps). The search changed only `step` (4 members x 4 generations x 250k
+steps, `perturbation` 0.5, `max_change` 1.0, seed 0); the comparison is a chain of four 250k forks that keep
+`step = -0.03`. Whole measurement: 6 minutes.
+
+| Generation | Winner's step | Winner's mean score (game length) | Unchanged chain (game length) |
+|---|---|---|---|
+| 0 | -0.0183 | 2.74 (14) | 2.58 (13) |
+| 1 | -0.0183 (unchanged won) | 4.20 (25) | 3.32 (18) |
+| 2 | -0.0183 (unchanged won) | 5.66 (40) | 4.32 (27) |
+| 3 | -0.0049 | 8.51 (90) | 6.15 (38) |
+
+The search moved the step cost from -0.03 to -0.0049, next to the -0.005 that was later set by hand as the
+default, and its lineage ends at 8.51 against 6.15 for the bad reward, with games more than twice as long.
+The same upward bias of the winner applies, but the lineage was ahead in every generation and the unchanged
+member of the last generation (7.58, on -0.0183) already beat the chain. So the search can repair a reward
+that is clearly wrong; on the hand-tuned default (first reading) it found nothing to improve.
+
 ## Caveats
 
 - **Stopping the app stops the trainings it started.** For a long run that
