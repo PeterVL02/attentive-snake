@@ -4,7 +4,7 @@ Train neural networks to play games with reinforcement learning (PPO or DQN), an
 inside them: which board cells or input numbers a transformer attends to, how the
 architecture is put together, and how different models and reward schemes compare.
 
-The project contains four games (Snake, Lunar Lander, Atari and MinAtar), a game-agnostic
+The project contains five games (Snake, Lunar Lander, Atari, MinAtar and two-player Atari by self-play), a game-agnostic
 headless parallel environment layer, twelve model kinds, two training algorithms, an
 architecture-diagram tool and a local web app that ties it all together. Everything the app
 does can also be done from the terminal.
@@ -46,6 +46,7 @@ yourself and the rest are in [docs/CLI.md](docs/CLI.md).
 | `lunar_lander` | vector | 8 numbers: position, velocity, angle, angular velocity, leg contacts (Gymnasium's `LunarLander-v3`). Watched as the game's own picture. |
 | `atari` | image | The console's screen, shrunk to 84 x 84 grayscale, the last 4 frames. One game for six titles. |
 | `minatar` | grid | MinAtar's 10 x 10 grid, one 0/1 channel per kind of object. One game for five titles. |
+| `atari_versus` | image | Two-player Atari: the shared screen as for `atari`, plus one plane per frame saying which player the model is. Trained by self-play. |
 
 Each game has its settings in `configs/<game>/default.toml`, with a comment on every field.
 
@@ -131,6 +132,29 @@ Mean score, single seeds in brackets:
   `d_model` 32 it was worse (6.1 and 3.6). `temporal_transformer` (400 tokens) made the machine unresponsive
   and was stopped.
 
+### Two-player Atari (self-play)
+
+```bash
+uv run python scripts/train.py --game atari_versus --run-dir runs/atari_versus/boxing --set game.title=boxing
+uv run python scripts/evaluate.py runs/atari_versus/boxing --games 20      # against a random player
+```
+
+`game.title` picks `pong` (default), `combat_tank`, `combat_plane` or `boxing` (the two-player modes of the
+Arcade Learning Environment, through `multi_agent_ale_py` and the ROMs `ale-py` ships).
+
+- **Self-play with the unchanged PPO or DQN.** A match fills two of the `env.num_envs` parallel games, one per
+  player, so `num_envs` must be even. One network plays both sides and learns from both; one constant input
+  plane tells it which player it is. Rewards are zero-sum.
+- **Progress is measured against a random player** (seeded): self-play scores hover around zero whatever the
+  model knows. Evaluations report `win_rate`, `draw_rate` and `loss_rate`; Watch shows the same match-up.
+- **Not built:** a frozen earlier checkpoint as opponent, and league play.
+
+**Measured (Boxing, PPO, `cnn` defaults, 2.27M env steps in 30 minutes; one seed, not a benchmark).** It learned
+nothing: against the random player it lost 9 of 10 games at every evaluation from 0.5M steps on (mean margin
+-17 to -21). The policy stayed almost uniform (entropy 2.87 of 2.89) and the value function explained none of
+the return, so the greedy action was nearly arbitrary (one button on 299 of 300 steps). A random player in the
+same seat won 8 of the same 10 games. A longer run, another title or other settings have not been tried.
+
 ## The app
 
 | Tab | What it is for |
@@ -140,7 +164,7 @@ Mean score, single seeds in brackets:
 | **Queue** | Runs waiting to start, for all games. They start by themselves, oldest first, while fewer than "runs at once" (default 1) queue-started runs train. Saved in `runs/queue.json`. See [Training queue](docs/CLI.md#training-queue-app). |
 | **Reward search** | Let the reward adjust itself, judged by the real score. See [Reward search](#reward-search). |
 | **Architecture** | Diagram, text tree and parameter count for a config or an existing run. |
-| **Watch & attention** | Watch a checkpoint play, with the attention heatmap over the board (or bars per input number, or a coarse heatmap over an Atari screen), and the action probabilities, Q-values or continuous action means. |
+| **Watch & attention** | Watch a checkpoint play, with the attention heatmap over the board (or bars per input number, or a coarse heatmap over an Atari screen; two-player Atari plays the model against a random player), and the action probabilities, Q-values or continuous action means. |
 | **Rewards** | Create and edit named reward schemes, with a live table of what a scheme pays. |
 | **Compare** | Score curves or evaluation metrics of several runs on one chart, and the config fields that differ. |
 | **CLI cheat sheet** | The contents of [docs/CLI.md](docs/CLI.md). |
