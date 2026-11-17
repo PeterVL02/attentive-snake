@@ -28,7 +28,7 @@ export function modelPicker(modelKinds, id = "kind-select") {
     description.textContent = info?.description ?? "";
     warning.textContent =
       info?.recommended === false
-        ? "Not recommended for this game: it was not built for this kind of observation. You can still train it."
+        ? "Not a recommended first choice for this game: it is experimental, or was built for another kind of observation (see the description above). You can still train it."
         : "";
   };
   select.addEventListener("change", describe);
