@@ -18,6 +18,8 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from attentive_snake.env.action_space import ActionSpace
+
 
 @dataclass(frozen=True)
 class EpisodeSummary:
@@ -62,14 +64,19 @@ class GameEnv(Protocol):
     Optional: an env whose action set depends on its rules (Atari without ``full_action_space``)
     may carry ``action_labels: tuple[str, ...]``, one name per action; watching prefers it over
     ``GameSpec.action_labels`` (``watch.action_names``).
+
+    Optional: an env with continuous actions carries ``action_space: ContinuousActions``
+    (``env.action_space``); without it the actions are ``DiscreteActions(num_actions)``. Its
+    ``num_actions`` is then the dimension of the action vector, its ``action_labels`` (if any)
+    name the dimensions, and ``step`` gets a float32 vector already clipped to the bounds.
     """
 
     observation_shape: tuple[int, ...]
-    num_actions: int
+    num_actions: int  # discrete: the number of actions; continuous: the dimension of the action vector
 
     def reset(self, seed: int | None = None) -> np.ndarray: ...
 
-    def step(self, action: int) -> EnvStep: ...
+    def step(self, action: int | np.ndarray) -> EnvStep: ...
 
     def view(self) -> dict[str, Any]: ...
 
@@ -79,7 +86,11 @@ class SingleEnv(GameEnv, Protocol):
 
     ``observation_shape`` is the stacked shape (``history_length * frame_channels`` along
     axis 0); each frame ends with ``action_channels`` one-hot action channels (0 = none).
+    ``action_space`` is always set (``env.action_space.action_space_of`` of the wrapped game);
+    ``step`` takes what a policy produced and hands the game ``action_space.env_action`` of it.
     """
+
+    action_space: ActionSpace
 
     history_length: int
     frame_channels: int
@@ -113,11 +124,13 @@ class VecEnv(Protocol):
     num_envs: int
     observation_shape: tuple[int, ...]
     num_actions: int
+    action_space: ActionSpace
 
     def reset(self, seed: int | None = None) -> np.ndarray:
         """Reset all environments; returns observations (num_envs, *observation_shape)."""
         ...
 
     def step(self, actions: np.ndarray) -> VecEnvStep:
-        """Apply one integer action in ``[0, num_actions)`` per environment."""
+        """Apply one action per environment: an integer in ``[0, num_actions)`` (discrete), or a row of
+        ``(num_envs, dimension)`` floats (continuous; clipped to the bounds before the game sees it)."""
         ...

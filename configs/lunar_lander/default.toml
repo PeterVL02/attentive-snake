@@ -12,6 +12,7 @@ enable_wind = false           # random wind and turbulence (much harder)
 wind_power = 15.0             # 0..20, only with enable_wind
 turbulence_power = 1.5        # 0..2, only with enable_wind
 max_episode_steps = 1000      # time limit (Gymnasium's): ends the episode as "timeout" (see train.bootstrap_truncated)
+continuous = false            # true: two throttles in [-1, 1] (main, side engines) instead of 4 actions; PPO only, no jepa kinds, no env.history_actions
 hide_velocities = false       # the model sees zeros for vx, vy and spin: it must infer them from history (env.history_length > 1, or the lstm kind)
 
 # [reward]: not listed here. The default reward values live in one place, the

@@ -11,6 +11,7 @@ from typing import Protocol
 from torch import nn
 
 from attentive_snake.config import ExperimentConfig
+from attentive_snake.env.action_space import action_space_of
 from attentive_snake.env.history_env import HistoryEnv
 from attentive_snake.env.types import GameEnv
 from attentive_snake.env.vec_env import SyncVecEnv, env_seed
@@ -25,7 +26,8 @@ from attentive_snake.training.trainer import Trainer
 
 
 class EnvSpec(Protocol):
-    """What the policy needs to know about an environment (``HistoryEnv`` and ``SyncVecEnv`` both qualify)."""
+    """What the policy needs to know about an environment (``HistoryEnv`` and ``SyncVecEnv`` both qualify;
+    ``action_space`` may be missing, meaning ``DiscreteActions(num_actions)``)."""
 
     observation_shape: tuple[int, ...]
     num_actions: int
@@ -60,8 +62,9 @@ def observation_spec(config: ExperimentConfig, env: EnvSpec) -> ObservationSpec:
 
 
 def make_policy(config: ExperimentConfig, env: EnvSpec) -> nn.Module:
-    """The policy of ``[model]`` with the head its algorithm trains with these settings (``Algorithm.head``)."""
-    head = get_algorithm(config.train.algorithm).head(config.algorithm_settings)
+    """The policy of ``[model]`` with the head its algorithm trains with these settings on ``env``'s actions (``Algorithm.head_for``)."""
+    continuous = action_space_of(env).continuous
+    head = get_algorithm(config.train.algorithm).head_for(config.algorithm_settings, continuous)
     return build_policy(config.model, observation_spec(config, env), env.num_actions, head)
 
 

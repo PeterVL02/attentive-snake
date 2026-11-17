@@ -285,6 +285,7 @@ KIND_INFO: dict[str, KindInfo] = {
             ),
         },
         JEPA_METRICS + ROLLOUT_METRICS,
+        needs_discrete_actions=True,
     ),
     "jepa_attention": KindInfo(
         (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual", "layer_norm", *_JEPA_FIELDS),
@@ -310,6 +311,7 @@ KIND_INFO: dict[str, KindInfo] = {
             ),
         },
         JEPA_METRICS + ROLLOUT_METRICS,
+        needs_discrete_actions=True,
     ),
     "jepa_tokens": KindInfo(
         (*TRANSFORMER_FIELDS, *CONV_FIELDS, "residual", "layer_norm", "predictor_layers", *_JEPA_FIELDS),
@@ -339,6 +341,7 @@ KIND_INFO: dict[str, KindInfo] = {
             ),
         },
         JEPA_METRICS + ROLLOUT_METRICS,
+        needs_discrete_actions=True,
     ),
     "jepa_temporal": KindInfo(
         (*TRANSFORMER_FIELDS, *_JEPA_FIELDS),
@@ -362,6 +365,7 @@ KIND_INFO: dict[str, KindInfo] = {
             ),
         },
         JEPA_METRICS + ROLLOUT_METRICS,
+        needs_discrete_actions=True,
     ),
     "mlp": KindInfo(
         ("d_model", "num_layers", "layer_norm"),

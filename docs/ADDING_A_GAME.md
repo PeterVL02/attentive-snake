@@ -49,6 +49,7 @@ GAME = GameSpec(
     observation_labels=("x", "y", ...),  # optional, vector games: a name per number of a frame
     action_labels=("nothing", "left engine", ...),  # optional: a name per action
     episode_metrics=LANDER_METRICS,   # optional: the game's own evaluation statistics (section 6)
+    continuous_actions=lambda rules: rules.continuous,  # optional: rules -> continuous actions? (section 3)
 )
 ```
 
@@ -64,6 +65,7 @@ GAME = GameSpec(
 | `reward_table` | What a scheme pays in typical situations, for the app's Rewards tab: rows `{"situation": str, "reward": float, "breakdown": {term: float}}`. `None`: no preview (`/api/rewards/preview` answers 404). |
 | `episode_metrics` | Optional `GameMetrics`: the game's own evaluation statistics on top of the generic ones (section 6). `None`: only the generic ones. |
 | `training_warnings` | Optional `(rules, reward, gamma) -> tuple[str, ...]`: plain-language warnings about a configuration the game is about to be trained with (Snake: a step cost that makes dying no worse than living; `games/snake/warnings.py`). The app shows them in a dialog before starting a run, `scripts/train.py` prints them to stderr. `None`: none. |
+| `continuous_actions` | Optional `rules -> bool`: whether an env of these rules has continuous actions (section 3). It must agree with the env's `action_space`; `None`: always discrete. |
 | `search_objective` | The evaluation statistic a reward search optimises by default (default `"mean_score"`). It must have a direction and must not measure the reward (`MetricDefinition.measures_reward`): the search judges rewards by what happened in the game. Only the float fields of `reward_type` can be searched. |
 
 The registry checks the spec when it scans (`games/validation.py`) and raises
@@ -75,12 +77,25 @@ import error in the package.
 ```python
 class GameEnv(Protocol):
     observation_shape: tuple[int, ...]   # ONE frame: (F, H, W) for grid/image, (F,) for vector
-    num_actions: int                     # discrete actions 0 .. num_actions-1
+    num_actions: int                     # discrete actions 0 .. num_actions-1 (continuous: the vector's dimension)
 
     def reset(self, seed: int | None = None) -> np.ndarray: ...   # float32, observation_shape
-    def step(self, action: int) -> EnvStep: ...
+    def step(self, action: int | np.ndarray) -> EnvStep: ...
     def view(self) -> dict[str, Any]: ...                         # payload of view_kind
 ```
+
+**Continuous actions** (optional, `env/action_space.py`). A game whose actions are a vector of
+real numbers gives its env an `action_space = ContinuousActions(low=(...), high=(...))` (one bound
+pair per number), sets `num_actions` to the vector's dimension and, if it wants names in the Watch
+tab, `action_labels` with one name per number. `step` then gets a float32 vector already clipped to
+the bounds (`HistoryEnv` clips; the policy's Gaussian may sample beyond them). An env without
+`action_space` is `DiscreteActions(num_actions)`, as before. If the rules decide it (Lunar Lander's
+and Atari's `continuous`), also set `GameSpec.continuous_actions = lambda rules: rules.continuous`
+so a config can be checked without building an env: DQN, `env.history_actions` and the world-model
+kinds (`KindInfo.needs_discrete_actions`) need discrete actions and are refused
+(`config/action_compatibility.py`). Lock that rule on fork (`locked_rules`): it changes the
+network's outputs. PPO picks its head from the action space (`Algorithm.head_for`: `actor_critic`
+or `gaussian`).
 
 `EnvStep(observation, reward, terminated, truncated, event, score)`:
 
@@ -102,7 +117,7 @@ called after a `reset()` (Gymnasium games cannot render before one); everything 
 watches a game resets it first. You get for free:
 
 - `HistoryEnv` (`env/history_env.py`): the last `env.history_length` frames stacked
-  along axis 0, oldest first, and with `env.history_actions = true` `num_actions`
+  along axis 0, oldest first, and with `env.history_actions = true` (discrete actions only) `num_actions`
   one-hot action channels appended to every frame (constant over `H, W` for grids and
   images, `num_actions` extra numbers for vectors).
 - `SyncVecEnv` (`env/vec_env.py`): `env.num_envs` copies, auto-reset, per-env seeds
@@ -292,6 +307,6 @@ What a second kind of game in the family would need (not built):
   players. `GameEnv.step` takes one action, so either the opponent is part of the env (a
   scripted player or a frozen checkpoint the env calls), or `GameEnv`, `VecEnv` and the
   rollout storage gain a player axis. The first needs no contract change.
-- Continuous actions (ALE's `continuous=True`): `num_actions` and the heads in
-  `models/heads.py` are discrete. It needs an action-space description on the env contract, a
-  Gaussian policy head and the matching PPO log-probabilities; DQN does not apply.
+
+Continuous actions are built: `[game] continuous = true` uses ALE's continuous joystick
+(`games/atari/joystick.py`; see section 3 for the contract).

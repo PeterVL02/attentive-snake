@@ -14,7 +14,7 @@ that ties it all together.
 | Game | Observation | What the model sees |
 |---|---|---|
 | `snake` (default) | grid | The whole board: one cell per position, channels head / body / food. |
-| `lunar_lander` | vector | 8 numbers: x, y, vx, vy, angle, angular velocity, left and right leg contact (Gymnasium's `LunarLander-v3`, discrete actions). Watched as the game's own picture. |
+| `lunar_lander` | vector | 8 numbers: x, y, vx, vy, angle, angular velocity, left and right leg contact (Gymnasium's `LunarLander-v3`; four discrete actions, or two throttles with `game.continuous = true`). Watched as the game's own picture. |
 | `atari` | image | The console's screen, shrunk to 84 x 84 grayscale, the last 4 frames. One game for all titles; `[game] title` picks one (see [Atari](#atari)). |
 
 ### Snake rules
@@ -131,7 +131,7 @@ How it works, in short (all of it is settings in `configs/atari/default.toml`, e
 | **Queue** | Runs waiting to start (added with "Add to queue" in New training or in the continue-with-changes dialog), for all games. They start by themselves, oldest first, while fewer than "runs at once" (default 1) queue-started runs train; runs you start yourself do not hold the queue back. "Run now" starts an entry at once, "Remove" drops it; an entry that cannot start is kept as failed with the reason. Saved in `runs/queue.json`, so it survives a restart of the app. See [Training queue](docs/CLI.md#training-queue-app). |
 | **Reward search** | Let the reward adjust itself: from a run's checkpoint, each generation trains several forks, one on the current reward and the others on bounded random changes of the fields you tick; the one with the best real score (never the reward-dependent return) wins and starts the next generation. Shows every member's reward values, score and the winners; members are ordinary runs through the queue. See [Reward search](#reward-search). |
 | **Architecture** | Diagram, text tree and parameter count for the config in the form or for an existing run. |
-| **Watch & attention** | Watch a checkpoint play. Board games show the attention heatmap over the board; Lunar Lander shows the game's picture with attention bars per input number; Atari shows the screen with a coarse heatmap over it (one square per token of the model). |
+| **Watch & attention** | Watch a checkpoint play. Board games show the attention heatmap over the board; Lunar Lander shows the game's picture with attention bars per input number; Atari shows the screen with a coarse heatmap over it (one square per token of the model). Next to the game: the action probabilities (PPO), Q-values (DQN) or, for continuous actions, the mean of each action number with its spread. |
 | **Rewards** | Create and edit named reward schemes, with a live table of what a scheme pays in each situation. |
 | **CLI cheat sheet** | The contents of [docs/CLI.md](docs/CLI.md). |
 | **Compare** | Plot the score curves or an evaluation metric of several runs on one chart, with their descriptions and latest/best evaluation numbers, and list the config fields that differ. |
@@ -433,7 +433,7 @@ same, only its head differs, so attention and architecture diagrams work alike.
 
 | Algorithm | What it is here | Head |
 |---|---|---|
-| `ppo` (default) | Proximal policy optimisation: on-policy actor-critic. Plays rollouts with its own sampled actions, computes GAE advantages and takes a few epochs of clipped-surrogate updates on them, then throws them away. | policy (action probabilities) + value |
+| `ppo` (default) | Proximal policy optimisation: on-policy actor-critic. Plays rollouts with its own sampled actions, computes GAE advantages and takes a few epochs of clipped-surrogate updates on them, then throws them away. Also trains continuous actions (see [Continuous actions](#continuous-actions)). | policy (action probabilities, or a mean action and a learned spread) + value |
 | `dqn` | Double DQN: off-policy and value-based. Plays epsilon-greedily, stores every transition in a replay buffer, and takes gradient steps on random batches of it with a Huber loss against a target network (the online network picks the next action, the target network values it). Optional: n-step targets, a dueling head, prioritized replay, a squared-error loss. | one Q-value per action (or a dueling value + advantage head) |
 
 ```bash
@@ -504,6 +504,37 @@ budget reached 13.1 with none won. DQN was much slower per env step there,
 though (about 600 steps/s against about 5,000 on the same CPU: 27 minutes
 against 3), because every step of the 16 games is followed by four gradient
 steps. See the Caveats for what this does and does not say.
+
+### Continuous actions
+
+`game.continuous = true` (Lunar Lander and Atari, off by default, locked on fork) replaces the
+discrete actions by a vector of real numbers: Lunar Lander's two throttles in [-1, 1] (main engine,
+side engines; Gymnasium's own continuous mode) or Atari's continuous joystick (push 0..1, direction
+-pi..pi, fire 0..1; ALE's continuous mode, turned into one of the 18 joystick actions plus a paddle
+strength). PPO then trains a Gaussian head: the network outputs the mean of every number, one
+spread (log standard deviation) per number is learned on its own, the same for every observation;
+rollouts sample around the mean, evaluation and greedy watching play the mean. The samples are not
+squashed: the game clips them to their bounds, and PPO's log-probabilities are those of the
+unclipped samples (the usual PPO choice; a tanh squash would need a correction term). Every model
+kind's body works with it unchanged. DQN (one value per action), `env.history_actions` (one channel
+per action) and the `jepa` kinds (they predict where each of a few actions leads) need discrete
+actions and are refused when the config is checked (422 in the app). The Watch tab shows the mean
+of each number with its spread, drawn between the number's bounds.
+
+```bash
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/throttle --set game.continuous=true
+```
+
+One seed, not a benchmark: Lunar Lander's defaults (`mlp`, 32 envs, 2M env steps, seed 0) with
+`game.continuous = true`, greedy evaluation of 50 games every 500k env steps (`train.device = "auto"`, the GPU
+here, about 7,100 env steps/s, under 5 minutes). Mean score / landed share: 221 / 90% at 508k, 262 / 100% at 1M, 263 /
+98% at 1.5M, 262 / 96% at 2M (the rest crashed); training mean score about 155 at the end. The discrete
+run of the [quick start](#lunar-lander-quick-start) (same defaults and seed) landed every game at 2M
+with a mean score of 256, and its training score also flattened near 150. So the continuous lander
+learns at least as fast here, within what one seed can show. The policy's spread did not shrink
+(entropy 2.84 at the start, 2.88 at 2M, with `ppo.entropy_coef = 0.01`): the greedy mean lands, the
+samples stay wide. An Atari run with a continuous joystick (Pong, `cnn`, 4,096 env steps) only proved
+that it trains end to end.
 
 ### Layer norm and weight decay
 

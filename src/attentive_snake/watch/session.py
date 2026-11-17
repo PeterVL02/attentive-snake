@@ -10,6 +10,7 @@ from attentive_snake.games.registry import get_game
 from attentive_snake.models.registry import KIND_INFO
 from attentive_snake.run_dir import config_path
 from attentive_snake.training.checkpoint import latest_checkpoint, load_checkpoint
+from attentive_snake.watch.action_bounds import action_bounds
 from attentive_snake.watch.action_names import action_names
 from attentive_snake.watch.actions import choose_action, readout
 from attentive_snake.watch.attention_panel import (
@@ -64,6 +65,7 @@ class WatchSession:
             "element_names": element_names(game, observation_spec(config, self._env)),  # vector games only
             "algorithm": config.train.algorithm,
             "action_names": action_names(game, self._env.game),
+            "action_bounds": action_bounds(self._env.game),  # continuous actions: low / high per dimension; else None
             "checkpoint": str(checkpoint),
             "env_steps": env_steps,
             "width": first.view["width"],  # of the view: cells for "board", pixels for "image"

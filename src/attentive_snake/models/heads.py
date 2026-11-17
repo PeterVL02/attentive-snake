@@ -15,9 +15,9 @@ from typing import Protocol
 
 from torch import Tensor, nn
 
-from attentive_snake.models.blocks.heads import DuelingStream, PolicyHead, QHead, ValueHead
+from attentive_snake.models.blocks.heads import DuelingStream, LogStd, PolicyHead, QHead, ValueHead
 from attentive_snake.models.dueling import dueling_q_values
-from attentive_snake.models.types import PolicyOutput, QValues
+from attentive_snake.models.types import GaussianPolicyOutput, PolicyOutput, QValues
 
 POLICY_INIT_GAIN = 0.01  # near-uniform initial policy
 VALUE_INIT_GAIN = 1.0
@@ -34,7 +34,7 @@ class Head(Protocol):
         """The head's modules, initialised, keyed by their name in ``self.net`` (state-dict keys: keep them stable)."""
         ...
 
-    def output(self, net: Mapping[str, nn.Module], pooled: Tensor) -> PolicyOutput | QValues:
+    def output(self, net: Mapping[str, nn.Module], pooled: Tensor) -> PolicyOutput | GaussianPolicyOutput | QValues:
         """Pooled features (B, d_model) -> the head's output, using its modules in ``net``."""
         ...
 
@@ -50,6 +50,29 @@ class ActorCriticHead:
 
     def output(self, net: Mapping[str, nn.Module], pooled: Tensor) -> PolicyOutput:
         return PolicyOutput(logits=net["policy_head"](pooled), value=net["value_head"](pooled))
+
+
+class GaussianHead:
+    """``action_mean`` (the mean action), ``action_log_std`` (one learned log standard deviation per dimension, the
+    same for every observation) and ``value_head`` -> ``GaussianPolicyOutput``; trained by PPO on continuous actions.
+
+    ``num_actions`` is the dimension of the action vector. The mean starts near 0 (small init gain, like the
+    discrete policy's near-uniform start) and the standard deviation at 1, so the first actions explore the
+    whole of a [-1, 1] range. Actions are not squashed: the Gaussian's samples are what PPO's log-probabilities
+    are about, and the environment clips them to the game's bounds (``env.action_space``), the usual choice
+    for PPO (a tanh squash would need a log-probability correction and moves the mean away from the bounds).
+    """
+
+    def modules(self, d_model: int, num_actions: int) -> dict[str, nn.Module]:
+        mean, value = PolicyHead(d_model, num_actions), ValueHead(d_model)
+        init_head(mean.linear, POLICY_INIT_GAIN)
+        init_head(value.linear, VALUE_INIT_GAIN)
+        return {"action_mean": mean, "action_log_std": LogStd(num_actions), "value_head": value}
+
+    def output(self, net: Mapping[str, nn.Module], pooled: Tensor) -> GaussianPolicyOutput:
+        return GaussianPolicyOutput(
+            mean=net["action_mean"](pooled), log_std=net["action_log_std"](pooled), value=net["value_head"](pooled)
+        )
 
 
 class QValueHead:
@@ -78,7 +101,12 @@ class DuelingHead:
         return QValues(q_values=dueling_q_values(net["dueling_value"](pooled).squeeze(-1), net["dueling_advantage"](pooled)))
 
 
-HEADS: dict[str, Head] = {"actor_critic": ActorCriticHead(), "q_values": QValueHead(), "dueling": DuelingHead()}
+HEADS: dict[str, Head] = {
+    "actor_critic": ActorCriticHead(),
+    "q_values": QValueHead(),
+    "dueling": DuelingHead(),
+    "gaussian": GaussianHead(),
+}
 DEFAULT_HEAD = "actor_critic"
 
 

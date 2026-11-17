@@ -30,7 +30,9 @@ GAME = GameSpec(
         "screen_size": "it changes the size of the picture, so the parent's weights would not fit",
         "grayscale": "it changes the number of colour channels, so the parent's weights would not fit",
         "full_action_space": "it changes the number of actions, so the parent's outputs would not fit",
+        "continuous": "it changes what the network outputs (action probabilities or three joystick numbers), so the parent's outputs would not fit",
     },
+    continuous_actions=lambda rules: rules.continuous,  # the env then names the stick's numbers itself (AtariEnv)
     # Of the default rules (full_action_space). An env with a title's own shorter list names its
     # actions itself (AtariEnv.action_labels, read by watch.action_names).
     action_labels=FULL_ACTION_LABELS,

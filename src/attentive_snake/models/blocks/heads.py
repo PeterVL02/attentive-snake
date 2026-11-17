@@ -1,5 +1,6 @@
 """Output layers that turn pooled features (B, d_model) into what a head returns."""
 
+import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
@@ -13,6 +14,17 @@ class PolicyHead(nn.Module):
 
     def forward(self, pooled: Tensor) -> Tensor:
         return self.linear(pooled)
+
+
+class LogStd(nn.Module):
+    """A learned log standard deviation per action dimension, the same for every observation: pooled (B, D) -> (B, dimension)."""
+
+    def __init__(self, dimension: int, initial: float = 0.0) -> None:
+        super().__init__()
+        self.log_std = nn.Parameter(torch.full((dimension,), initial))
+
+    def forward(self, pooled: Tensor) -> Tensor:
+        return self.log_std.expand(pooled.shape[0], -1)
 
 
 class ValueHead(nn.Module):

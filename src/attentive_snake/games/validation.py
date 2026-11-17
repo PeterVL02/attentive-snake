@@ -39,6 +39,8 @@ def spec_problems(spec: GameSpec, package_name: str) -> list[str]:
     problems += _search_objective_problems(spec)
     if spec.training_warnings is not None and not callable(spec.training_warnings):
         problems.append("training_warnings must be callable")
+    if spec.continuous_actions is not None and not callable(spec.continuous_actions):
+        problems.append("continuous_actions must be callable")
     if spec.observation_labels is not None and not problems:
         problems += _label_problems(spec)
     if spec.action_labels is not None and not problems:

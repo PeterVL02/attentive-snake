@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from attentive_snake.env.action_space import action_space_of
 from attentive_snake.env.episodes import EpisodeTracker
 from attentive_snake.env.types import EpisodeSummary, SingleEnv, VecEnvStep
 
@@ -20,7 +21,7 @@ class SyncVecEnv:
 
     The last observation of each finished episode is kept in ``VecEnvStep.final_observations``.
 
-    All envs must agree on ``observation_shape`` and ``num_actions``. ``reset(seed)``
+    All envs must agree on ``observation_shape``, ``num_actions`` and ``action_space``. ``reset(seed)``
     gives env ``i`` the seed ``env_seed(seed, i)``.
     """
 
@@ -29,11 +30,13 @@ class SyncVecEnv:
             raise ValueError("a vector env needs at least one environment.")
         first = envs[0]
         for env in envs[1:]:
-            if tuple(env.observation_shape) != tuple(first.observation_shape) or env.num_actions != first.num_actions:
+            same_actions = env.num_actions == first.num_actions and action_space_of(env) == action_space_of(first)
+            if tuple(env.observation_shape) != tuple(first.observation_shape) or not same_actions:
                 raise ValueError("all environments of a vector env must have the same observation shape and actions.")
         self.envs: tuple[SingleEnv, ...] = tuple(envs)
         self.num_envs = len(self.envs)
         self.num_actions = first.num_actions
+        self.action_space = action_space_of(first)
         self.observation_shape: tuple[int, ...] = tuple(first.observation_shape)
         self.history_length = first.history_length
         self.frame_channels = first.frame_channels
@@ -55,7 +58,7 @@ class SyncVecEnv:
         finished: list[EpisodeSummary] = []
         final_observations: dict[int, np.ndarray] = {}
         for i, env in enumerate(self.envs):
-            result = env.step(int(actions[i]))
+            result = env.step(self.action_space.env_action(actions[i]))
             rewards[i] = result.reward
             terminated[i] = result.terminated
             truncated[i] = result.truncated

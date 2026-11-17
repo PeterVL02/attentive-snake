@@ -809,6 +809,50 @@ def test_watch_lunar_lander_with_attention_over_its_numbers(client: TestClient, 
     assert "png" in steps[-1] and len(steps[-1]["element_weights"]) == 8
 
 
+def lander_tables(kind: str = "mlp", algorithm: str = "ppo", **game) -> dict:
+    tables = tiny_tables(kind, algorithm=algorithm)
+    tables["game"] = {"name": "lunar_lander", **game}
+    return tables
+
+
+def test_continuous_lunar_lander_in_the_forms_the_architecture_and_the_watch_tab(client: TestClient, paths: AppPaths):
+    """The rule is a form row locked on fork; PPO builds the Gaussian head; watching shows the mean action per throttle."""
+    for game in ("lunar_lander", "atari"):
+        rows = {row["name"]: row for row in client.get("/api/schema", params={"game": game}).json()["sections"]["game"]}
+        assert rows["continuous"]["type"] == "bool" and rows["continuous"]["default"] is False and rows["continuous"]["description"]
+        assert "game.continuous" in client.get("/api/fork-rules", params={"game": game}).json()["locked"]
+
+    architecture = client.post("/api/architecture", json=lander_tables(continuous=True)).json()
+    assert architecture["head"] == "gaussian" and "action_log_std" in architecture["text"] and "value_head" in architecture["text"]
+
+    make_run(paths, "throttle", kind="mlp", game={"name": "lunar_lander", "continuous": True})
+    body = client.post("/api/watch", json={"game": "lunar_lander", "run": "throttle", "seed": 0}).json()
+    assert body["info"]["action_names"] == ["main engine", "side engines"]
+    assert body["info"]["action_bounds"] == {"low": [-1.0, -1.0], "high": [1.0, 1.0]}
+    readout = body["frame"]["action_values"]
+    assert readout["kind"] == "action_vector" and len(readout["values"]) == 2 and len(readout["spread"]) == 2
+    assert client.post(f"/api/watch/{body['id']}/options", json={"sample": True}).status_code == 200  # a Gaussian can be sampled
+    frame = client.post(f"/api/watch/{body['id']}/step", json={"count": 3, "frames": "last"}).json()["frames"][-1]
+    assert frame["action_values"] is None or frame["action_values"]["kind"] == "action_vector"
+
+
+@pytest.mark.parametrize(
+    "changes, reason",
+    [
+        ({"algorithm": "dqn"}, "DQN learns one value per action"),
+        ({"kind": "jepa"}, "the jepa model predicts"),
+        ({"history_actions": True}, "env.history_actions"),
+    ],
+)
+def test_continuous_actions_refuse_what_needs_discrete_ones_with_422(client: TestClient, paths: AppPaths, changes: dict, reason: str):
+    tables = lander_tables(changes.get("kind", "mlp"), changes.get("algorithm", "ppo"), continuous=True)
+    tables["env"]["history_actions"] = changes.get("history_actions", False)
+    response = client.post("/api/runs", json={"name": "refused", "config": tables})
+    assert response.status_code == 422 and reason in response.json()["detail"], response.text
+    assert client.post("/api/parameters", params={"game": "lunar_lander"}, json={"config": tables}).status_code == 422
+    assert not (paths.runs_dir / "lunar_lander" / "refused").exists()
+
+
 def test_lunar_lander_hidden_velocities_in_the_schema_and_a_watched_lstm(client: TestClient, paths: AppPaths):
     """The rule is a form row, every kind reads the vector observation, and a kind without attention shows no weights."""
     schema = client.get("/api/schema", params={"game": "lunar_lander"}).json()

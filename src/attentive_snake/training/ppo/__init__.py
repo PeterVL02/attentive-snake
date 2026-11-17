@@ -18,11 +18,12 @@ ALGORITHM = Algorithm(
     name="ppo",
     label="PPO",
     description=(
-        "Proximal policy optimisation: on-policy actor-critic. The network has a policy head (action probabilities) "
-        "and a value head; it learns from rollouts it has just played, a few epochs each, and then discards them."
+        "Proximal policy optimisation: on-policy actor-critic. The network has a policy head (action probabilities, "
+        "or for continuous actions a mean action and a spread per number) and a value head; it learns from rollouts it has just played, a few epochs each, and then discards them."
     ),
     settings_type=PpoConfig,
     head=lambda settings: "actor_critic",
+    continuous_head=lambda settings: "gaussian",
     metrics=METRICS,
     build=PpoLearner,
 )
