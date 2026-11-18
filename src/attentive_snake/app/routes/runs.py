@@ -15,6 +15,7 @@ from attentive_snake.app.launch_bodies import Fork, NewRun, Resume
 from attentive_snake.app.launch_request import LaunchRequest
 from attentive_snake.app.paths import AppPaths
 from attentive_snake.app.run_lookup import existing_run_dir, game_runs, job_key
+from attentive_snake.app.run_status import run_status
 from attentive_snake.app.training_launcher import TrainingLauncher
 from attentive_snake.run_dir import list_runs
 
@@ -27,9 +28,6 @@ def make_router(paths: AppPaths, jobs: TrainingJobs, launcher: TrainingLauncher)
         launched = launcher.start(request)
         return {"name": launched.run_dir.name, "game": request.game, "status": launched.status}
 
-    def status(game: str, name: str) -> dict:
-        return jobs.status(job_key(game, name)) or {"state": "idle"}
-
     def summary(game: str, name: str) -> dict:
         run_dir = game_runs(paths.runs_dir, game) / name
         checkpoints = run_info.checkpoints(run_dir)
@@ -39,7 +37,7 @@ def make_router(paths: AppPaths, jobs: TrainingJobs, launcher: TrainingLauncher)
         logged_steps = int(metrics[-1].get("env_steps", 0)) if metrics else 0
         return {
             "name": name,
-            "status": status(game, name),
+            "status": run_status(paths.runs_dir, jobs, game, name),
             "checkpoint_steps": checkpoint_steps,
             "env_steps": max(checkpoint_steps, logged_steps),
             **run_info.config_summary(run_dir),

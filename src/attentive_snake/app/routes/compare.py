@@ -10,7 +10,8 @@ from attentive_snake.app.jobs import TrainingJobs
 from attentive_snake.app.parameter_count import run_parameter_count
 from attentive_snake.app.paths import AppPaths
 from attentive_snake.app.game_lookup import DEFAULT_GAME
-from attentive_snake.app.run_lookup import existing_run_dir, job_key
+from attentive_snake.app.run_lookup import existing_run_dir
+from attentive_snake.app.run_status import run_status
 from attentive_snake.run_dir import config_path
 
 MAX_RUNS = 12
@@ -28,7 +29,7 @@ def make_router(paths: AppPaths, jobs: TrainingJobs) -> APIRouter:
         run_dir = existing_run_dir(paths.runs_dir, game, name)
         return {
             "name": run_dir.name,
-            "status": jobs.status(job_key(game, run_dir.name)) or {"state": "idle"},
+            "status": run_status(paths.runs_dir, jobs, game, run_dir.name),
             **run_info.config_summary(run_dir),
             "config": run_info.config_json(run_dir),  # None if unreadable: see config_error
             "parameters": run_parameter_count(config_path(run_dir)),

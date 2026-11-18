@@ -1,7 +1,7 @@
 """The training loop every algorithm shares: learning-rate schedule -> learner iteration -> log -> checkpoint -> hooks."""
 
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import torch
@@ -26,6 +26,12 @@ class Trainer:
     periodic evaluation, ``attentive_snake.evaluation.hook``) are called after every
     iteration, in order, with an ``UpdateEnd``; they decide themselves whether to act.
 
+    Stopping early (``should_stop`` of ``train``): asked after each update and again after its
+    hooks. When it says yes the current weights are saved and ``train`` returns with
+    ``stopped_early`` set; an evaluation due at that update is skipped. The last update is never
+    cut short, because a resumed run would have nothing left to train and so would never make
+    the final evaluation.
+
     Resuming (``resume``): iterations, logged env steps, checkpoint names and the learning
     rate carry on from the checkpoint's step count. The learning-rate schedule is a pure
     function of the iteration and ``total_env_steps``; a raised total stretches it (the
@@ -48,6 +54,7 @@ class Trainer:
         self.device = device
         self.logger = logger if logger is not None else ConsoleLogger()
         self.env_steps = 0
+        self.stopped_early = False
         self._hooks = tuple(hooks)
         self._saved_at: int | None = None  # env steps of the last checkpoint this trainer saved
         self._episode_stats = EpisodeStatsWindow()
@@ -68,8 +75,8 @@ class Trainer:
     def completed_iterations(self) -> int:
         return self.env_steps // self.steps_per_iteration
 
-    def train(self) -> list[dict[str, float]]:
-        """Run the remaining iterations; returns the logged metrics records (empty if already done)."""
+    def train(self, should_stop: Callable[[], bool] = lambda: False) -> list[dict[str, float]]:
+        """Run the remaining iterations, or until ``should_stop``; returns the logged metrics records (empty if already done)."""
         logged = []
         last_log = (self.env_steps, time.perf_counter())
         for iteration in range(self.completed_iterations, self.num_iterations):
@@ -87,8 +94,20 @@ class Trainer:
                 is_last or crossed_multiple(previous_env_steps, self.env_steps, self.config.checkpoint_interval)
             ):
                 self.save_checkpoint()
+            if self._stop_early(is_last, should_stop):
+                break
             self._call_hooks(previous_env_steps, is_last)
+            if self._stop_early(is_last, should_stop):
+                break
         return logged
+
+    def _stop_early(self, is_last: bool, should_stop: Callable[[], bool]) -> bool:
+        """Whether training ends here because a stop was requested; if so the current weights are saved."""
+        if is_last or not should_stop():
+            return False
+        self.checkpoint_now()
+        self.stopped_early = True
+        return True
 
     def save_checkpoint(self) -> Path:
         assert self.config.checkpoint_dir is not None

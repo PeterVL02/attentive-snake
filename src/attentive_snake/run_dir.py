@@ -13,6 +13,7 @@ A run directory holds everything about one training run::
         evaluations.jsonl              one JSON line per evaluation (greedy games; see evaluation.record)
         run.json                       history: start / resume / fork events with descriptions
         checkpoint_<env_steps>.pt      policy + optimizer + env-step counter
+        training.lock                  locked while a process trains this run (see run_lock)
 
 Checkpoints are found with ``attentive_snake.training.latest_checkpoint``; ``run.json``
 is read and written by ``attentive_snake.run_metadata``.
@@ -28,6 +29,7 @@ DIAGRAM_FILENAME = "model.html"
 METRICS_FILENAME = "metrics.jsonl"
 EVALUATIONS_FILENAME = "evaluations.jsonl"
 METADATA_FILENAME = "run.json"
+LOCK_FILENAME = "training.lock"
 
 _RUN_NAME = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9._-]*")
 
@@ -42,6 +44,7 @@ __all__ = [
     "is_run_dir",
     "list_checkpoints",
     "list_runs",
+    "lock_path",
     "metadata_path",
     "metrics_path",
     "validate_run_name",
@@ -66,6 +69,10 @@ def evaluations_path(run_dir: Path) -> Path:
 
 def metadata_path(run_dir: Path) -> Path:
     return Path(run_dir) / METADATA_FILENAME
+
+
+def lock_path(run_dir: Path) -> Path:
+    return Path(run_dir) / LOCK_FILENAME
 
 
 def chosen_checkpoint(run_dir: Path, requested: Path | None) -> Path:

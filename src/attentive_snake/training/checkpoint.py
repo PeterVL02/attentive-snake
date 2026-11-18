@@ -1,5 +1,6 @@
 """Saving and restoring training state (model, optimizer, environment-step counter, the learner's extra state)."""
 
+import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -59,7 +60,10 @@ def save_checkpoint(
     env_steps: int,
     learner_state: Mapping[str, Any] | None = None,
 ) -> None:
-    """``learner_state``: what the algorithm keeps besides policy and optimizer (``Learner.extra_state``), saved under ``"learner"``."""
+    """``learner_state``: what the algorithm keeps besides policy and optimizer (``Learner.extra_state``), saved under ``"learner"``.
+
+    The file appears under its name only when complete, so a process killed while saving leaves no truncated checkpoint.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     state = {
@@ -68,7 +72,9 @@ def save_checkpoint(
         "env_steps": env_steps,
         "learner": dict(learner_state or {}),
     }
-    torch.save(state, path)
+    temporary = path.with_name(f"{path.name}.tmp")
+    torch.save(state, temporary)
+    os.replace(temporary, path)
 
 
 def read_checkpoint(path: Path, map_location: str | torch.device = "cpu") -> dict[str, Any]:

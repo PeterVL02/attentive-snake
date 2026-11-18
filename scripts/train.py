@@ -28,6 +28,9 @@ All three take ``--description TEXT`` (saved in run.json),
 ``--steps`` sets ``train.total_env_steps``. When it extends a resumed run, the
 linearly annealed learning rate is re-stretched over the new total. A forked
 run counts its own steps from 0 with its own total and learning-rate schedule.
+
+SIGTERM or Ctrl-C finishes the current update, saves a checkpoint and exits with code 143 or 130;
+a second Ctrl-C exits at once. Only one process can train a run directory at a time.
 """
 
 import argparse
@@ -53,6 +56,7 @@ from attentive_snake.run_dir import (
     list_checkpoints,
     metrics_path,
 )
+from attentive_snake.run_lock import RunLocked, hold_run_lock
 from attentive_snake.run_metadata import Lineage, RunEvent, append_event, clean_description
 from attentive_snake.training import (
     ConsoleLogger,
@@ -64,6 +68,7 @@ from attentive_snake.training import (
     resume_from_checkpoint,
 )
 from attentive_snake.training.runtime import seed_everything
+from attentive_snake.training.stop_signal import stop_on_signals
 from attentive_snake.training_warnings import training_warnings
 from attentive_snake.viz import diagram, save_diagram
 
@@ -260,24 +265,33 @@ def main() -> None:
         parser.error(str(error))
     if not args.resume:
         print_training_warnings(config)
-    save_experiment(config, config_path(run_dir))
+    try:
+        with hold_run_lock(run_dir):  # before anything in the run directory is written
+            save_experiment(config, config_path(run_dir))
 
-    env = make_vec_env(config)
-    seed_everything(config.train.seed)
-    policy = make_policy(config, env)
-    print(diagram(policy))
-    save_diagram(policy, diagram_path(run_dir))
+            env = make_vec_env(config)
+            seed_everything(config.train.seed)
+            policy = make_policy(config, env)
+            print(diagram(policy))
+            save_diagram(policy, diagram_path(run_dir))
 
-    logger = TeeLogger(ConsoleLogger(), JsonlLogger(metrics_path(run_dir)))
-    trainer = make_trainer(config, policy, env, logger, evaluation_hooks(config, run_dir))
-    if args.resume:
-        event = resume(trainer, run_dir, description)
-    elif args.fork:
-        event = fork(trainer, args.fork, source, description)
-    else:
-        event = RunEvent("start", 0, description)
-    append_event(run_dir, event)
-    if not trainer.train():
+            logger = TeeLogger(ConsoleLogger(), JsonlLogger(metrics_path(run_dir)))
+            trainer = make_trainer(config, policy, env, logger, evaluation_hooks(config, run_dir))
+            if args.resume:
+                event = resume(trainer, run_dir, description)
+            elif args.fork:
+                event = fork(trainer, args.fork, source, description)
+            else:
+                event = RunEvent("start", 0, description)
+            append_event(run_dir, event)
+            with stop_on_signals() as stop:
+                records = trainer.train(stop)
+    except RunLocked as error:
+        parser.error(str(error))
+    if trainer.stopped_early:
+        print(f"stopped at {trainer.env_steps} env steps; the checkpoint is saved, continue with --resume {run_dir}")
+        sys.exit(stop.exit_code)
+    if not records:
         print(f"nothing to do: all {trainer.num_iterations} iterations of total_env_steps={config.train.total_env_steps} are done")
 
 

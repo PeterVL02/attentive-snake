@@ -1,13 +1,16 @@
 """scripts/train.py end to end on a tiny board: descriptions, pruning, resuming and forking."""
 
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
 from attentive_snake.config import load_experiment
-from attentive_snake.run_dir import config_path, list_checkpoints
+from attentive_snake.run_dir import config_path, list_checkpoints, metrics_path
+from attentive_snake.run_lock import lock_holder
 from attentive_snake.run_metadata import Lineage, read_events
 from attentive_snake.training.checkpoint import read_checkpoint
 from attentive_snake.training.metrics import read_metrics
@@ -174,3 +177,40 @@ def test_training_warnings_go_to_stderr_for_new_runs_and_forks_only(tmp_path: Pa
     assert resumed.returncode == 0 and "warning" not in resumed.stderr
     default = train("--run-dir", tmp_path / "low", "--config", tmp_path / "tiny.toml", "--steps", 16)
     assert default.returncode == 0 and "warning" not in default.stderr
+
+
+def test_sigterm_saves_a_checkpoint_and_a_second_process_is_refused(tmp_path: Path):
+    pytest.importorskip("fcntl")
+    (tmp_path / "tiny.toml").write_text(TINY)
+    run_dir = tmp_path / "stopped"
+    command = [
+        sys.executable, str(SCRIPT), "--run-dir", str(run_dir), "--config", str(tmp_path / "tiny.toml"),
+        "--steps", "100000000", "--set", "train.checkpoint_interval=100000000",  # only the stop saves
+    ]
+    with (tmp_path / "output.log").open("w") as output:
+        process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT)
+    try:
+        deadline = time.monotonic() + 120
+        while not (metrics_path(run_dir).is_file() and metrics_path(run_dir).stat().st_size > 0):
+            assert time.monotonic() < deadline and process.poll() is None
+            time.sleep(0.1)
+        config_before = config_path(run_dir).read_bytes()
+        refused = train("--resume", run_dir, "--steps", 32)
+        assert refused.returncode == 2 and "already training" in refused.stderr
+        assert config_path(run_dir).read_bytes() == config_before
+
+        process.send_signal(signal.SIGTERM)
+        assert process.wait(timeout=60) == 143
+    finally:
+        process.kill()
+        process.wait()
+
+    steps = int(read_metrics(metrics_path(run_dir))[-1]["env_steps"])
+    (checkpoint,) = list_checkpoints(run_dir)
+    assert read_checkpoint(checkpoint)["env_steps"] == steps
+    assert f"stopped at {steps} env steps" in (tmp_path / "output.log").read_text()
+    assert lock_holder(run_dir) is None
+
+    resumed = train("--resume", run_dir, "--steps", steps + 16)
+    assert resumed.returncode == 0, resumed.stderr
+    assert read_checkpoint(list_checkpoints(run_dir)[-1])["env_steps"] == steps + 16

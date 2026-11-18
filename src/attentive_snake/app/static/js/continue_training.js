@@ -12,6 +12,7 @@ import { setCheckpointOptions } from "./run_options.js";
 function resumeBlocker(detail) {
   if (!detail.config) return "This run's config.toml cannot be read by this version of the code.";
   if (detail.status.state === "running") return "This run is training right now. Stop it first, or wait until it finishes.";
+  if (detail.status.state === "external") return `This run is training outside the app (process ${detail.status.pid}). Stop it there, or wait until it finishes.`;
   if (detail.checkpoints.length === 0) return "Nothing to resume yet: the run has not saved a checkpoint (it saves one every train.checkpoint_interval env steps).";
   return null;
 }

@@ -460,7 +460,16 @@ runs/<game>/<name>/
     evaluations.jsonl           one JSON line per evaluation (while training, or evaluate.py --save / the app)
     run.json                    history: one entry per start / resume / fork (see below)
     checkpoint_<steps>.pt       policy + optimizer + env-step counter (+ DQN's target network; never the replay buffer)
+    training.lock               locked while a process trains the run; the file stays afterwards and can be ignored
 ```
+
+**Stopping a run.** The app's Stop button, `kill <pid>` and Ctrl-C all finish the current update, save a checkpoint
+and exit (code 143 for a signal, 130 for Ctrl-C), so `--resume` continues from there. An evaluation due at that
+update is skipped; the last update of a run always makes its final evaluation. A second Ctrl-C exits at once. The app
+kills a job that has not exited 60 seconds after Stop.
+
+**One process per run.** A second `scripts/train.py` on a run directory that is training is refused. The app shows a
+run trained from a terminal as `external`: it can be watched, compared and forked, but not stopped or resumed there.
 
 Metrics are logged each time the env-step count passes a multiple of `train.log_interval` and at the end;
 checkpoints likewise for `train.checkpoint_interval` (both count env steps, like `evaluation.interval`). Lower

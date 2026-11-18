@@ -15,6 +15,7 @@ from attentive_snake.app import launch_request
 from attentive_snake.app.jobs import TrainingJobs
 from attentive_snake.app.paths import AppPaths
 from attentive_snake.app.run_lookup import job_key
+from attentive_snake.app.run_status import TRAINING_STATES, run_status
 from attentive_snake.app.training_launcher import TrainingLauncher
 from attentive_snake.config import load_experiment
 from attentive_snake.config.experiment_io import experiment_to_tables
@@ -46,7 +47,7 @@ class QueueBackend:
     def progress(self, game: str, run: str) -> RunProgress:
         if self._launcher.queue.is_reserved(game, run):
             return "waiting"
-        if self._jobs.is_running(job_key(game, run)):
+        if run_status(self._paths.runs_dir, self._jobs, game, run)["state"] in TRAINING_STATES:
             return "training"
         return "ended" if is_run_dir(self._run_dir(game, run)) else "missing"
 

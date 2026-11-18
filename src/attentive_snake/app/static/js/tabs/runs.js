@@ -220,6 +220,7 @@ function renderDetail(d) {
   els.title.textContent = d.name;
   replace(els.badge, badge(state));
   if (state === "failed") els.badge.append(h("span", { class: "muted small", text: ` exit code ${d.status.exit_code}` }));
+  if (state === "external") els.badge.append(h("span", { class: "muted small", text: ` training outside the app (process ${d.status.pid})` }));
   els.meta.textContent = `${currentGame().title} · ${runMeta(d)}`;
   els.configError.hidden = !d.config_error;
   els.configError.textContent = d.config_error
@@ -288,7 +289,7 @@ async function refresh() {
 function schedule() {
   clearTimeout(timer);
   if (!visible) return;
-  const running = detail && detail.status.state === "running";
+  const running = detail && ["running", "external"].includes(detail.status.state);
   timer = setTimeout(refresh, running ? FAST_POLL_MS : SLOW_POLL_MS);
 }
 
