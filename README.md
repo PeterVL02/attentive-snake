@@ -167,13 +167,13 @@ Arcade Learning Environment, through `multi_agent_ale_py` and the ROMs `ale-py` 
   model knows. Evaluations report `win_rate`, `draw_rate` and `loss_rate`; Watch shows the same match-up.
 - **Not built:** a frozen earlier checkpoint as opponent, and league play.
 
-**Measured (Boxing, PPO, `cnn` defaults, 2.27M env steps in 30 minutes; one seed, not a benchmark).** It learned
+**Measured (Boxing, PPO, `cnn`, the defaults of that time, so `reward.clip = true`, 2.27M env steps in 30 minutes; one seed, not a benchmark).** It learned
 nothing: against the random player it lost 9 of 10 games at every evaluation from 0.5M steps on (mean margin
 -17 to -21). The policy stayed almost uniform (entropy 2.87 of 2.89) and the value function explained none of
 the return, so the greedy action was nearly arbitrary (one button on 299 of 300 steps). A random player in the
 same seat won 8 of the same 10 games. A longer run, another title or other settings have not been tried.
 
-**Follow-up with a fixed random opponent (Boxing, PPO, `cnn` defaults, 635k env steps; one seed, not a benchmark).**
+**Follow-up with a fixed random opponent (Boxing, PPO, `cnn`, the same settings, 635k env steps; one seed, not a benchmark).**
 Only the model's seat learned, and it looked the same: entropy 2.88 of 2.89, explained variance 0 at the end, and no
 greedy win in 16 games at any evaluation up to 560k steps. Scripted tests of seats, rewards, observations and
 rollouts found no bug. The run was short and its learning rate was already near zero, so the moving opponent is not

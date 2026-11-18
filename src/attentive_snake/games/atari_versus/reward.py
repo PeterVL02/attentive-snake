@@ -1,4 +1,4 @@
-"""The two-player Atari reward: a player's own points, clipped to their sign and scaled.
+"""The two-player Atari reward: a player's own points, optionally clipped to their sign, and scaled.
 
 The titles here are zero-sum: whatever one player wins the other loses, so a player's points
 on a step are its margin on that step (Pong: +1 when it scores, -1 when the other side does).
@@ -15,8 +15,8 @@ class VersusReward:
     player), whatever these values are.
     """
 
-    clip: bool = field(default=True, metadata={"help": "Reward +1 for any step on which the player gains points and -1 for any on which it loses points, however many. Boxing gives 2 points for a close punch; clipped, it counts like any other."})
-    scale: float = field(default=1.0, metadata={"help": "Multiplies the (clipped or raw) points."})
+    clip: bool = field(default=False, metadata={"help": "Off (the default): the player learns from its real points, so Boxing's 2 points for a close punch count double. On: reward +1 for any step on which the player gains points and -1 for any on which it loses points, however many."})
+    scale: float = field(default=1.0, metadata={"help": "Multiplies the points (raw, or clipped when clip is on)."})
 
     def __post_init__(self) -> None:
         if self.scale <= 0.0:

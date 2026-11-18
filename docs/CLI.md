@@ -143,8 +143,8 @@ each match takes two of the `env.num_envs` parallel games (so `num_envs` must be
 learns from both players' games (self-play). An env step is one player's step: a step of a match counts twice
 towards `total_env_steps`. Both players see the same screen; one extra plane per frame tells the
 model which of them it is (0 for the first, 1 for the second), so a frame has 2 planes in grayscale and 4 in colour.
-Each player's reward is its own points (the titles are zero-sum: what one wins the other loses), clipped to their sign
-by default; the score is the sum of a player's points, which is its margin over the other player.
+Each player's reward is its own points (the titles are zero-sum: what one wins the other loses); `reward.clip = true`
+reduces them to their sign. The score is the sum of a player's points, which is its margin over the other player.
 
 Self-play scores hover around zero whatever the model has learned, so the training log's `mean_score` says little.
 Evaluations (while training, `scripts/evaluate.py`, the app) and Watch play the model against a player that presses

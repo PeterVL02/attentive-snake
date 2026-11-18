@@ -131,8 +131,9 @@ def test_only_atari_ppo_turns_return_normalisation_on_by_default():
     configs = Path(__file__).resolve().parent.parent / "configs"
     assert default_experiment(configs, "atari").algorithm_settings.normalize_returns is True
     assert default_experiment(configs, "atari").reward.clip is False
-    for game in ("snake", "lunar_lander", "minatar"):
+    for game in ("snake", "lunar_lander", "minatar", "atari_versus"):
         assert default_experiment(configs, game).algorithm_settings.normalize_returns is False
+    assert default_experiment(configs, "atari_versus").reward.clip is False
     assert not hasattr(default_experiment(configs, "atari", "dqn").algorithm_settings, "normalize_returns")
 
 

@@ -141,8 +141,9 @@ def test_a_seed_replays_the_same_match_and_another_seed_does_not():
 
 
 def test_the_reward_clips_and_scales():
-    assert versus_reward(VersusReward(), 2.0) == 1.0 and versus_reward(VersusReward(), -1.0) == -1.0
-    assert versus_reward(VersusReward(clip=False, scale=0.5), 2.0) == 1.0
+    assert versus_reward(VersusReward(), 2.0) == 2.0  # real points by default
+    assert versus_reward(VersusReward(clip=True), 2.0) == 1.0 and versus_reward(VersusReward(clip=True), -1.0) == -1.0
+    assert versus_reward(VersusReward(scale=0.5), 2.0) == 1.0
     with pytest.raises(ValueError):
         VersusReward(scale=0.0)
 
@@ -155,7 +156,7 @@ NOOP, RIGHT, LEFT = 0, 3, 4
 
 
 def boxing_slots(history_length=2):
-    vec = MatchVecEnv([GAME.make_match(BOXING, VersusReward(), 0)], history_length=history_length)
+    vec = MatchVecEnv([GAME.make_match(BOXING, VersusReward(clip=True), 0)], history_length=history_length)
     return vec, vec.reset(seed=0)
 
 
