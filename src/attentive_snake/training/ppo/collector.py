@@ -9,6 +9,7 @@ from torch import Tensor, nn
 from attentive_snake.env.types import EpisodeSummary, VecEnv
 from attentive_snake.models.action_distribution import ActorCriticOutput, action_parameters, policy_distribution
 from attentive_snake.training.next_observations import next_observations
+from attentive_snake.training.ppo.return_normalizer import ReturnNormalizer
 from attentive_snake.training.ppo.rollout import RolloutBuffer
 from attentive_snake.training.ppo.truncation import TruncationBootstrap
 
@@ -35,6 +36,9 @@ class RolloutCollector:
     truncated. Given a ``TruncationBootstrap``, the reward of a truncated step also gets
     ``gamma * V(final observation)``, so its value target is bootstrapped; without one
     (the default) truncation is treated exactly like termination.
+
+    Given a ``ReturnNormalizer``, rewards are scaled before that bootstrap is added: the value
+    network already predicts in the scaled units. Episode summaries keep the game's own units.
     """
 
     def __init__(
@@ -43,6 +47,7 @@ class RolloutCollector:
         buffer: RolloutBuffer,
         initial_observations: np.ndarray,
         truncation: TruncationBootstrap | None = None,
+        return_normalizer: ReturnNormalizer | None = None,
     ) -> None:
         if buffer.num_envs != env.num_envs:
             raise ValueError("Buffer and environment disagree on the number of environments.")
@@ -51,6 +56,7 @@ class RolloutCollector:
         self._device = buffer.observations.device
         self._observations = self._to_tensor(initial_observations)
         self._truncation = truncation
+        self._return_normalizer = return_normalizer
 
     @torch.no_grad()
     def collect(self, policy: nn.Module) -> CollectResult:
@@ -76,10 +82,13 @@ class RolloutCollector:
 
             step = self._env.step(actions.cpu().numpy())
             rewards = self._to_tensor(step.rewards)
+            dones = self._to_tensor(np.logical_or(step.terminated, step.truncated))
+            if self._return_normalizer is not None:
+                rewards = self._return_normalizer(rewards, dones)
             if self._truncation is not None:
                 rewards = self._truncation.rewards(rewards, step, lambda obs: self._evaluate(policy, obs).value)
             buffer.rewards[t] = rewards
-            buffer.dones[t] = self._to_tensor(np.logical_or(step.terminated, step.truncated))
+            buffer.dones[t] = dones
             if buffer.next_observations is not None:
                 buffer.next_observations[t] = self._to_tensor(next_observations(step))
             self._observations = self._to_tensor(step.observations)

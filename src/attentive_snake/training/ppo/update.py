@@ -10,6 +10,7 @@ from attentive_snake.models.auxiliary import TransitionBatch
 from attentive_snake.training.auxiliary import AuxiliaryTraining
 from attentive_snake.training.ppo.config import PpoConfig
 from attentive_snake.training.ppo.loss import LossTerms, explained_variance, normalize, ppo_loss
+from attentive_snake.training.ppo.normalized_transitions import normalized_transitions
 from attentive_snake.training.ppo.rollout import TrainingBatch
 
 
@@ -107,8 +108,9 @@ def _minibatch_step(
         clip_coef=config.clip_coef,
         value_coef=config.value_coef,
         entropy_coef=config.entropy_coef,
+        old_values=minibatch.values if config.clip_value_loss else None,
     )
-    total = terms.total if auxiliary is None else terms.total + auxiliary.loss(_transitions(minibatch))
+    total = terms.total if auxiliary is None else terms.total + auxiliary.loss(_transitions(policy, minibatch))
     optimizer.zero_grad(set_to_none=True)
     total.backward()
     nn.utils.clip_grad_norm_(policy.parameters(), config.max_grad_norm)
@@ -118,9 +120,11 @@ def _minibatch_step(
     return terms
 
 
-def _transitions(minibatch: TrainingBatch) -> TransitionBatch:
-    """Every rollout step has its next observation (the final one where the episode ended)."""
+def _transitions(policy: nn.Module, minibatch: TrainingBatch) -> TransitionBatch:
+    """Every rollout step has its next observation (the final one where the episode ended), read as the policy reads observations."""
     if minibatch.next_observations is None:
         raise ValueError("an auxiliary objective needs a rollout that kept its next observations.")
     valid = torch.ones_like(minibatch.returns)
-    return TransitionBatch(minibatch.observations, minibatch.actions, minibatch.next_observations, valid, minibatch.sequences)
+    batch = TransitionBatch(minibatch.observations, minibatch.actions, minibatch.next_observations, valid, minibatch.sequences)
+    normalizer = getattr(policy, "observation_normalizer", None)
+    return batch if normalizer is None else normalized_transitions(normalizer, batch)

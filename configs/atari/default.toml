@@ -72,6 +72,9 @@ entropy_coef = 0.01
 max_grad_norm = 0.5
 normalize_advantages = true
 # target_kl = 0.02            # early-stop an update's epochs above this KL (None = off)
+normalize_observations = false  # rescale each input number by its running mean and spread (games described by numbers only; locked on fork)
+normalize_returns = false     # divide training rewards by the running spread of the discounted return (scores stay raw; locked on fork)
+clip_value_loss = false       # limit each update's change of a value prediction to clip_coef (use with normalize_returns)
 
 [env]  # attentive_snake.config.EnvConfig
 num_envs = 8

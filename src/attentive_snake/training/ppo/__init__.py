@@ -4,9 +4,11 @@ from attentive_snake.training.algorithm import Algorithm, TrainingMetric
 from attentive_snake.training.ppo.config import PpoConfig
 from attentive_snake.training.ppo.learner import PpoLearner
 
+_SCALE_REASON = "the parent's weights were trained on that scale of {}"
+
 METRICS = (
     TrainingMetric("policy_loss", "policy loss", "PPO's clipped-surrogate loss of the policy head (lower is not necessarily better)."),
-    TrainingMetric("value_loss", "value loss", "Squared error of the value head against the GAE returns."),
+    TrainingMetric("value_loss", "value loss", "Squared error of the value head against the GAE returns (in scaled units with normalize_returns)."),
     TrainingMetric("entropy", "entropy", "Randomness of the policy; falls as the policy commits to actions."),
     TrainingMetric("approx_kl", "approx. KL", "How far one update moved the policy (approximate KL divergence)."),
     TrainingMetric("clip_fraction", "clip fraction", "Share of samples whose probability ratio was clipped."),
@@ -26,6 +28,11 @@ ALGORITHM = Algorithm(
     continuous_head=lambda settings: "gaussian",
     metrics=METRICS,
     build=PpoLearner,
+    locked_settings={
+        "normalize_observations": _SCALE_REASON.format("observations"),
+        "normalize_returns": _SCALE_REASON.format("value predictions"),
+    },
+    normalizes_observations=lambda settings: settings.normalize_observations,
 )
 
 __all__ = ["ALGORITHM", "PpoConfig"]

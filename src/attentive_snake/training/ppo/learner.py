@@ -12,10 +12,13 @@ from attentive_snake.training.algorithm import LearnerSetup
 from attentive_snake.training.auxiliary import AuxiliaryTraining
 from attentive_snake.training.optimizer import build_optimizer
 from attentive_snake.training.ppo.collector import RolloutCollector
+from attentive_snake.training.ppo.return_normalizer import ReturnNormalizer
 from attentive_snake.training.ppo.rollout import RolloutBuffer, compute_gae, flatten_rollout
 from attentive_snake.training.ppo.sequences import rollout_sequences
 from attentive_snake.training.ppo.truncation import TruncationBootstrap
 from attentive_snake.training.ppo.update import UpdateStats, ppo_update
+
+_RETURN_STATISTICS_KEY = "return_statistics"  # where the return normalizer's state sits in extra_state
 
 
 class PpoLearner:
@@ -23,6 +26,10 @@ class PpoLearner:
 
     Built after seeding, in this order (it fixes the random streams): optimizer,
     shuffling generator, buffer, env reset with ``train.seed``.
+
+    With ``normalize_observations`` the rollout keeps raw observations and the policy's statistics
+    learn from them only after the update: a rollout and the update on it read the observations
+    alike, so the stored log-probabilities and values stay those of the network being updated.
     """
 
     def __init__(self, setup: LearnerSetup) -> None:
@@ -41,7 +48,8 @@ class PpoLearner:
             action_space_of(env),
         )
         truncation = TruncationBootstrap(train.gamma) if train.bootstrap_truncated else None
-        self._collector = RolloutCollector(env, self._buffer, env.reset(seed=train.seed), truncation)
+        self._return_normalizer = ReturnNormalizer(env.num_envs, train.gamma, setup.device) if settings.normalize_returns else None
+        self._collector = RolloutCollector(env, self._buffer, env.reset(seed=train.seed), truncation, self._return_normalizer)
         self._steps_per_iteration = settings.rollout_length * env.num_envs
         self._last: UpdateStats | None = None
 
@@ -63,6 +71,8 @@ class PpoLearner:
         sequences = rollout_sequences(self._buffer, steps) if steps > 1 else None  # K copies of the next observations
         batch = flatten_rollout(self._buffer, advantages, returns, sequences)
         self._last = ppo_update(self.policy, self.optimizer, batch, self._settings, self._shuffle_generator, self._auxiliary)
+        if self._settings.normalize_observations:
+            self.policy.observation_normalizer.update(self._buffer.observations.flatten(0, 1))
         return collected.finished_episodes
 
     def report(self) -> dict[str, float]:
@@ -71,8 +81,11 @@ class PpoLearner:
         return record if self._auxiliary is None else record | self._auxiliary.report()
 
     def extra_state(self) -> dict[str, Any]:
-        return {} if self._auxiliary is None else self._auxiliary.save_into({})
+        state = {} if self._auxiliary is None else self._auxiliary.save_into({})
+        return state if self._return_normalizer is None else state | {_RETURN_STATISTICS_KEY: self._return_normalizer.state_dict()}
 
     def load_extra_state(self, state: Mapping[str, Any]) -> None:
         if self._auxiliary is not None:
             self._auxiliary.load_from(state)
+        if self._return_normalizer is not None:
+            self._return_normalizer.load_state_dict(state[_RETURN_STATISTICS_KEY])
