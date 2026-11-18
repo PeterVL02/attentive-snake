@@ -178,8 +178,13 @@ same seat won 8 of the same 10 games. A longer run, another title or other setti
 **Follow-up with a fixed random opponent (Boxing, PPO, `cnn`, the same settings, 635k env steps; one seed, not a benchmark).**
 Only the model's seat learned, and it looked the same: entropy 2.88 of 2.89, explained variance 0 at the end, and no
 greedy win in 16 games at any evaluation up to 560k steps. Scripted tests of seats, rewards, observations and
-rollouts found no bug. The run was short and its learning rate was already near zero, so the moving opponent is not
-ruled out and the cause is still open. Single-player Boxing has not been tried as a control.
+rollouts found no bug. The run was short and its learning rate was already near zero.
+
+**Single-player control (Boxing against the console's own opponent, PPO, `cnn`, the same settings, 2.2M env steps; one seed, not a benchmark).**
+Run from a temporary copy with Boxing added as a title, because it is not one of the `atari` titles. It did not learn
+either: entropy stayed between 2.58 and 2.89 (the maximum), explained variance between -0.05 and 0.02, and the greedy
+policy lost all 10 games at every evaluation (mean margin -41 at 0.5M steps, -20 at the end). So the failure does not
+need a second learning player. Why PPO does not learn Boxing here is still open.
 
 ## The app
 
