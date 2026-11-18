@@ -78,8 +78,15 @@ between the number's bounds. `continuous` is locked when forking (the network's 
 # Atari (Gymnasium's ALE): Pong with the defaults (cnn, 8 envs, 10M steps = 40M frames: hours on a GPU)
 uv run python scripts/train.py --game atari --run-dir runs/atari/pong
 
-# Another title (pong, ms_pacman, montezuma_revenge, pitfall, private_eye, venture) and a shorter budget
+# Another title (pong, ms_pacman, montezuma_revenge, pitfall, private_eye, venture, breakout, space_invaders, freeway,
+# qbert, asterix, beam_rider, alien, bank_heist, seaquest) and a shorter budget
 uv run python scripts/train.py --game atari --run-dir runs/atari/pacman --set game.title=ms_pacman --steps 2000000
+
+# Another game mode and difficulty of a title (each title has its own numbers; an unavailable one is refused with the list)
+uv run python scripts/train.py --game atari --run-dir runs/atari/freeway-3 --set game.title=freeway --set game.mode=3 --set game.difficulty=1
+
+# Continue that run on the title's default mode: an empty value means None
+uv run python scripts/train.py --run-dir runs/atari/freeway-default --fork runs/atari/freeway-3 --set game.mode=
 
 # Only the title's own actions (6 in Pong instead of all 18), and an attention model over the conv features
 uv run python scripts/train.py --game atari --run-dir runs/atari/pong-hybrid --set game.full_action_space=false \
@@ -93,7 +100,8 @@ uv run python scripts/train.py --game atari --run-dir runs/atari/pong-stick --se
 ```
 
 All Atari titles are one game, `atari`; `[game] title` picks the title and a run cannot change it (nor
-`screen_size`, `grayscale`, `full_action_space`, `continuous`) when it is continued under a new name. With
+`screen_size`, `grayscale`, `full_action_space`, `continuous`) when it is continued under a new name; `game.mode` and
+`game.difficulty` may change there, because the picture size and the actions stay the same. With
 `continuous = true` the three numbers become one of the 18 joystick actions as ALE's own continuous mode does it (a
 push beyond half way in a direction counts; fire above 0.5), and the push is passed on as the paddle strength. A step is 4 screen frames
 (`game.frame_skip`). The reward the model learns from is the game's real points by default (`reward.clip = true` reduces them to their sign), and

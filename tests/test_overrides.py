@@ -14,6 +14,7 @@ from attentive_snake.config.overrides import apply_overrides, parse_override
         ("train.anneal_lr=false", ("train", "anneal_lr", False)),
         ('train.device="cuda:0"', ("train", "device", "cuda:0")),
         ("train.device=cpu", ("train", "device", "cpu")),
+        ("ppo.target_kl=", ("ppo", "target_kl", None)),
     ],
 )
 def test_parse_override(text, expected) -> None:
@@ -33,6 +34,13 @@ def test_apply_overrides_changes_only_the_named_settings() -> None:
     assert config.game.max_steps_without_food == 9
     assert config.model == base.model and config.env == base.env
     assert apply_overrides(base, []) == base
+
+
+def test_an_empty_value_clears_a_setting_that_may_be_empty_and_is_refused_elsewhere() -> None:
+    base = apply_overrides(ExperimentConfig(), [parse_override("ppo.target_kl=0.02")])
+    assert apply_overrides(base, [parse_override("ppo.target_kl=")]) == ExperimentConfig()
+    with pytest.raises(TypeError, match="learning_rate must be float"):
+        apply_overrides(base, [parse_override("train.learning_rate=")])
 
 
 def test_apply_overrides_validates() -> None:

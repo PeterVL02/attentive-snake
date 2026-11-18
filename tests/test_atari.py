@@ -4,6 +4,9 @@ its schema, and watching image models on it."""
 import dataclasses
 import json
 import struct
+import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -11,18 +14,21 @@ import pytest
 
 from attentive_snake.ale.actions import ALE_ACTION_NAMES, FULL_ACTION_LABELS, action_labels
 from attentive_snake.ale.screen import ScreenShrinker, area_weights
-from attentive_snake.config import EnvConfig, ExperimentConfig, save_experiment
+from attentive_snake.config import EnvConfig, ExperimentConfig, load_experiment, save_experiment
 from attentive_snake.config.fork_rules import locked_field_changes, locked_fields, require_forkable
+from attentive_snake.config.overrides import apply_overrides, parse_override
 from attentive_snake.config.schema import experiment_schema
 from attentive_snake.episode_metrics import EpisodeRecord
 from attentive_snake.factory import make_env, make_policy, make_trainer, make_vec_env
 from attentive_snake.games.atari import env as atari_env
 from attentive_snake.games.atari.config import AtariRules
+from attentive_snake.games.atari.emulator import make_emulator
 from attentive_snake.games.atari.game import GAME
 from attentive_snake.games.atari.metrics import atari_statistics
 from attentive_snake.games.atari.outcome import step_event
 from attentive_snake.games.atari.reward import AtariReward, atari_reward
 from attentive_snake.games.atari.titles import TITLE_KEYS, TITLES, get_title
+from attentive_snake.games.atari.variants import available_variants
 from attentive_snake.games.registry import get_game
 from attentive_snake.games.validation import spec_problems
 from attentive_snake.models.config import ModelConfig
@@ -75,6 +81,115 @@ def test_every_title_plays_with_the_same_18_actions_and_picture(title):
     assert env.action_labels == FULL_ACTION_LABELS
     steps = play(env, [0, 1, 17], 3)
     assert steps[-1].truncated and steps[-1].event == "timeout" and steps[-1].observation.shape == (1, 84, 84)
+
+
+def test_the_titles_added_for_task_sequences_are_selectable():
+    added = {
+        "breakout": ("ALE/Breakout-v5", "Breakout"),
+        "space_invaders": ("ALE/SpaceInvaders-v5", "Space Invaders"),
+        "freeway": ("ALE/Freeway-v5", "Freeway"),
+        "qbert": ("ALE/Qbert-v5", "Q*bert"),
+        "asterix": ("ALE/Asterix-v5", "Asterix"),
+        "beam_rider": ("ALE/BeamRider-v5", "Beam Rider"),
+        "alien": ("ALE/Alien-v5", "Alien"),
+        "bank_heist": ("ALE/BankHeist-v5", "Bank Heist"),
+        "seaquest": ("ALE/Seaquest-v5", "Seaquest"),
+    }
+    assert {key: (get_title(key).env_id, get_title(key).label) for key in added} == added
+    assert len(set(TITLE_KEYS)) == len(TITLES) == 15
+
+
+# --------------------------------------------------------------------------- game mode and difficulty
+
+
+def emulator_arguments(monkeypatch, rules):
+    """What ``make_emulator`` passes to ``gymnasium.make`` for ``rules`` (the emulator itself is not made)."""
+    import gymnasium
+
+    calls = []
+    monkeypatch.setattr(gymnasium, "make", lambda *args, **kwargs: calls.append((args, kwargs)) or SimpleNamespace(unwrapped=None))
+    make_emulator(rules)
+    return calls[0]
+
+
+def test_without_a_mode_or_difficulty_the_emulator_is_made_exactly_as_before(monkeypatch):
+    assert emulator_arguments(monkeypatch, AtariRules()) == (
+        ("ALE/Pong-v5",),
+        {"frameskip": 1, "repeat_action_probability": 0.25, "full_action_space": True, "max_num_frames_per_episode": 0, "disable_env_checker": True},
+    )
+
+
+@pytest.mark.parametrize("chosen", [{"mode": 1}, {"difficulty": 3}, {"mode": 1, "difficulty": 0}])
+def test_a_chosen_mode_or_difficulty_is_passed_on_and_the_other_left_out(monkeypatch, chosen):
+    _, arguments = emulator_arguments(monkeypatch, AtariRules(**chosen))
+    assert {key: arguments[key] for key in ("mode", "difficulty") if key in arguments} == chosen
+
+
+@pytest.mark.parametrize("title, chosen", [("freeway", {"mode": 3}), ("pong", {"difficulty": 3})])
+def test_mode_and_difficulty_change_the_game_and_survive_a_reset(title, chosen):
+    def screens(rules):
+        env = make(rules)
+        return [np.stack([step.observation for step in play(env, [1], 60, seed=5)]) for _ in range(2)]
+
+    default = screens(AtariRules(title=title, sticky_actions=0.0))
+    variant = screens(AtariRules(title=title, sticky_actions=0.0, **chosen))
+    assert np.array_equal(variant[0], variant[1])  # the second game is the same variant
+    assert not np.array_equal(default[1], variant[1])
+
+
+def test_a_mode_keeps_the_picture_and_the_actions_of_the_title():
+    default, variant = make(AtariRules(title="freeway")), make(AtariRules(title="freeway", mode=3, difficulty=1))
+    assert (variant.observation_shape, variant.num_actions) == (default.observation_shape, default.num_actions)
+
+
+@pytest.mark.parametrize(
+    "chosen, message",
+    [
+        ({"mode": 9}, r"Atari game 'pong' has no mode 9; available modes: 0, 1\."),
+        ({"difficulty": 7}, r"Atari game 'pong' has no difficulty 7; available difficulties: 0, 1, 2, 3\."),
+        ({"mode": 9, "difficulty": 7}, r"no mode 9; available modes: 0, 1\. Atari game 'pong' has no difficulty 7"),
+    ],
+)
+def test_an_unavailable_mode_or_difficulty_is_refused_with_the_available_ones(chosen, message):
+    with pytest.raises(ValueError, match=message):
+        AtariRules(**chosen)
+
+
+@pytest.mark.parametrize("title", TITLE_KEYS)
+def test_the_rom_of_every_title_answers_which_variants_it_has(title):
+    variants = available_variants(title)
+    assert variants.modes and variants.difficulties
+
+
+def test_rules_without_a_mode_or_difficulty_do_not_load_the_emulator():
+    script = "import sys; from attentive_snake.games.atari.config import AtariRules; AtariRules(title='qbert'); sys.exit('ale_py' in sys.modules)"
+    assert subprocess.run([sys.executable, "-c", script], check=False).returncode == 0
+
+
+def test_mode_and_difficulty_survive_toml_and_overrides_and_an_empty_value_clears_them(tmp_path):
+    chosen = apply_overrides(ExperimentConfig(game_name="atari", game=AtariRules()), [parse_override(text) for text in ("game.mode=1", "game.difficulty=3")])
+    assert (chosen.game.mode, chosen.game.difficulty) == (1, 3)
+    save_experiment(chosen, tmp_path / "chosen.toml")
+    assert load_experiment(tmp_path / "chosen.toml") == chosen
+    cleared = apply_overrides(chosen, [parse_override(text) for text in ("game.mode=", "game.difficulty=")])
+    assert (cleared.game.mode, cleared.game.difficulty) == (None, None)
+    save_experiment(cleared, tmp_path / "cleared.toml")
+    written = (tmp_path / "cleared.toml").read_text()
+    assert "\nmode =" not in written and "\ndifficulty =" not in written and load_experiment(tmp_path / "cleared.toml") == cleared
+
+
+def test_a_fork_may_change_the_mode_and_difficulty_but_not_the_title():
+    parent = ExperimentConfig(game_name="atari", game=AtariRules(title="freeway"))
+    require_forkable(parent, dataclasses.replace(parent, game=AtariRules(title="freeway", mode=3, difficulty=1)))
+    assert locked_field_changes(parent, dataclasses.replace(parent, game=AtariRules(title="pong"))) == ["game.title"]
+
+
+@pytest.mark.slow
+def test_the_command_line_refuses_an_unavailable_mode_before_training(tmp_path):
+    train = [sys.executable, str(Path(__file__).parents[1] / "scripts" / "train.py"), "--game", "atari", "--run-dir", str(tmp_path / "run")]
+    result = subprocess.run([*train, "--set", "game.mode=9"], capture_output=True, text=True, check=False)
+    assert result.returncode == 2 and "error: Atari game 'pong' has no mode 9; available modes: 0, 1." in result.stderr
+    assert "Traceback" not in result.stderr and not (tmp_path / "run").exists()
 
 
 # --------------------------------------------------------------------------- shapes, preprocessing

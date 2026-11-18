@@ -22,5 +22,12 @@ def make_emulator(rules: AtariRules):
         full_action_space=rules.full_action_space,
         max_num_frames_per_episode=0,  # no limit of the emulator's: AtariRules.max_episode_steps is ours
         disable_env_checker=True,
+        **_chosen_variant(rules),
     )
     return env.unwrapped
+
+
+def _chosen_variant(rules: AtariRules) -> dict[str, int]:
+    """The mode and difficulty the rules choose; one left unset is not passed, so the title's default applies."""
+    chosen = {"mode": rules.mode, "difficulty": rules.difficulty}
+    return {name: value for name, value in chosen.items() if value is not None}
