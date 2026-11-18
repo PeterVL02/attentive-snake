@@ -2,11 +2,16 @@
 
 import numpy as np
 import pytest
+import torch
+from torch import nn
 
 from attentive_snake.env.history_env import HistoryEnv
 from attentive_snake.env.match_vec_env import MatchVecEnv
 from attentive_snake.env.types import EnvStep
 from attentive_snake.env.vec_env import env_seed
+from attentive_snake.models.types import PolicyOutput
+from attentive_snake.training.ppo.collector import RolloutCollector
+from attentive_snake.training.ppo.rollout import RolloutBuffer, compute_gae
 
 
 class Race:
@@ -124,6 +129,26 @@ def test_the_same_history_as_a_single_env():
     assert np.array_equal(single.reset(0), vec.reset(0)[0])
     for action in (1, 0, 1):
         assert np.array_equal(single.step(action).observation, vec.step(np.array([action, 0])).observations[0])
+
+
+class SeatZeroRaces(nn.Module):
+    """Seat 0 always moves, seat 1 always waits (the observation's first number is the seat)."""
+
+    def forward(self, observations):
+        moves = 100.0 * (1.0 - 2.0 * observations[:, 0])
+        return PolicyOutput(logits=torch.stack([-moves, moves], dim=1), value=torch.zeros(len(observations)))
+
+
+def test_a_rollout_keeps_each_seat_in_its_own_column_and_gae_does_not_mix_them():
+    vec = MatchVecEnv([Race(goal=2), Race(goal=3)])
+    buffer = RolloutBuffer.allocate(6, vec.num_envs, vec.observation_shape, torch.device("cpu"))
+    RolloutCollector(vec, buffer, vec.reset(seed=0)).collect(SeatZeroRaces())
+    assert buffer.actions.T.tolist() == [[1] * 6, [0] * 6, [1] * 6, [0] * 6]
+    assert buffer.rewards.T.tolist() == [[0, 1, 0, 1, 0, 1], [0, -1, 0, -1, 0, -1], [0, 0, 1, 0, 0, 1], [0, 0, -1, 0, 0, -1]]
+    assert buffer.dones.T.tolist() == [[0, 1, 0, 1, 0, 1], [0, 1, 0, 1, 0, 1], [0, 0, 1, 0, 0, 1], [0, 0, 1, 0, 0, 1]]
+    advantages, _ = compute_gae(buffer.rewards, buffer.values, buffer.dones, torch.zeros(4), gamma=0.5, gae_lambda=1.0)
+    assert advantages.T[0].tolist() == [0.5, 1.0, 0.5, 1.0, 0.5, 1.0]  # each episode's own reward, discounted
+    assert torch.equal(advantages.T[1], -advantages.T[0]) and torch.equal(advantages.T[3], -advantages.T[2])
 
 
 def test_matches_must_agree():
