@@ -856,6 +856,29 @@ def test_continuous_lunar_lander_in_the_forms_the_architecture_and_the_watch_tab
     assert frame["action_values"] is None or frame["action_values"]["kind"] == "action_vector"
 
 
+def test_ppo_normalisation_settings_in_the_forms_the_fork_rules_and_a_watched_run(client: TestClient, paths: AppPaths):
+    """Three form rows, off by default; a board game refuses observation normalisation; a run with all three trains and can be watched."""
+    rows = {row["name"]: row for row in client.get("/api/schema", params={"game": "lunar_lander"}).json()["sections"]["ppo"]}
+    for name in ("normalize_observations", "normalize_returns", "clip_value_loss"):
+        assert rows[name]["type"] == "bool" and rows[name]["default"] is False and len(rows[name]["description"]) > 80
+    locked = client.get("/api/fork-rules", params={"game": "lunar_lander"}).json()["locked"]
+    assert {"ppo.normalize_observations", "ppo.normalize_returns"} <= set(locked) and "ppo.clip_value_loss" not in locked
+
+    board = tiny_tables("cnn")
+    board["ppo"]["normalize_observations"] = True
+    refused = client.post("/api/runs", json={"name": "board", "config": board})
+    assert refused.status_code == 422 and "normalize_observations only works" in refused.json()["detail"]
+    assert not (paths.runs_dir / "snake" / "board").exists()
+
+    tables = lander_tables()
+    tables["ppo"] |= {"normalize_observations": True, "normalize_returns": True, "clip_value_loss": True}
+    assert client.post("/api/architecture", json=tables).status_code == 200
+    assert client.post("/api/runs", json={"name": "scaled", "config": tables}).status_code == 201
+    assert wait_until_done(client, "scaled", "lunar_lander")["status"]["state"] == "finished"
+    body = client.post("/api/watch", json={"game": "lunar_lander", "run": "scaled", "seed": 0}).json()
+    assert client.post(f"/api/watch/{body['id']}/step", json={"count": 2, "frames": "last"}).status_code == 200
+
+
 @pytest.mark.parametrize(
     "changes, reason",
     [

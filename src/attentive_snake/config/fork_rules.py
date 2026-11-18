@@ -8,7 +8,8 @@ only shape the training objective (``models.config.OBJECTIVE_FIELDS``: jepa's ``
 Snake: the board size and the start length) are locked. Everything else (rewards,
 training settings including the algorithm's own section, the number of parallel games,
 the other rules) may change, except the settings of the algorithm's section that it names itself
-(``Algorithm.locked_settings``; DQN: ``dqn.dueling``, which chooses the head).
+(``Algorithm.locked_settings``; DQN: ``dqn.dueling``, which chooses the head; PPO: ``ppo.normalize_observations``
+and ``ppo.normalize_returns``, the scales the parent's weights learned on, whose statistics carry over with the checkpoint).
 """
 
 import dataclasses

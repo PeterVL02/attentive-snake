@@ -63,6 +63,10 @@ class Learner(Protocol):
         ...
 
 
+def _never(settings: Any) -> bool:
+    return False
+
+
 @dataclass(frozen=True)
 class Algorithm:
     """A selectable training algorithm (``[train] algorithm = name``; its settings are the ``[name]`` section)."""
@@ -76,6 +80,7 @@ class Algorithm:
     build: Callable[[LearnerSetup], Learner]
     locked_settings: Mapping[str, str] = field(default_factory=dict)  # field of its section -> why a fork must keep it
     continuous_head: Callable[[Any], str] | None = None  # the head for continuous actions; None: it trains discrete actions only
+    normalizes_observations: Callable[[Any], bool] = _never  # its settings -> whether the policy reads observations through running statistics
 
     @property
     def trains_continuous_actions(self) -> bool:

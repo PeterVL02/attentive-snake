@@ -154,7 +154,7 @@ def scripted(monkeypatch):
 
 
 def test_one_step_holds_the_action_for_frame_skip_frames_and_sums_their_points(scripted):
-    env, ale = scripted(points={2: 3, 4: 5, 5: 100})
+    env, ale = scripted(reward=AtariReward(clip=True), points={2: 3, 4: 5, 5: 100})
     env.reset()
     step = env.step(3)
     assert ale.acted == ["RIGHT"] * 4 and ale.frame == 4
@@ -250,9 +250,10 @@ def test_without_sticky_actions_every_seed_is_the_same_game():
 
 
 def test_reward_clips_to_the_sign_scales_and_charges_lives():
-    assert [atari_reward(AtariReward(), points, 0) for points in (0.0, 1.0, 500.0, -7.0)] == [0.0, 1.0, 1.0, -1.0]
+    assert [atari_reward(AtariReward(clip=True), points, 0) for points in (0.0, 1.0, 500.0, -7.0)] == [0.0, 1.0, 1.0, -1.0]
+    assert [atari_reward(AtariReward(), points, 0) for points in (0.0, 500.0, -7.0)] == [0.0, 500.0, -7.0]  # the default keeps the points
     assert atari_reward(AtariReward(clip=False, scale=0.01), 500.0, 0) == pytest.approx(5.0)
-    assert atari_reward(AtariReward(scale=0.5, life_lost=-1.0), 200.0, 2) == pytest.approx(0.5 - 2.0)
+    assert atari_reward(AtariReward(clip=True, scale=0.5, life_lost=-1.0), 200.0, 2) == pytest.approx(0.5 - 2.0)
 
 
 def test_score_is_the_raw_points_whatever_the_reward():

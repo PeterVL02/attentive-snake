@@ -28,6 +28,7 @@ from attentive_snake.models.config import ModelConfig
 from attentive_snake.models.heads import DEFAULT_HEAD, HEADS, Head, get_head
 from attentive_snake.models.input_stages.catalog import StageBuilder
 from attentive_snake.models.input_stages.stage import Stage, StageInput
+from attentive_snake.models.observation_normalizer import ObservationNormalizer
 from attentive_snake.models.token_layout import TokenLayout
 from attentive_snake.models.types import PolicyOutput, QValues
 from attentive_snake.observation_spec import ObservationSpec
@@ -89,6 +90,11 @@ class BasePolicy(nn.Module):
         self._head = get_head(head, self.heads)
         trunk = self._build_net()
         self.net = nn.ModuleDict({**trunk, **self._head.modules(config.d_model, num_actions)})
+        self.observation_normalizer: ObservationNormalizer | None = None
+
+    def normalize_observations(self) -> None:
+        """Read every observation through running statistics from now on (their numbers join the ``state_dict``)."""
+        self.observation_normalizer = ObservationNormalizer(self.observation_spec)
 
     def _build_net(self) -> dict[str, nn.Module]:
         """The trunk: observation -> pooled ``d_model`` features (the head is added after it)."""
@@ -104,8 +110,12 @@ class BasePolicy(nn.Module):
 
     def forward(self, obs: Tensor) -> PolicyOutput | QValues:
         self._check_observation(obs)
-        pooled, _ = self._pooled(obs, need_weights=False)
+        pooled, _ = self._pooled(self._model_input(obs), need_weights=False)
         return self._head.output(self.net, pooled)
+
+    def _model_input(self, obs: Tensor) -> Tensor:
+        """What the network reads of an observation."""
+        return obs if self.observation_normalizer is None else self.observation_normalizer(obs)
 
     def _check_observation(self, obs: Tensor) -> None:
         if tuple(obs.shape[1:]) != self.observation_shape or obs.ndim != 1 + len(self.observation_shape):
@@ -146,7 +156,7 @@ class AttentivePolicy(BasePolicy):
         was_training = self.training
         self.eval()
         try:
-            _, maps = self._pooled(obs, need_weights=True)
+            _, maps = self._pooled(self._model_input(obs), need_weights=True)
         finally:
             self.train(was_training)
         return tuple(maps)

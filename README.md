@@ -91,16 +91,34 @@ sparse-reward games: `montezuma_revenge`, `pitfall`, `private_eye`, `venture`. I
   actions, so a network has the same shape for every title.
 - A step is 4 screen frames (`frame_skip`). The console repeats the previous action with probability
   `sticky_actions` (0.25).
-- The training reward is the sign of the points (`reward.clip`); `mean_score` everywhere is the real score.
+- The training reward is the game's real points (`reward.clip = true` reduces them to their sign), and PPO runs
+  scale them with `ppo.normalize_returns`, on by default for Atari only; `mean_score` everywhere is the real score.
   Losing a life does not end the game.
 - Every model kind except `resnet` and `mlp` reads pictures; the default `cnn` with `d_model = 512` is the DQN
   paper's network.
 - DQN's replay buffer is small here (16000 transitions take about 3.6 GB). DQN on Atari has not been measured.
 
-**Measured (Pong, PPO, `cnn`, defaults with `--steps 1800000`; one seed, not a benchmark).** On an RTX 5080
+**Measured (Pong, PPO, `cnn`, the defaults of that time, so `reward.clip = true`, with `--steps 1800000`; one seed, not a benchmark).** On an RTX 5080
 with 8 envs: about 1,250 env steps/s, 24 minutes. The greedy policy lost every point (-21) until 1M steps,
 then took off: -19.8 at 1.4M and -17.4 at 1.8M, with long rallies. Pong is usually won after 5-10M steps;
 that run was not made.
+
+**Measured (Ms. Pac-Man, PPO, `cnn`, 1.8M env steps; one seed, not a benchmark).** Greedy evaluation of 5 games,
+in raw game points. Run (a) learns from clipped rewards (`reward.clip = true`, `ppo.normalize_returns = false`), run (b) from
+the real points with return normalisation (`reward.clip = false`, `ppo.normalize_returns = true`).
+
+| Env steps | (a) clipped | (b) real points, normalised returns |
+|---|---|---|
+| 500k | 300 | 60 |
+| 1M | 210 | 210 |
+| 1.5M | 240 | 110 |
+| 1.8M (final) | 210 | 210 |
+
+The final scores tie. (a) was ahead at 500k and 1.5M and never behind, and the mean score of the sampled training
+games over the last log window was 702 for (a) and 647 for (b). All 5 greedy games of each evaluation scored the
+same, so each number is in effect one game, and neither policy is good yet at this length of training. The rule
+fixed before this run was to turn return normalisation on for Atari PPO if (b) ended level with or above (a); it ended
+level, so it is on by default. That is a tie on one seed, not evidence that (b) is better.
 
 ### MinAtar
 
@@ -149,13 +167,13 @@ Arcade Learning Environment, through `multi_agent_ale_py` and the ROMs `ale-py` 
   model knows. Evaluations report `win_rate`, `draw_rate` and `loss_rate`; Watch shows the same match-up.
 - **Not built:** a frozen earlier checkpoint as opponent, and league play.
 
-**Measured (Boxing, PPO, `cnn` defaults, 2.27M env steps in 30 minutes; one seed, not a benchmark).** It learned
+**Measured (Boxing, PPO, `cnn`, the defaults of that time, so `reward.clip = true`, 2.27M env steps in 30 minutes; one seed, not a benchmark).** It learned
 nothing: against the random player it lost 9 of 10 games at every evaluation from 0.5M steps on (mean margin
 -17 to -21). The policy stayed almost uniform (entropy 2.87 of 2.89) and the value function explained none of
 the return, so the greedy action was nearly arbitrary (one button on 299 of 300 steps). A random player in the
 same seat won 8 of the same 10 games. A longer run, another title or other settings have not been tried.
 
-**Follow-up with a fixed random opponent (Boxing, PPO, `cnn` defaults, 635k env steps; one seed, not a benchmark).**
+**Follow-up with a fixed random opponent (Boxing, PPO, `cnn`, the same settings, 635k env steps; one seed, not a benchmark).**
 Only the model's seat learned, and it looked the same: entropy 2.88 of 2.89, explained variance 0 at the end, and no
 greedy win in 16 games at any evaluation up to 560k steps. Scripted tests of seats, rewards, observations and
 rollouts found no bug. The run was short and its learning rate was already near zero, so the moving opponent is not
@@ -299,6 +317,17 @@ All one seed, not a benchmark. Greedy evaluation of 50 games.
   `weight_decay = 0.01` 239, both 269; within the swings above. On Snake 6x6 (DQN, `cnn`, 200k) layer norm
   started slower and ended level (17.1 against 17.3). Both train; what they are meant for, keeping a network
   trainable over millions of steps, runs this short cannot show.
+- **PPO normalisation** (Lunar Lander, `mlp`, 4M env steps, one seed, not a benchmark; greedy evaluation of 50 games).
+  `ppo.normalize_observations`, `ppo.normalize_returns` and `ppo.clip_value_loss` all off against all on:
+
+  | Env steps | All off: mean score / landed | All on: mean score / landed |
+  |---|---|---|
+  | 500k | -2 / 0% | 268 / 100% |
+  | 1M | 238 / 100% | 282 / 100% |
+  | 2M | 271 / 96% | 287 / 100% |
+  | 4M | 263 / 96% | 290 / 100% |
+
+  The three switches were only measured together, so this does not say which of them helped.
 - **Continuous Lunar Lander** (the defaults with `game.continuous = true`, 2M env steps): 262 with 100% landed
   at 1M, 262 / 96% at 2M; the discrete run landed every game at 2M with 256. So it learns at least as fast.
 

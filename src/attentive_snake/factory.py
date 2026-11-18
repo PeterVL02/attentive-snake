@@ -76,10 +76,13 @@ def observation_spec(config: ExperimentConfig, env: EnvSpec) -> ObservationSpec:
 
 
 def make_policy(config: ExperimentConfig, env: EnvSpec) -> nn.Module:
-    """The policy of ``[model]`` with the head its algorithm trains with these settings on ``env``'s actions (``Algorithm.head_for``)."""
-    continuous = action_space_of(env).continuous
-    head = get_algorithm(config.train.algorithm).head_for(config.algorithm_settings, continuous)
-    return build_policy(config.model, observation_spec(config, env), env.num_actions, head)
+    """The policy of ``[model]`` with the head its algorithm trains with these settings on ``env``'s actions (``Algorithm.head_for``), reading observations as those settings say."""
+    algorithm = get_algorithm(config.train.algorithm)
+    head = algorithm.head_for(config.algorithm_settings, action_space_of(env).continuous)
+    policy = build_policy(config.model, observation_spec(config, env), env.num_actions, head)
+    if algorithm.normalizes_observations(config.algorithm_settings):
+        policy.normalize_observations()
+    return policy
 
 
 def make_trainer(

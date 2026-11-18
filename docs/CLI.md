@@ -96,7 +96,8 @@ All Atari titles are one game, `atari`; `[game] title` picks the title and a run
 `screen_size`, `grayscale`, `full_action_space`, `continuous`) when it is continued under a new name. With
 `continuous = true` the three numbers become one of the 18 joystick actions as ALE's own continuous mode does it (a
 push beyond half way in a direction counts; fire above 0.5), and the push is passed on as the paddle strength. A step is 4 screen frames
-(`game.frame_skip`). The reward the model learns from is the sign of the points by default (`reward.clip`); the
+(`game.frame_skip`). The reward the model learns from is the game's real points by default (`reward.clip = true` reduces them to their sign), and
+Atari's PPO defaults turn on `ppo.normalize_returns` to bring them to a usable size (DQN has no such setting: use `reward.scale`); the
 score shown everywhere is the game's real score. Losing a life does not end a game; `reward.life_lost` can
 penalise it. `ale-py` ships the game ROMs, nothing else has to be installed.
 
@@ -142,8 +143,8 @@ each match takes two of the `env.num_envs` parallel games (so `num_envs` must be
 learns from both players' games (self-play). An env step is one player's step: a step of a match counts twice
 towards `total_env_steps`. Both players see the same screen; one extra plane per frame tells the
 model which of them it is (0 for the first, 1 for the second), so a frame has 2 planes in grayscale and 4 in colour.
-Each player's reward is its own points (the titles are zero-sum: what one wins the other loses), clipped to their sign
-by default; the score is the sum of a player's points, which is its margin over the other player.
+Each player's reward is its own points (the titles are zero-sum: what one wins the other loses); `reward.clip = true`
+reduces them to their sign. The score is the sum of a player's points, which is its margin over the other player.
 
 Self-play scores hover around zero whatever the model has learned, so the training log's `mean_score` says little.
 Evaluations (while training, `scripts/evaluate.py`, the app) and Watch play the model against a player that presses
@@ -165,11 +166,25 @@ uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/p
 # DQN with 3-step targets, a dueling head and a squared-error loss (each is its own switch; all off by default)
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/dqn-3step --set train.algorithm=dqn \
     --set dqn.n_step=3 --set dqn.dueling=true --set dqn.loss=mse
+
+# PPO: rescale inputs and training rewards, and limit how far a value prediction moves per update (three separate switches, all off by default)
+uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/scaled \
+    --set ppo.normalize_observations=true --set ppo.normalize_returns=true --set ppo.clip_value_loss=true
+
 # Normalisation layers in the network and weight decay in the optimizer (two separate switches, both off by default; PPO or DQN)
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/dqn-norm-decay --set train.algorithm=dqn \
     --set model.layer_norm=true --set train.weight_decay=0.01
 ```
 
+- `ppo.normalize_observations` rescales each number of a vector observation by its running mean and spread (clipped to
+  +-10). Boards and screens are refused when the config is built. Stacked frames share one scale per number, and
+  action channels are left alone. The statistics are part of the policy: they are saved in every checkpoint and used,
+  never updated, by evaluation, watching and attention. They learn from each rollout after its update.
+- `ppo.normalize_returns` divides each training reward by the running standard deviation of the discounted return
+  (clipped to +-10; the mean is not subtracted). Scores and episode metrics stay in game points; `value_loss` and the
+  state value shown in the Watch tab are in the scaled units. Its statistics are saved in the checkpoint.
+- `ppo.clip_value_loss` takes the larger of the clipped and unclipped squared error around the value at collection
+  time, with `ppo.clip_coef` as the range. That range is small for returns of hundreds, so pair it with `normalize_returns`.
 - `--game NAME` (new runs only) picks `configs/<NAME>/default.toml` and the default run directory `runs/<NAME>/default`.
   Without it the game is the `--config` file's `[game] name`, else `snake`; a `--game` that differs from the config's
   game is refused.
@@ -259,7 +274,7 @@ uv run python scripts/train.py --run-dir runs/snake/8x8-variant --fork runs/snak
   (`[ppo]` / `[dqn]`), `env.num_envs` and the game rules the game does not lock (Snake:
   `game.max_steps_without_food`, `game.food_count`, `game.food_distribution`, `game.food_spread`) may change. The game (`game.name`), the algorithm (`train.algorithm`: the weights
   end in its head), all of `[model]` except jepa's `prediction_coef`, `value_training`, `prediction_trains_encoder`, `target_ema`, `rollout_steps` and `rollout_value_coef` (they
-  change how it is trained, not the network), `env.history_length`, `env.history_actions` and the rules the game locks (Snake: `game.width`, `game.height`,
+  change how it is trained, not the network), `env.history_length`, `env.history_actions`, `ppo.normalize_observations`, `ppo.normalize_returns` (a fork carries the parent's statistics on) and the rules the game locks (Snake: `game.width`, `game.height`,
   `game.initial_length`) must equal the parent's (the weights would not fit, or the input would change meaning);
   a change is rejected naming the field, before anything is written.
 - `--run-dir` is required and must be a new run (a directory with checkpoints is refused). `--fork-checkpoint`

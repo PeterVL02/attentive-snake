@@ -6,6 +6,8 @@ import torch
 from torch import Tensor
 from torch.distributions import Distribution
 
+from attentive_snake.training.ppo.value_loss import clipped_value_loss
+
 
 @dataclass(frozen=True)
 class LossTerms:
@@ -29,12 +31,14 @@ def ppo_loss(
     clip_coef: float,
     value_coef: float,
     entropy_coef: float,
+    old_values: Tensor | None = None,
 ) -> LossTerms:
     """Clipped-surrogate PPO loss (pure function).
 
     ``distribution`` is the current policy's (``models.action_distribution.policy_distribution``),
     batch shape (B,); ``actions`` are its samples ((B,) indices or (B, dimension) vectors); every
     other tensor is (B,). ``advantages`` are used as given (normalise them beforehand if desired).
+    With ``old_values`` (the values at collection time) the value loss is clipped around them by ``clip_coef``.
     """
     if values.shape != returns.shape:
         # Guards against silent (B, 1) - (B,) broadcasting into a (B, B) loss.
@@ -46,7 +50,9 @@ def ppo_loss(
     unclipped = -advantages * ratio
     clipped = -advantages * torch.clamp(ratio, 1.0 - clip_coef, 1.0 + clip_coef)
     policy_loss = torch.max(unclipped, clipped).mean()
-    value_loss = 0.5 * (values - returns).pow(2).mean()
+    value_loss = (
+        0.5 * (values - returns).pow(2).mean() if old_values is None else clipped_value_loss(values, old_values, returns, clip_coef)
+    )
     entropy = distribution.entropy().mean()
     total = policy_loss + value_coef * value_loss - entropy_coef * entropy
 

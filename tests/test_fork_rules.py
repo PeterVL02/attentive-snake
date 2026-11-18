@@ -19,7 +19,7 @@ def test_locked_fields_cover_the_game_model_board_and_observation_layout() -> No
     assert {f"model.{field.name}" for field in dataclasses.fields(ModelConfig) if field.name not in OBJECTIVE_FIELDS} <= set(locked)
     assert not {f"model.{name}" for name in OBJECTIVE_FIELDS} & set(locked)  # jepa's training objective may change on fork
     assert {"game.width", "game.height", "game.initial_length", "env.history_length", "env.history_actions"} <= set(locked)
-    assert not {key for key in locked if key.startswith(("reward.", "train.", "ppo."))} - {"train.algorithm"}
+    assert not {key for key in locked if key.startswith(("reward.", "train.", "ppo."))} - {"train.algorithm", "ppo.normalize_observations", "ppo.normalize_returns"}
     assert "train.algorithm" in locked
     assert "env.num_envs" not in locked and "game.max_steps_without_food" not in locked
     assert all(reason for reason in locked.values())
