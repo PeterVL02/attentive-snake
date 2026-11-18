@@ -1,8 +1,8 @@
 """Single-setting overrides of an ``ExperimentConfig`` written as ``section.key=value`` (e.g. on a command line).
 
 The value is read as a TOML value (``1e-4``, ``true``, ``"cpu"``); anything that is
-not valid TOML is taken as a plain string, so ``train.device=cpu`` also works.
-TOML has no null, so a setting cannot be overridden to ``None`` this way. Overriding
+not valid TOML is taken as a plain string, so ``train.device=cpu`` also works. An empty
+value means ``None`` (``game.mode=``), which only a setting that may be empty accepts. Overriding
 ``train.algorithm`` drops the old algorithm's section (its settings no longer apply), so
 ``train.algorithm=dqn`` followed by ``dqn.<key>=...`` works on a PPO config.
 """
@@ -38,6 +38,8 @@ def apply_overrides(config: ExperimentConfig, overrides: Iterable[Override]) -> 
 
 
 def _value(raw: str) -> Any:
+    if not raw:
+        return None
     try:
         return tomllib.loads(f"value = {raw}")["value"]
     except tomllib.TOMLDecodeError:

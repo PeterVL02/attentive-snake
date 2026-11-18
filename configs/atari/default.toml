@@ -7,7 +7,9 @@
 
 [game]  # name selects the game; the other keys are attentive_snake.games.atari.config.AtariRules
 name = "atari"
-title = "pong"                # pong, ms_pacman, montezuma_revenge, pitfall, private_eye, venture (games/atari/titles.py)
+title = "pong"                # pong, ms_pacman, montezuma_revenge, pitfall, private_eye, venture, breakout, space_invaders, freeway, qbert, asterix, beam_rider, alien, bank_heist, seaquest (games/atari/titles.py)
+# mode = 0                    # the title's game mode (None = the title's default); the numbers differ per title, an unavailable one is refused with the list
+# difficulty = 0              # the title's difficulty (None = the title's default); the numbers differ per title, an unavailable one is refused with the list
 frame_skip = 4                # screen frames per step: 1 env step = 4 frames
 sticky_actions = 0.25         # chance per frame that the previous action is repeated instead (0: Pong plays out identically every game)
 full_action_space = true      # all 18 joystick actions in every title; false: the title's own (6 in Pong)

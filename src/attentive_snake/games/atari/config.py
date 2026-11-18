@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 
 from attentive_snake.games.atari.titles import DEFAULT_TITLE, TITLE_KEYS, get_title
+from attentive_snake.games.atari.variants import require_available_variant
 
 MIN_SCREEN_SIZE = 36  # the smallest picture the image models' convolutions can read
 
@@ -12,6 +13,8 @@ class AtariRules:
     """Title, emulator settings and screen preprocessing of one Atari game (``[game]`` section)."""
 
     title: str = field(default=DEFAULT_TITLE, metadata={"choices": TITLE_KEYS, "help": "Which Atari 2600 game to play. In Pong the ball's direction, and in most of the others what moves and how fast, cannot be read from one screen picture: the model needs the last few frames (env.history_length) to play well."})
+    mode: int | None = field(default=None, metadata={"help": "Which variant of the title's rules to play, the number the console's game-select switch would choose (for example other speeds or layouts). Empty means the title's own default. Each title has its own numbers, and many have only one; a number the title does not have is refused with a list of those it has. The picture size and the actions stay the same, so a continued run (fork) may switch to another mode, for example to train on a sequence of variants."})
+    difficulty: int | None = field(default=None, metadata={"help": "How hard the title is, the number the console's difficulty switches would choose. Empty means the title's own default. Each title has its own numbers, and some have only one; a number the title does not have is refused with a list of those it has. A continued run (fork) may switch to another difficulty."})
     frame_skip: int = field(default=4, metadata={"help": "How many screen frames each chosen action is held for. The console draws 60 frames a second; with 4 the model decides 15 times a second and sees every fourth frame (the brighter of the last two at each pixel, because some games draw objects only on alternate frames). One training step is this many frames."})
     sticky_actions: float = field(default=0.25, metadata={"help": "Chance, on every screen frame, that the console ignores the new action and repeats the previous one. It makes the game unpredictable, so a model cannot just memorise one sequence of button presses. 0.25 is the standard of the v5 environments. With 0 a title without randomness of its own (Pong) plays out the same way every time, whatever the seed, so the games of an evaluation would all be copies of one game."})
     full_action_space: bool = field(default=True, metadata={"help": "Offer all 18 joystick actions (8 directions, each with and without the fire button, plus fire alone and doing nothing) in every title, even where several do the same thing. The network then has the same outputs for every title, so models are comparable across them. Off: only the actions the title distinguishes (6 in Pong), which is easier to learn."})
@@ -30,3 +33,4 @@ class AtariRules:
             raise ValueError("max_episode_steps must be positive.")
         if self.screen_size < MIN_SCREEN_SIZE:
             raise ValueError(f"screen_size must be at least {MIN_SCREEN_SIZE} (the convolutions of the image models need that much).")
+        require_available_variant(self.title, self.mode, self.difficulty)

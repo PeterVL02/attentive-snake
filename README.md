@@ -44,7 +44,7 @@ yourself and the rest are in [docs/CLI.md](docs/CLI.md).
 |---|---|---|
 | `snake` (default) | grid | The whole board: one cell per position, channels head / body / food. |
 | `lunar_lander` | vector | 8 numbers: position, velocity, angle, angular velocity, leg contacts (Gymnasium's `LunarLander-v3`). Watched as the game's own picture. |
-| `atari` | image | The console's screen, shrunk to 84 x 84 grayscale, the last 4 frames. One game for six titles. |
+| `atari` | image | The console's screen, shrunk to 84 x 84 grayscale, the last 4 frames. One game for fifteen titles. |
 | `minatar` | grid | MinAtar's 10 x 10 grid, one 0/1 channel per kind of object. One game for five titles. |
 | `atari_versus` | image | Two-player Atari: the shared screen as for `atari`, plus one plane per frame saying which player the model is. Trained by self-play. |
 
@@ -84,8 +84,10 @@ uv run python scripts/train.py --game atari --run-dir runs/atari/pong           
 uv run python scripts/train.py --game atari --run-dir runs/atari/venture --set game.title=venture
 ```
 
-`game.title` picks one of `pong` (default, the easy one), `ms_pacman` (dense rewards), and four
-sparse-reward games: `montezuma_revenge`, `pitfall`, `private_eye`, `venture`. In short:
+`game.title` picks one of `pong` (default, the easy one), `ms_pacman` (dense rewards), four
+sparse-reward games (`montezuma_revenge`, `pitfall`, `private_eye`, `venture`), and `breakout`, `space_invaders`,
+`freeway`, `qbert`, `asterix`, `beam_rider`, `alien`, `bank_heist`, `seaquest` (selectable, not trained or measured here).
+`game.mode` and `game.difficulty` pick a variant of the title; empty means the title's default. In short:
 
 - Every title uses the same adapter and, with `game.full_action_space = true` (the default), the same 18
   actions, so a network has the same shape for every title.

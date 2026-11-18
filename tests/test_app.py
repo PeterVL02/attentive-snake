@@ -1813,6 +1813,38 @@ def test_atari_is_listed_with_its_titles_and_the_kinds_that_read_pictures(client
     assert parameters_for(client, tiny_atari(), game="atari") > 0
 
 
+def test_atari_mode_and_difficulty_are_optional_numbers_of_the_form_and_a_fork_may_change_them(client: TestClient):
+    rows = {row["name"]: row for row in client.get("/api/schema", params={"game": "atari"}).json()["sections"]["game"]}
+    for name in ("mode", "difficulty"):
+        assert (rows[name]["type"], rows[name]["nullable"], rows[name]["default"], rows[name]["choices"]) == ("int", True, None, None)
+        assert rows[name]["description"]
+    assert not {"game.mode", "game.difficulty"} & set(client.get("/api/fork-rules", params={"game": "atari"}).json()["locked"])
+    assert experiment_to_json(experiment_from_tables(tiny_atari()))["game"]["mode"] is None  # the form starts empty
+
+
+@pytest.mark.parametrize("chosen", [{"mode": None, "difficulty": None}, {"mode": 1, "difficulty": 3}])
+def test_atari_accepts_an_available_mode_and_difficulty_or_empty_ones(client: TestClient, chosen: dict):
+    tables = tiny_atari()
+    tables["game"] |= chosen
+    assert parameters_for(client, tables, game="atari") > 0
+    assert {key: experiment_to_json(experiment_from_tables(tables))["game"][key] for key in chosen} == chosen
+
+
+@pytest.mark.parametrize(
+    "chosen, message",
+    [
+        ({"mode": 9}, "Atari game 'pong' has no mode 9; available modes: 0, 1."),
+        ({"difficulty": 7}, "Atari game 'pong' has no difficulty 7; available difficulties: 0, 1, 2, 3."),
+    ],
+)
+def test_atari_refuses_an_unavailable_mode_or_difficulty_with_a_readable_422(client: TestClient, paths: AppPaths, chosen: dict, message: str):
+    tables = tiny_atari()
+    tables["game"] |= chosen
+    response = client.post("/api/runs", json={"name": "bad", "config": tables})
+    assert (response.status_code, response.json()["detail"]) == (422, message)
+    assert not (paths.runs_dir / "atari" / "bad").exists()
+
+
 @pytest.mark.slow
 def test_train_watch_evaluate_and_compare_atari_through_the_api(client: TestClient, paths: AppPaths):
     """The real emulator in a real training subprocess, then everything the tabs ask for."""
