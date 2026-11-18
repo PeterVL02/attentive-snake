@@ -39,7 +39,7 @@ export function listGames() {
   return games;
 }
 
-/** The selected game's info: {name, title, description, observation_kind, view_kind, has_reward_table}. */
+/** The selected game's info: {name, title, description, observation_kind, view_kind, has_reward_table, seats}. */
 export function currentGame() {
   return current;
 }

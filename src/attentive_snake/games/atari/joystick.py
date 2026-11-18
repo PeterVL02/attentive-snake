@@ -4,7 +4,7 @@ An action is three numbers: how far the stick is pushed (``radius`` in [0, 1]), 
 direction (``angle`` in [-pi, pi], 0 = right, pi/2 = up) and the fire button (``fire`` in [0, 1]).
 The stick counts as pushed left/right (up/down) when its horizontal (vertical) part is beyond
 ``THRESHOLD``, fire as pressed above it, giving one of the 18 joystick actions (named as
-``actions.ALE_ACTION_NAMES``); the push is also passed to the emulator as the paddle strength.
+``ale.actions.ALE_ACTION_NAMES``); the push is also passed to the emulator as the paddle strength.
 Numpy only, no emulator import.
 """
 

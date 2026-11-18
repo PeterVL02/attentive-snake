@@ -1,0 +1,88 @@
+# Default two-player Atari experiment for scripts/train.py --game atari_versus (Pong; --set game.title=... for another title).
+# One model learns by playing both players (self-play); evaluations play it against a random player.
+#
+# Every field is listed except the [reward] values (see below). A missing key
+# (or a whole missing section) takes the dataclass default; an unknown key is
+# an error. TOML has no null, so fields that may be None are commented out to mean None.
+# scripts/train.py writes the full resolved config to <run-dir>/config.toml.
+
+[game]  # name selects the game; the other keys are attentive_snake.games.atari_versus.config.VersusRules
+name = "atari_versus"
+title = "pong"                # pong, combat_tank, combat_plane, boxing (games/atari_versus/titles.py)
+frame_skip = 4                # screen frames per step: 1 step of a match = 4 frames
+sticky_actions = 0.25         # chance per frame that a player's previous action is repeated instead
+full_action_space = true      # all 18 joystick actions in every title; false: the title's own (6 in Pong)
+max_episode_steps = 27000     # time limit: ends the match as "timeout" (27000 x 4 frames = 30 minutes of play)
+screen_size = 84              # the model sees the screen shrunk to 84 x 84 (plus one plane saying which player it is)
+grayscale = true              # brightness only; false: 3 colour channels per frame
+
+# [reward]: not listed here. The default reward values live in one place, the
+# reward scheme configs/atari_versus/rewards/default.toml
+# (= attentive_snake.games.atari_versus.reward.VersusReward()).
+
+[model]  # attentive_snake.models.config.ModelConfig (input shape / actions / history come from the env)
+# The observation is a picture (history_length frames stacked). "cnn" is the DQN paper's network
+# (with conv_channels = 64 and d_model = 512: 32/64/64 feature maps, 512 features, 1.7M weights);
+# "hybrid" puts a transformer over that stem's 7 x 7 feature map; "transformer" and "temporal_transformer"
+# make one token per 12 x 12 pixel patch; "frame_attention" and "lstm" encode each frame with the
+# convolutions and then attend / recur over the frames; the jepa kinds use the same encoders.
+# "resnet" and "mlp" do not read pictures. For the attention kinds lower d_model to about 128.
+kind = "cnn"
+d_model = 512                 # cnn: features after the convolutions (512 in the DQN paper); attention kinds: token width
+num_heads = 4                 # attention kinds only
+num_layers = 2                # lstm: LSTM layers; jepa: predictor layers; jepa_attention, jepa_temporal: both; jepa_tokens: encoder blocks; attention kinds: transformer blocks
+mlp_ratio = 4                 # attention kinds only
+dropout = 0.0
+conv_channels = 64            # width of the image convolutions: 32, 64, 64 feature maps
+conv_layers = 3               # unused for image observations (always three strided convolutions)
+kernel_size = 3               # unused for image observations (8x8, 4x4, 3x3)
+residual = false              # unused for image observations
+layer_norm = false            # every kind with convolutions: a normalisation after each of them and in the readout
+predictor_layers = 1          # jepa_tokens only: transformer blocks of its per-token predictor (run once per action)
+prediction_coef = 0.0         # jepa kinds only: weight of the prediction loss (0 = off, the default; above 0 adds it)
+value_training = "predicted"  # jepa kinds with dqn only: the value decoder learns from the "predicted" or the "actual" next embedding
+prediction_trains_encoder = false  # jepa kinds only: true lets the prediction loss train the encoder too (false: the predictor only)
+target_ema = 0.99             # jepa kinds only: EMA rate of the target encoder (per gradient step)
+rollout_steps = 1             # jepa kinds only: steps the prediction loss follows, the predictor fed its own output (1 = one real step, the default)
+rollout_value_coef = 1.0      # jepa kinds with dqn, rollout_steps > 1: weight of matching the action values read from predicted states (0 = off)
+
+[train]  # attentive_snake.training.config.TrainConfig: what every algorithm shares
+algorithm = "ppo"             # "ppo" (the [ppo] section below) or "dqn" (its defaults: configs/atari_versus/algorithms/dqn.toml)
+total_env_steps = 10000000    # summed over all envs; one step of a match counts once per player (2 env steps); train.py --steps overrides it
+gamma = 0.99
+bootstrap_truncated = true    # the time limit is not the game ending: value the cut state, do not count it as an end
+learning_rate = 0.00025
+weight_decay = 0.0            # 0 = plain Adam; above 0 = AdamW, shrinking the weight matrices (not biases, norms, embeddings) each step
+anneal_lr = true              # linear decay to 0 over total_env_steps
+device = "auto"               # "auto" = cuda if available, else cpu
+seed = 0
+log_interval = 20480          # env steps (one PPO update here is 1024)
+# checkpoint_dir = "runs/x"   # set to the run directory by train.py
+checkpoint_interval = 500000  # env steps (a cnn checkpoint is about 20 MB)
+keep_checkpoints = true       # false: delete older checkpoints after each save (only the latest remains)
+
+[ppo]  # attentive_snake.training.ppo.config.PpoConfig (only with train.algorithm = "ppo")
+rollout_length = 128          # steps per env per update (update = rollout_length * num_envs = 1024 steps)
+num_epochs = 4
+num_minibatches = 4           # 256 steps per minibatch
+gae_lambda = 0.95
+clip_coef = 0.1
+value_coef = 0.5
+entropy_coef = 0.01
+max_grad_norm = 0.5
+normalize_advantages = true
+# target_kl = 0.02            # early-stop an update's epochs above this KL (None = off)
+normalize_observations = false  # rescale each input number by its running mean and spread (games described by numbers only; locked on fork)
+normalize_returns = false     # divide training rewards by the running spread of the discounted return (scores stay raw; locked on fork)
+clip_value_loss = false       # limit each update's change of a value prediction to clip_coef (use with normalize_returns)
+
+[env]  # attentive_snake.config.EnvConfig
+num_envs = 8                  # 4 matches, 2 players each (must be even: one parallel game per player)
+history_length = 4            # the last 4 frames: one frame does not show which way anything moves
+history_actions = false       # true adds 18 constant planes per frame (the player's own action that produced it)
+
+[evaluation]  # attentive_snake.evaluation.config.EvalConfig: greedy games against a random player while training (scripts/evaluate.py: afterwards)
+interval = 500000             # env steps between evaluations (each saves a checkpoint); 0 = off
+games = 10                    # complete games per evaluation; the model takes either side, by each game's seed
+seed = 1000                   # the same checkpoint, seed and games always give the same numbers (the seed also drives the random player)
+max_episode_steps = 30000     # never reached: [game] max_episode_steps ends a game first

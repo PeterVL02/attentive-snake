@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.162.7",
     "gymnasium[box2d]>=1.4.0",
     "minatar>=1.0.15",
+    "multi-agent-ale-py>=0.1.12",
     "numpy>=2.5.4",
     "pygame-ce>=2.5.8",
     "torch>=2.15.0",

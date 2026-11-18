@@ -3,7 +3,7 @@
 
 One step holds the chosen action for ``frame_skip`` screen frames (the emulator applies sticky
 actions on each), sums their points, and shows the brighter of the last two frames at each
-pixel, shrunk to ``screen_size`` squared (``screen.ScreenShrinker``): ``(1, S, S)`` grayscale
+pixel, shrunk to ``screen_size`` squared (``ale.screen.ScreenShrinker``): ``(1, S, S)`` grayscale
 or ``(3, S, S)`` colour, float32 in [0, 1]. History is added outside (``HistoryEnv``).
 ``view()`` is the console's full colour screen; nothing is rendered for training.
 """
@@ -12,14 +12,14 @@ from typing import Any
 
 import numpy as np
 
+from attentive_snake.ale.actions import action_labels
+from attentive_snake.ale.screen import ScreenShrinker
 from attentive_snake.env.types import EnvStep
-from attentive_snake.games.atari.actions import action_labels
 from attentive_snake.games.atari.config import AtariRules
 from attentive_snake.games.atari.emulator import make_emulator
 from attentive_snake.games.atari.joystick import CONTINUOUS_ACTIONS, CONTINUOUS_LABELS, joystick_press
 from attentive_snake.games.atari.outcome import step_event
 from attentive_snake.games.atari.reward import AtariReward, atari_reward
-from attentive_snake.games.atari.screen import ScreenShrinker
 from attentive_snake.views.image import image_payload
 
 

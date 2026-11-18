@@ -126,6 +126,36 @@ Invaders): they are dropped, not blanked, so the model has fewer input channels.
 of the channel names.
 
 ```bash
+# Two-player Atari by self-play: Pong with the defaults (cnn, 8 envs = 4 matches of 2 players, 10M env steps)
+uv run python scripts/train.py --game atari_versus --run-dir runs/atari_versus/pong
+
+# Another title (pong, combat_tank, combat_plane, boxing), a shorter budget, an evaluation every 100k env steps
+uv run python scripts/train.py --game atari_versus --run-dir runs/atari_versus/planes --set game.title=combat_plane \
+    --steps 1000000 --set evaluation.interval=100000
+
+# Evaluate against the random player: win, draw and loss rates, and the score = the model's points minus the opponent's
+uv run python scripts/evaluate.py runs/atari_versus/pong --games 20
+```
+
+The two-player titles are one game, `atari_versus` (the Arcade Learning Environment's two-player modes through
+`multi_agent_ale_py`, with the ROMs `ale-py` ships). While it trains, one model plays both players of every match:
+each match takes two of the `env.num_envs` parallel games (so `num_envs` must be even), one per player, and the model
+learns from both players' games (self-play). An env step is one player's step: a step of a match counts twice
+towards `total_env_steps`. Both players see the same screen; one extra plane per frame tells the
+model which of them it is (0 for the first, 1 for the second), so a frame has 2 planes in grayscale and 4 in colour.
+Each player's reward is its own points (the titles are zero-sum: what one wins the other loses), clipped to their sign
+by default; the score is the sum of a player's points, which is its margin over the other player.
+
+Self-play scores hover around zero whatever the model has learned, so the training log's `mean_score` says little.
+Evaluations (while training, `scripts/evaluate.py`, the app) and Watch play the model against a player that presses
+random buttons, seeded by each game's seed so the numbers reproduce. The model takes the first player's seat when a
+game's seed is even and the second's when it is odd (about half of an evaluation's games each); Watch alternates sides
+from game to game and says under the picture which player the model controls. `win_rate`, `draw_rate` and `loss_rate`
+count the games by their final score. A run cannot change `title`, `screen_size`, `grayscale` or `full_action_space`
+when it is continued under a new name. PPO and DQN both train it (DQN's replay buffer mixes games against older
+versions of the model).
+
+```bash
 # DQN instead of PPO: the game's DQN defaults (configs/<game>/algorithms/dqn.toml), then any [dqn] setting
 uv run python scripts/train.py --game lunar_lander --run-dir runs/lunar_lander/dqn --set train.algorithm=dqn
 uv run python scripts/train.py --run-dir runs/snake/dqn-cnn --set train.algorithm=dqn --set model.kind=cnn \
@@ -342,6 +372,9 @@ uv run python scripts/watch.py runs/atari/pong --scale 3
 
 # MinAtar: the 10 x 10 board, one colour per channel (the channel names are in the app's legend); --attention as for Snake
 uv run python scripts/watch.py runs/minatar/breakout
+
+# Two-player Atari: the model against the random player; each game prints which player the model controls
+uv run python scripts/watch.py runs/atari_versus/pong --scale 3
 ```
 
 The window shows the run's game (it reads the game from the run's `config.toml`); games whose view is a board

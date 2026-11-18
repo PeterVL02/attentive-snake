@@ -32,5 +32,6 @@ def game_info(game: GameSpec) -> dict:
         "observation_kind": game.observation_kind,
         "view_kind": game.view_kind,
         "has_reward_table": game.reward_table is not None,
+        "seats": game.seats,  # players per match: above 1, training is self-play (GameSpec.make_match)
         "evaluation_metrics": [asdict(definition) for definition in metric_definitions(game)],
     }

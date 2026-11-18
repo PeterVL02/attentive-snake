@@ -10,12 +10,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from attentive_snake.env.types import GameEnv
+from attentive_snake.env.types import GameEnv, MatchEnv
 from attentive_snake.episode_metrics import GameMetrics
 from attentive_snake.observation_spec import ObservationKind
 from attentive_snake.views import ViewKind
 
 type MakeEnv = Callable[[Any, Any, int | None], GameEnv]
+type MakeMatch = Callable[[Any, Any, int | None], MatchEnv]
 type RewardTable = Callable[[Any, int], list[dict[str, Any]]]
 type TrainingWarnings = Callable[[Any, Any, float], tuple[str, ...]]  # (rules, reward, gamma) -> warnings
 type ActionsAreContinuous = Callable[[Any], bool]  # rules -> whether the env's actions are continuous
@@ -40,7 +41,10 @@ class GameSpec:
             section; same field rules.
         make_env: ``(rules, reward, seed) -> GameEnv``: one environment producing one
             frame per observation. History, action channels, vectorisation, auto-reset
-            and episode statistics are added generically around it.
+            and episode statistics are added generically around it. In a game with
+            several players (``seats`` > 1) it is the model's seat against a fixed
+            opponent the game provides (a seeded random player): what evaluation and
+            watching play, so their numbers measure progress, which self-play cannot.
         locked_rules: ``{rules field: reason}`` for the rules a continued run (fork) must
             keep, because they change the observation's shape or meaning.
         reward_table: Optional ``(reward config, example_score) -> rows``: what a reward
@@ -67,6 +71,13 @@ class GameSpec:
             step cost that makes dying no worse than living). ``gamma`` is the discount factor as a
             float. The app asks before starting a run, ``scripts/train.py`` prints them to stderr.
             ``None`` or an empty tuple: nothing to warn about.
+        seats: How many players a match of this game has (1: a single-player game).
+        make_match: ``(rules, reward, seed) -> MatchEnv`` (``env.types``), only and always
+            when ``seats`` > 1: one match of all seats, for self-play. Training then plays
+            ``env.num_envs / seats`` matches in which the policy takes every seat and learns
+            from every seat's trajectory (``env.match_vec_env.MatchVecEnv``; ``env.num_envs``
+            must be a multiple of ``seats``, checked by ``config.seat_compatibility``). Its
+            frames must have the shape of ``make_env``'s, actions the same count, discrete.
         search_objective: Key of the evaluation statistic (``evaluation.statistics.metric_definitions``)
             that says best how well a model plays, judged by the game's own outcomes only: the
             default objective of a reward search (``attentive_snake.reward_search``). It must have a
@@ -89,6 +100,8 @@ class GameSpec:
     training_warnings: TrainingWarnings | None = None
     search_objective: str = "mean_score"
     continuous_actions: ActionsAreContinuous | None = None
+    seats: int = 1
+    make_match: MakeMatch | None = None
 
     def has_continuous_actions(self, rules: Any) -> bool:
         """Whether an env of ``rules`` has continuous actions (``continuous_actions``; ``False`` without one)."""

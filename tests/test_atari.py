@@ -9,19 +9,19 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from attentive_snake.ale.actions import ALE_ACTION_NAMES, FULL_ACTION_LABELS, action_labels
+from attentive_snake.ale.screen import ScreenShrinker, area_weights
 from attentive_snake.config import EnvConfig, ExperimentConfig, save_experiment
 from attentive_snake.config.fork_rules import locked_field_changes, locked_fields, require_forkable
 from attentive_snake.config.schema import experiment_schema
 from attentive_snake.episode_metrics import EpisodeRecord
 from attentive_snake.factory import make_env, make_policy, make_trainer, make_vec_env
 from attentive_snake.games.atari import env as atari_env
-from attentive_snake.games.atari.actions import ALE_ACTION_NAMES, FULL_ACTION_LABELS, action_labels
 from attentive_snake.games.atari.config import AtariRules
 from attentive_snake.games.atari.game import GAME
 from attentive_snake.games.atari.metrics import atari_statistics
 from attentive_snake.games.atari.outcome import step_event
 from attentive_snake.games.atari.reward import AtariReward, atari_reward
-from attentive_snake.games.atari.screen import ScreenShrinker, area_weights
 from attentive_snake.games.atari.titles import TITLE_KEYS, TITLES, get_title
 from attentive_snake.games.registry import get_game
 from attentive_snake.games.validation import spec_problems

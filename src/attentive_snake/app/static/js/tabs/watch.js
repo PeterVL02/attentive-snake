@@ -106,7 +106,8 @@ function render(frames) {
   els.steps.textContent = String(frame.steps);
   els.episode.textContent = String(frame.episode + (frame.done ? 0 : 1));
   els.mean.textContent = mean === null ? "–" : `${formatNumber(mean, 2)} (${scores.length})`;
-  els.caption.textContent = frame.done ? `Episode over: ${frame.event}, score ${formatNumber(frame.score, 2)}.` : frame.caption || "";
+  const caption = frame.done ? `Episode over: ${frame.event}, score ${formatNumber(frame.score, 2)}.` : frame.caption || "";
+  els.caption.textContent = [frame.note, caption].filter(Boolean).join(" "); // note: the view's optional line (views/__init__.py)
   renderAttention(frame);
   renderActionValues(frame);
 }

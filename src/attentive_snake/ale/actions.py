@@ -22,3 +22,8 @@ _LABEL = dict(zip(ALE_ACTION_NAMES, FULL_ACTION_LABELS))
 def action_labels(ale_names: Sequence[str]) -> tuple[str, ...]:
     """Our labels for the emulator's action names (``ale_py.Action`` names), in the same order."""
     return tuple(_LABEL[name] for name in ale_names)
+
+
+def labels_of_ids(action_ids: Sequence[int]) -> tuple[str, ...]:
+    """Our labels for actions given by their number in the emulator's order (``ALE_ACTION_NAMES``), e.g. a minimal action set."""
+    return tuple(FULL_ACTION_LABELS[int(action)] for action in action_ids)

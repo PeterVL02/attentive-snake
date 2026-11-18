@@ -1,6 +1,6 @@
 """Atari's ``GameSpec``: one game for every title (``AtariRules.title``)."""
 
-from attentive_snake.games.atari.actions import FULL_ACTION_LABELS
+from attentive_snake.ale.actions import FULL_ACTION_LABELS
 from attentive_snake.games.atari.config import AtariRules
 from attentive_snake.games.atari.env import AtariEnv
 from attentive_snake.games.atari.metrics import ATARI_METRICS
