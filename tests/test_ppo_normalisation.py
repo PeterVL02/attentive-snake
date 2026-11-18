@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 import torch
 
+from attentive_snake.config.defaults import default_experiment
 from attentive_snake.config.experiment_io import experiment_from_tables
 from attentive_snake.config.fork_rules import locked_fields, require_forkable
 from attentive_snake.evaluation.checkpoint_evaluation import evaluate_checkpoint
@@ -124,6 +125,15 @@ def test_dqn_settings_have_no_normalisation_and_the_new_settings_start_off():
     assert not {"normalize_observations", "normalize_returns", "clip_value_loss"} & {f.name for f in dataclasses.fields(experiment_from_tables({"train": {"algorithm": "dqn"}}).algorithm_settings)}
     defaults = PpoConfig()
     assert (defaults.normalize_observations, defaults.normalize_returns, defaults.clip_value_loss) == (False, False, False)
+
+
+def test_only_atari_ppo_turns_return_normalisation_on_by_default():
+    configs = Path(__file__).resolve().parent.parent / "configs"
+    assert default_experiment(configs, "atari").algorithm_settings.normalize_returns is True
+    assert default_experiment(configs, "atari").reward.clip is False
+    for game in ("snake", "lunar_lander", "minatar"):
+        assert default_experiment(configs, game).algorithm_settings.normalize_returns is False
+    assert not hasattr(default_experiment(configs, "atari", "dqn").algorithm_settings, "normalize_returns")
 
 
 def test_off_adds_no_state_dict_keys_and_on_adds_only_the_statistics(tmp_path: Path):

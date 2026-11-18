@@ -90,8 +90,8 @@ sparse-reward games: `montezuma_revenge`, `pitfall`, `private_eye`, `venture`. I
   actions, so a network has the same shape for every title.
 - A step is 4 screen frames (`frame_skip`). The console repeats the previous action with probability
   `sticky_actions` (0.25).
-- The training reward is the game's real points (`reward.clip = true` reduces them to their sign); `mean_score`
-  everywhere is the real score.
+- The training reward is the game's real points (`reward.clip = true` reduces them to their sign), and PPO runs
+  scale them with `ppo.normalize_returns`, on by default for Atari only; `mean_score` everywhere is the real score.
   Losing a life does not end the game.
 - Every model kind except `resnet` and `mlp` reads pictures; the default `cnn` with `d_model = 512` is the DQN
   paper's network.
@@ -115,7 +115,9 @@ the real points with return normalisation (`reward.clip = false`, `ppo.normalize
 
 The final scores tie. (a) was ahead at 500k and 1.5M and never behind, and the mean score of the sampled training
 games over the last log window was 702 for (a) and 647 for (b). All 5 greedy games of each evaluation scored the
-same, so each number is in effect one game, and neither policy is good yet at this length of training.
+same, so each number is in effect one game, and neither policy is good yet at this length of training. The rule
+fixed before this run was to turn return normalisation on for Atari PPO if (b) ended level with or above (a); it ended
+level, so it is on by default. That is a tie on one seed, not evidence that (b) is better.
 
 ### MinAtar
 

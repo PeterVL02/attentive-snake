@@ -96,7 +96,8 @@ All Atari titles are one game, `atari`; `[game] title` picks the title and a run
 `screen_size`, `grayscale`, `full_action_space`, `continuous`) when it is continued under a new name. With
 `continuous = true` the three numbers become one of the 18 joystick actions as ALE's own continuous mode does it (a
 push beyond half way in a direction counts; fire above 0.5), and the push is passed on as the paddle strength. A step is 4 screen frames
-(`game.frame_skip`). The reward the model learns from is the game's real points by default (`reward.clip = true` reduces them to their sign); the
+(`game.frame_skip`). The reward the model learns from is the game's real points by default (`reward.clip = true` reduces them to their sign), and
+Atari's PPO defaults turn on `ppo.normalize_returns` to bring them to a usable size (DQN has no such setting: use `reward.scale`); the
 score shown everywhere is the game's real score. Losing a life does not end a game; `reward.life_lost` can
 penalise it. `ale-py` ships the game ROMs, nothing else has to be installed.
 
