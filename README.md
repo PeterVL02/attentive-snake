@@ -90,13 +90,14 @@ sparse-reward games: `montezuma_revenge`, `pitfall`, `private_eye`, `venture`. I
   actions, so a network has the same shape for every title.
 - A step is 4 screen frames (`frame_skip`). The console repeats the previous action with probability
   `sticky_actions` (0.25).
-- The training reward is the sign of the points (`reward.clip`); `mean_score` everywhere is the real score.
+- The training reward is the game's real points (`reward.clip = true` reduces them to their sign); `mean_score`
+  everywhere is the real score.
   Losing a life does not end the game.
 - Every model kind except `resnet` and `mlp` reads pictures; the default `cnn` with `d_model = 512` is the DQN
   paper's network.
 - DQN's replay buffer is small here (16000 transitions take about 3.6 GB). DQN on Atari has not been measured.
 
-**Measured (Pong, PPO, `cnn`, defaults with `--steps 1800000`; one seed, not a benchmark).** On an RTX 5080
+**Measured (Pong, PPO, `cnn`, the defaults of that time, so `reward.clip = true`, with `--steps 1800000`; one seed, not a benchmark).** On an RTX 5080
 with 8 envs: about 1,250 env steps/s, 24 minutes. The greedy policy lost every point (-21) until 1M steps,
 then took off: -19.8 at 1.4M and -17.4 at 1.8M, with long rallies. Pong is usually won after 5-10M steps;
 that run was not made.

@@ -1,8 +1,8 @@
-# The default Atari reward: the game's points clipped to their sign.
+# The default Atari reward: the game's own points, not clipped.
 # The single source of the default reward values (tests check it equals AtariReward()).
 # A flat AtariReward table (no section header):
 #   reward = scale * (sign(points) if clip else points) + life_lost for every life lost
 # The score (mean_score) is always the raw, unclipped sum of the game's points.
-clip = true                   # +1 / -1 per step that wins / loses points, however many
-scale = 1.0                   # multiplies the clipped (or raw) points
+clip = false                  # true: +1 / -1 per step that wins / loses points, however many
+scale = 1.0                   # multiplies the raw (or clipped) points
 life_lost = 0.0               # added per life lost; negative tells the model directly that dying is bad
