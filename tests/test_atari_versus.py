@@ -147,6 +147,71 @@ def test_the_reward_clips_and_scales():
         VersusReward(scale=0.0)
 
 
+# --------------------------------------------------------------------------- a scripted Boxing match, slot by slot
+
+
+BOXING = VersusRules(title="boxing", sticky_actions=0.0)
+NOOP, RIGHT, LEFT = 0, 3, 4
+
+
+def boxing_slots(history_length=2):
+    vec = MatchVecEnv([GAME.make_match(BOXING, VersusReward(), 0)], history_length=history_length)
+    return vec, vec.reset(seed=0)
+
+
+@pytest.mark.parametrize(("seat", "script_seed", "buttons"), [(0, 0, (3, 5, 8, 1, 11, 13, 16)), (1, 1, (2, 4, 7, 1, 10, 12, 15))])
+def test_a_boxing_slots_first_points_go_to_the_seat_that_punched(seat, script_seed, buttons):
+    """Only ``seat`` plays (walking at the idle other boxer and punching): its slot gets +1, the other slot -1."""
+    vec, _ = boxing_slots()
+    rng = np.random.default_rng(script_seed)
+    for _ in range(100):
+        actions = np.zeros(2, dtype=np.int64)
+        actions[seat] = rng.choice(buttons)
+        rewards = vec.step(actions).rewards
+        if rewards.any():
+            break
+    assert rewards[seat] == 1.0 and rewards[1 - seat] == -1.0
+
+
+def test_a_boxing_slots_action_moves_its_own_boxer_only():
+    """The white boxer (seat 0) starts in the top half of the ring, the black one (seat 1) in the bottom half."""
+
+    def picture_after(actions):
+        vec, _ = boxing_slots(history_length=1)
+        for _ in range(6):
+            observation = vec.step(np.array(actions)).observations
+        return observation[0, 0]
+
+    still = picture_after([NOOP, NOOP])
+    rows_of_seat_0 = np.nonzero(picture_after([RIGHT, NOOP]) != still)[0]
+    rows_of_seat_1 = np.nonzero(picture_after([NOOP, LEFT]) != still)[0]
+    assert len(rows_of_seat_0) and rows_of_seat_0.max() < 42
+    assert len(rows_of_seat_1) and rows_of_seat_1.min() >= 42
+
+
+def test_a_boxing_slots_observations_share_the_picture_differ_by_seat_and_change_over_time():
+    vec, first = boxing_slots()
+    assert (first[0, 3] == 0.0).all() and (first[1, 3] == 1.0).all()  # newest frame: picture, seat plane
+    rng, pictures = np.random.default_rng(0), [first[0, 2].copy()]
+    for _ in range(20):
+        observations = vec.step(rng.integers(18, size=2)).observations
+        assert np.array_equal(observations[0, [0, 2]], observations[1, [0, 2]])
+        assert (observations[0, [1, 3]] == 0.0).all() and (observations[1, [1, 3]] == 1.0).all()
+        assert np.array_equal(observations[0, 0], pictures[-1])  # the older frame is the previous newest
+        pictures.append(observations[0, 2].copy())
+    assert all(not np.array_equal(before, after) for before, after in zip(pictures[4:], pictures[5:]))
+
+
+def test_a_new_boxing_match_forgets_the_last_ones_frames():
+    vec, _ = boxing_slots()
+    rng = np.random.default_rng(0)
+    while not (step := vec.step(rng.integers(18, size=2))).terminated.any():
+        pass
+    assert sorted(step.final_observations) == [0, 1] and step.final_observations[0][0].any()
+    assert (step.observations[:, :2] == 0.0).all()  # no frame before the first one of the new match
+    assert (step.observations[0, 3] == 0.0).all() and (step.observations[1, 3] == 1.0).all()
+
+
 # --------------------------------------------------------------------------- against the random player
 
 

@@ -155,6 +155,12 @@ nothing: against the random player it lost 9 of 10 games at every evaluation fro
 the return, so the greedy action was nearly arbitrary (one button on 299 of 300 steps). A random player in the
 same seat won 8 of the same 10 games. A longer run, another title or other settings have not been tried.
 
+**Follow-up with a fixed random opponent (Boxing, PPO, `cnn` defaults, 635k env steps; one seed, not a benchmark).**
+Only the model's seat learned, and it looked the same: entropy 2.88 of 2.89, explained variance 0 at the end, and no
+greedy win in 16 games at any evaluation up to 560k steps. Scripted tests of seats, rewards, observations and
+rollouts found no bug. The run was short and its learning rate was already near zero, so the moving opponent is not
+ruled out and the cause is still open. Single-player Boxing has not been tried as a control.
+
 ## The app
 
 | Tab | What it is for |
