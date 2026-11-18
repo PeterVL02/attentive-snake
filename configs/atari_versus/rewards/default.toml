@@ -1,0 +1,7 @@
+# The default two-player Atari reward: each player's own points clipped to their sign.
+# The single source of the default reward values (tests check it equals VersusReward()).
+# A flat VersusReward table (no section header):
+#   reward = scale * (sign(points) if clip else points), for each player
+# The score (mean_score) is always the raw sum of the player's points: its margin over the other player.
+clip = true                   # +1 / -1 per step that wins / loses points, however many
+scale = 1.0                   # multiplies the clipped (or raw) points

@@ -1,8 +1,11 @@
 """Building environments, the policy and the trainer from an ``ExperimentConfig``, for any game and algorithm.
 
 The game (``config.game_name``) provides one ``GameEnv``; history, action channels and
-vectorisation are added here generically. The policy's input layout and action count come
-from the environment, so build the environment first and pass it to ``make_policy``.
+vectorisation are added here generically. A game with several seats trains by self-play on
+its matches instead (``GameSpec.make_match``, ``MatchVecEnv``); evaluating and watching use its
+``GameEnv`` (the model against the game's fixed opponent) like every other game's. The
+policy's input layout and action count come from the environment, so build the environment
+first and pass it to ``make_policy``.
 """
 
 from collections.abc import Sequence
@@ -13,7 +16,8 @@ from torch import nn
 from attentive_snake.config import ExperimentConfig
 from attentive_snake.env.action_space import action_space_of
 from attentive_snake.env.history_env import HistoryEnv
-from attentive_snake.env.types import GameEnv
+from attentive_snake.env.match_vec_env import MatchVecEnv
+from attentive_snake.env.types import GameEnv, VecEnv
 from attentive_snake.env.vec_env import SyncVecEnv, env_seed
 from attentive_snake.games.registry import get_game
 from attentive_snake.models.registry import build_policy
@@ -45,10 +49,20 @@ def make_env(config: ExperimentConfig, seed: int | None = None) -> HistoryEnv:
     return HistoryEnv(make_game_env(config, seed), config.env.history_length, config.env.history_actions)
 
 
-def make_vec_env(config: ExperimentConfig) -> SyncVecEnv:
-    """The training environments, ``config.env.num_envs`` of them, seeded from ``config.train.seed``."""
+def make_vec_env(config: ExperimentConfig) -> VecEnv:
+    """The training environments, ``config.env.num_envs`` of them, seeded from ``config.train.seed``
+    (self-play matches for a game with several seats: ``make_self_play_env``)."""
+    if get_game(config.game_name).make_match is not None:
+        return make_self_play_env(config)
     seed = config.train.seed
     return SyncVecEnv([make_env(config, env_seed(seed, i)) for i in range(config.env.num_envs)])
+
+
+def make_self_play_env(config: ExperimentConfig) -> MatchVecEnv:
+    """``config.env.num_envs / seats`` matches of the game, one slot per seat, seeded from ``config.train.seed``."""
+    game, seed = get_game(config.game_name), config.train.seed
+    matches = [game.make_match(config.game, config.reward, env_seed(seed, i)) for i in range(config.env.num_envs // game.seats)]
+    return MatchVecEnv(matches, config.env.history_length, config.env.history_actions)
 
 
 def observation_spec(config: ExperimentConfig, env: EnvSpec) -> ObservationSpec:
@@ -71,7 +85,7 @@ def make_policy(config: ExperimentConfig, env: EnvSpec) -> nn.Module:
 def make_trainer(
     config: ExperimentConfig,
     policy: nn.Module,
-    env: SyncVecEnv,
+    env: VecEnv,
     logger: MetricsLogger | None = None,
     hooks: Sequence[UpdateHook] = (),
 ) -> Trainer:

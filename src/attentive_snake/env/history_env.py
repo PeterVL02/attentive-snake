@@ -6,8 +6,7 @@ from typing import Any
 import numpy as np
 
 from attentive_snake.env.action_space import action_space_of
-from attentive_snake.env.frame import ActionChannels
-from attentive_snake.env.history import FrameHistory
+from attentive_snake.env.frame_stack import FrameStack
 from attentive_snake.env.types import EnvStep, GameEnv
 
 
@@ -30,19 +29,17 @@ class HistoryEnv:
         self.num_actions = game.num_actions
         self.history_length = history_length
         self.action_channels = game.num_actions if history_actions else 0
-        self._actions = ActionChannels(tuple(game.observation_shape), self.action_channels)
-        self.frame_channels = self._actions.shape[0]
-        self._history = FrameHistory(history_length, self._actions.shape)
-        self.observation_shape: tuple[int, ...] = self._history.shape
+        self._frames = FrameStack(tuple(game.observation_shape), history_length, self.action_channels)
+        self.frame_channels = self._frames.frame_channels
+        self.observation_shape: tuple[int, ...] = self._frames.shape
 
     def reset(self, seed: int | None = None) -> np.ndarray:
-        return self._history.reset(self._actions.build(self.game.reset(seed)))
+        return self._frames.reset(self.game.reset(seed))
 
     def step(self, action: int | np.ndarray) -> EnvStep:
         action = self.action_space.env_action(action)
         step = self.game.step(action)
-        observation = self._history.push(self._actions.build(step.observation, action))
-        return dataclasses.replace(step, observation=observation)
+        return dataclasses.replace(step, observation=self._frames.push(step.observation, action))
 
     def view(self) -> dict[str, Any]:
         return self.game.view()

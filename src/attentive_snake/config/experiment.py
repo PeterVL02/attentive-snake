@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from attentive_snake.config.action_compatibility import require_compatible_actions
+from attentive_snake.config.seat_compatibility import require_whole_matches
 from attentive_snake.evaluation.config import EvalConfig
 from attentive_snake.games.registry import DEFAULT_GAME, get_game
 from attentive_snake.models.config import ModelConfig
@@ -45,7 +46,8 @@ class ExperimentConfig:
     be instances of the game's ``rules_type`` / ``reward_type``. ``algorithm_settings`` is
     the ``[<train.algorithm>]`` section: ``None`` becomes the algorithm's defaults, a given
     value must be an instance of its ``settings_type``. A game with continuous actions under
-    these rules refuses what needs discrete ones (``config.action_compatibility``).
+    these rules refuses what needs discrete ones (``config.action_compatibility``); a game with
+    several players needs ``env.num_envs`` to hold whole matches (``config.seat_compatibility``).
     """
 
     game_name: str = DEFAULT_GAME
@@ -69,6 +71,7 @@ class ExperimentConfig:
                     f"{types[section].__name__}, got {type(value).__name__}."
                 )
         require_compatible_actions(self.game_name, self.game, self.train.algorithm, self.model.kind, self.env.history_actions)
+        require_whole_matches(self.game_name, self.env.num_envs)
 
     def sections(self) -> dict[str, Any]:
         """``{section name: its dataclass}`` in file order (``[game]`` without its ``name``)."""

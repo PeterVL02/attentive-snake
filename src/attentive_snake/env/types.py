@@ -10,9 +10,13 @@ Layers, inner to outer:
   and optional action channels; this is what is watched and what a vector env holds.
 * ``VecEnv`` (``env.vec_env.SyncVecEnv`` holds N ``SingleEnv``): auto-reset, per-env seeds,
   episode summaries; this is what the trainer drives.
+
+Self-play (games with several players, ``GameSpec.make_match``): a ``MatchEnv`` is one game
+of all seats; ``env.match_vec_env.MatchVecEnv`` holds M of them as a ``VecEnv`` of M x seats
+slots (slot ``m * seats + s`` is seat ``s`` of match ``m``), each slot one seat's trajectory.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -77,6 +81,30 @@ class GameEnv(Protocol):
     def reset(self, seed: int | None = None) -> np.ndarray: ...
 
     def step(self, action: int | np.ndarray) -> EnvStep: ...
+
+    def view(self) -> dict[str, Any]: ...
+
+
+class MatchEnv(Protocol):
+    """A game several players play at once on one console (a two-player Atari match), for self-play.
+
+    Only for games with ``GameSpec.make_match`` (``GameSpec.seats`` > 1). Each player has a seat
+    ``0 .. num_seats - 1``. Every seat gets its own frame (``observation_shape``, the same shape for
+    all; it must tell the seat apart, since the picture may be shared), its own reward, events and
+    score, and the same ``num_actions`` discrete actions. ``reset`` returns one frame per seat
+    stacked along axis 0; ``step`` takes one action per seat and returns one ``EnvStep`` per seat,
+    in seat order. A match ends for all seats on the same step (each step's ``terminated`` and
+    ``truncated`` are the same for every seat). No auto-reset, no history: ``env.match_vec_env.
+    MatchVecEnv`` adds both and makes every seat one slot of a ``VecEnv``. ``view`` as ``GameEnv``.
+    """
+
+    num_seats: int
+    observation_shape: tuple[int, ...]  # one frame of one seat
+    num_actions: int  # per seat
+
+    def reset(self, seed: int | None = None) -> np.ndarray: ...  # (num_seats, *observation_shape)
+
+    def step(self, actions: Sequence[int]) -> tuple[EnvStep, ...]: ...  # one per seat
 
     def view(self) -> dict[str, Any]: ...
 

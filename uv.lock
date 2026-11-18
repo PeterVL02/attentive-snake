@@ -62,6 +62,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "gymnasium", extra = ["box2d"] },
     { name = "minatar" },
+    { name = "multi-agent-ale-py" },
     { name = "numpy" },
     { name = "pygame-ce" },
     { name = "torch" },
@@ -80,6 +81,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.162.7" },
     { name = "gymnasium", extras = ["box2d"], specifier = ">=1.4.0" },
     { name = "minatar", specifier = ">=1.0.15" },
+    { name = "multi-agent-ale-py", specifier = ">=0.1.12" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "pygame-ce", specifier = ">=2.5.8" },
     { name = "torch", specifier = ">=2.15.0" },
@@ -679,6 +681,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e0/47/dd32fa426cc72114383ac549964eecb20ecfd886d1e5ccf5340b55b02f57/mpmath-1.3.0.tar.gz", hash = "sha256:7a28eb2a9774d00c7bc92411c19a89209d5da7c4c9a9e227be8330a23a25b91f", size = 508106, upload-time = "2023-03-07T16:47:11.061Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/43/e3/7d92a15f894aa0c9c4b49b8ee9ac9850d6e63b03c9c32c0367a13ae62209/mpmath-1.3.0-py3-none-any.whl", hash = "sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c", size = 536198, upload-time = "2023-03-07T16:47:09.197Z" },
+]
+
+[[package]]
+name = "multi-agent-ale-py"
+version = "0.1.12"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4e/29/db08a20df0fa91bf05ad62060da7a77f650527f7cfe08afc9b299bda7349/multi_agent_ale_py-0.1.12.tar.gz", hash = "sha256:4198102669333788cad3c749f208dd941d52b3a39e5c6e16caeec10b0c9c53aa", size = 552673, upload-time = "2026-04-17T23:28:41.954Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/2f/9d0061efb035689c425505405e657390dd1e300e10031da41a72f318b0d4/multi_agent_ale_py-0.1.12-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:ffbea15eb0610bebbd706382fe8f9dcc180aa4c726e0197c63cc8e1f14a6d578", size = 433646, upload-time = "2026-04-17T23:28:33.4Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/06/149876d06ca765a9b380587022b7a46fd56f956f7fa170339a5aabe94530/multi_agent_ale_py-0.1.12-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b0ecf9aa61433cd156fcd072e5fedb3d087ade156304e4e06479ccba8a9edeea", size = 707815, upload-time = "2026-04-17T23:28:34.99Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/55/d6a6219d424d587829d02152e7a4fbea28e9590259f50025bd716667b524/multi_agent_ale_py-0.1.12-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:57bc25c445350136fe93495e15f9cb72015f1576abdd8e9adedcb3fab0f30725", size = 433646, upload-time = "2026-04-17T23:28:36.508Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/8b/c96043576e829e7bda0896b3f1f36febd07ba92689f67a510bf46db67a5d/multi_agent_ale_py-0.1.12-cp314-cp314t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:fa398820ffc68ef706e67cd4dfc91d09286bda7e6c2c1ecf1d9139631d70299d", size = 707817, upload-time = "2026-04-17T23:28:37.677Z" },
 ]
 
 [[package]]

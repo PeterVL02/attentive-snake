@@ -11,6 +11,9 @@ returns the matching payload for the current state. Both payloads have ``width``
 * ``"image"`` (``views.image``): an RGB picture of the screen as a base64 PNG (e.g.
   ``env.render()`` of a Gymnasium game).
 
+Either payload may carry ``note``: one short line of plain text the display shows with the
+picture (two-player Atari: which player the model controls). Without it nothing is shown.
+
 Displays: the browser draws payloads itself; ``views.board_window`` draws a board in a
 pygame window (``scripts/watch.py`` and Snake's human play), ``views.image_window`` shows
 an image payload in one (``scripts/watch.py``). Importing this package does

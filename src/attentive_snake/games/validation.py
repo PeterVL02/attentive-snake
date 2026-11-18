@@ -41,6 +41,7 @@ def spec_problems(spec: GameSpec, package_name: str) -> list[str]:
         problems.append("training_warnings must be callable")
     if spec.continuous_actions is not None and not callable(spec.continuous_actions):
         problems.append("continuous_actions must be callable")
+    problems += _seat_problems(spec)
     if spec.observation_labels is not None and not problems:
         problems += _label_problems(spec)
     if spec.action_labels is not None and not problems:
@@ -76,6 +77,17 @@ def _search_objective_problems(spec: GameSpec) -> list[str]:
         return [f"search_objective {spec.search_objective!r} is not one of the game's evaluation statistics"]
     if definition.higher_is_better is None or definition.measures_reward:
         return [f"search_objective {spec.search_objective!r} must have a direction and must not measure the reward"]
+    return []
+
+
+def _seat_problems(spec: GameSpec) -> list[str]:
+    """``seats`` and ``make_match``: a positive count, and a callable ``make_match`` exactly when there are several seats."""
+    if not isinstance(spec.seats, int) or spec.seats < 1:
+        return ["seats must be a positive whole number"]
+    if spec.seats > 1 and not callable(spec.make_match):
+        return [f"a game with {spec.seats} seats needs a callable make_match (its self-play match)"]
+    if spec.seats == 1 and spec.make_match is not None:
+        return ["make_match is only for games with several seats (seats > 1)"]
     return []
 
 
