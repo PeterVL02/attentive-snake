@@ -237,7 +237,7 @@ async function compare() {
   message(els.status, "", "");
   drawChart();
   renderTables();
-  if (visible && data.runs.some((r) => r.status.state === "running")) timer = setTimeout(compare, POLL_MS);
+  if (visible && data.runs.some((r) => ["running", "external"].includes(r.status.state))) timer = setTimeout(compare, POLL_MS);
 }
 
 function renderTables() {

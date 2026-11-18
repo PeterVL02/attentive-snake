@@ -309,8 +309,9 @@ upward.
 ## Caveats
 
 - **Stopping the app stops the trainings it started.** Start a long run from the terminal if it should
-  outlive the app. Stopping a run loses progress since its last checkpoint.
-- **Runs started from a terminal show as idle in the app.** Do not resume one from the app while it trains.
+  outlive the app. A stopped run finishes its current update and saves a checkpoint first.
+- **Runs started from a terminal show as `external` in the app.** They can be watched and forked there, but
+  not stopped or resumed.
 - **A fork cannot change the game, algorithm, network or observation**: the game, `train.algorithm`,
   `[model]` (except the jepa fields that only shape the training loss), `history_length`, `history_actions`
   and rules such as the board size or the Atari title. The parent's weights would not fit.

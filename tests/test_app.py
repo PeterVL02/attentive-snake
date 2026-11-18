@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 import re
 import shutil
 import sys
@@ -31,6 +32,7 @@ from attentive_snake.factory import make_env, make_policy
 from attentive_snake.models.registry import KIND_INFO
 from attentive_snake.games.registry import get_game, reload_games
 from attentive_snake.run_dir import config_path, list_checkpoints
+from attentive_snake.run_lock import hold_run_lock
 from attentive_snake.run_metadata import RunEvent, append_event
 from attentive_snake.training import save_checkpoint
 from attentive_snake.training.checkpoint import checkpoint_path
@@ -279,6 +281,20 @@ def test_stop_a_long_job_and_refuse_a_second_one(client: TestClient):
     assert stopped.json()["status"]["state"] == "stopped"
     assert client.post("/api/runs/long/stop").status_code == 409  # nothing running any more
     assert client.get("/api/runs/long").json()["status"]["state"] == "stopped"
+
+
+def test_a_run_trained_by_another_process_is_external_and_left_alone(client: TestClient, paths: AppPaths):
+    pytest.importorskip("fcntl")
+    run_dir = make_run(paths, "elsewhere")
+    assert client.get("/api/runs/elsewhere").json()["status"] == {"state": "idle"}
+    with hold_run_lock(run_dir):
+        assert client.get("/api/runs/elsewhere").json()["status"] == {"state": "external", "pid": os.getpid()}
+        compared = client.post("/api/compare", json={"runs": ["elsewhere"]}).json()
+        assert compared["runs"][0]["status"]["state"] == "external"
+        refused = client.post("/api/runs/elsewhere/resume", json={})
+        assert refused.status_code == 409 and "outside the app" in refused.json()["detail"]
+        assert client.post("/api/runs/elsewhere/stop").status_code == 409
+    assert client.get("/api/runs/elsewhere").json()["status"] == {"state": "idle"}
 
 
 @pytest.mark.slow

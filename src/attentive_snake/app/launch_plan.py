@@ -16,6 +16,7 @@ from attentive_snake.app.launch import fork_run, parse_experiment, require_fork_
 from attentive_snake.app.launch_request import LaunchRequest
 from attentive_snake.app.paths import AppPaths
 from attentive_snake.app.run_lookup import checkpoint_in_run, existing_run_dir, latest_checkpoint_in_run, new_run_dir
+from attentive_snake.app.run_status import run_status
 from attentive_snake.config import ExperimentConfig
 
 
@@ -58,10 +59,13 @@ def plan_launch(paths: AppPaths, request: LaunchRequest) -> LaunchPlan:
 
 
 def start_launch(paths: AppPaths, jobs: TrainingJobs, request: LaunchRequest) -> LaunchedRun:
-    """Validate ``request`` and start its training job."""
+    """Validate ``request`` and start its training job; 409 for a resume of a run that a process outside the app is training."""
     plan = plan_launch(paths, request)
     description = request.description
     if plan.config is None:
+        current = run_status(paths.runs_dir, jobs, request.game, plan.run_dir.name)
+        if current["state"] == "external":
+            raise conflict(f"run {plan.run_dir.name!r} is being trained outside the app (process {current['pid']}).")
         status = resume_run(
             paths, jobs, plan.run_dir, request.total_env_steps, request.keep_checkpoints, description, request.evaluation
         )

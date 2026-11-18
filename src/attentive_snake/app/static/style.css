@@ -253,7 +253,7 @@ details.advanced > summary { cursor: pointer; color: var(--muted); font-weight: 
   border: 1px solid var(--border);
 }
 
-.badge.running { color: var(--accent); border-color: var(--accent); }
+.badge.running, .badge.external { color: var(--accent); border-color: var(--accent); }
 .badge.failed { color: var(--danger); border-color: var(--danger); }
 .badge.finished { color: var(--ok); }
 

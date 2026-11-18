@@ -1,7 +1,9 @@
 """Training jobs: one ``scripts/train.py`` subprocess per run, launched, watched and stopped from the server.
 
 Only jobs started by this ``TrainingJobs`` are known; a run trained from a terminal
-shows up as having no job. Output goes to the log file given at launch.
+shows up as having no job (``run_status`` finds those). Output goes to the log file given at
+launch. Stopping sends SIGTERM, on which ``scripts/train.py`` finishes its update and saves a
+checkpoint; a job still alive after the stop timeout is killed.
 """
 
 import os
@@ -62,7 +64,7 @@ def _signal(process: subprocess.Popen, signum: int) -> None:
 class TrainingJobs:
     """At most one running training subprocess per run name."""
 
-    def __init__(self, working_dir: Path, stop_timeout: float = 10.0) -> None:
+    def __init__(self, working_dir: Path, stop_timeout: float = 60.0) -> None:
         self._working_dir = working_dir
         self._stop_timeout = stop_timeout
         self._jobs: dict[str, _Job] = {}
@@ -108,23 +110,25 @@ class TrainingJobs:
             job = self._jobs.get(run)
         if job is None or job.state() != "running":
             raise LookupError(f"run {run!r} has no running job.")
-        self._stop(job)
+        self._stop([job])
         return job.describe()
 
     def shutdown(self) -> None:
-        """Stop every running job (called when the server exits)."""
+        """Stop every running job, all within one stop timeout (called when the server exits)."""
         with self._lock:
             jobs = list(self._jobs.values())
+        self._stop([job for job in jobs if job.state() == "running"])
         for job in jobs:
-            if job.state() == "running":
-                self._stop(job)
             job.log.close()
 
-    def _stop(self, job: _Job) -> None:
-        job.stop_requested = True
-        _signal(job.process, signal.SIGTERM)
-        try:
-            job.process.wait(self._stop_timeout)
-        except subprocess.TimeoutExpired:
-            _signal(job.process, signal.SIGKILL)
-            job.process.wait()
+    def _stop(self, jobs: list[_Job]) -> None:
+        for job in jobs:
+            job.stop_requested = True
+            _signal(job.process, signal.SIGTERM)
+        deadline = time.monotonic() + self._stop_timeout
+        for job in jobs:
+            try:
+                job.process.wait(max(0.0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                _signal(job.process, signal.SIGKILL)
+                job.process.wait()
