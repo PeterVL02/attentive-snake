@@ -102,6 +102,21 @@ with 8 envs: about 1,250 env steps/s, 24 minutes. The greedy policy lost every p
 then took off: -19.8 at 1.4M and -17.4 at 1.8M, with long rallies. Pong is usually won after 5-10M steps;
 that run was not made.
 
+**Measured (Ms. Pac-Man, PPO, `cnn`, 1.8M env steps; one seed, not a benchmark).** Greedy evaluation of 5 games,
+in raw game points. Run (a) learns from clipped rewards (`reward.clip = true`, `ppo.normalize_returns = false`), run (b) from
+the real points with return normalisation (`reward.clip = false`, `ppo.normalize_returns = true`).
+
+| Env steps | (a) clipped | (b) real points, normalised returns |
+|---|---|---|
+| 500k | 300 | 60 |
+| 1M | 210 | 210 |
+| 1.5M | 240 | 110 |
+| 1.8M (final) | 210 | 210 |
+
+The final scores tie. (a) was ahead at 500k and 1.5M and never behind, and the mean score of the sampled training
+games over the last log window was 702 for (a) and 647 for (b). All 5 greedy games of each evaluation scored the
+same, so each number is in effect one game, and neither policy is good yet at this length of training.
+
 ### MinAtar
 
 [MinAtar](https://github.com/kenjyoung/MinAtar) (Young & Tian 2019) shrinks five Atari games to a 10 x 10
@@ -270,6 +285,17 @@ All one seed, not a benchmark. Greedy evaluation of 50 games.
   `weight_decay = 0.01` 239, both 269; within the swings above. On Snake 6x6 (DQN, `cnn`, 200k) layer norm
   started slower and ended level (17.1 against 17.3). Both train; what they are meant for, keeping a network
   trainable over millions of steps, runs this short cannot show.
+- **PPO normalisation** (Lunar Lander, `mlp`, 4M env steps, one seed, not a benchmark; greedy evaluation of 50 games).
+  `ppo.normalize_observations`, `ppo.normalize_returns` and `ppo.clip_value_loss` all off against all on:
+
+  | Env steps | All off: mean score / landed | All on: mean score / landed |
+  |---|---|---|
+  | 500k | -2 / 0% | 268 / 100% |
+  | 1M | 238 / 100% | 282 / 100% |
+  | 2M | 271 / 96% | 287 / 100% |
+  | 4M | 263 / 96% | 290 / 100% |
+
+  The three switches were only measured together, so this does not say which of them helped.
 - **Continuous Lunar Lander** (the defaults with `game.continuous = true`, 2M env steps): 262 with 100% landed
   at 1M, 262 / 96% at 2M; the discrete run landed every game at 2M with 256. So it learns at least as fast.
 
